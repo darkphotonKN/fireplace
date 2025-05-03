@@ -1,7 +1,6 @@
 package config
 
 import (
-	"github.com/darkphotonKN/fireplace/internal/booking"
 	"github.com/darkphotonKN/fireplace/internal/checklistitems"
 	"github.com/darkphotonKN/fireplace/internal/user"
 	"github.com/gin-gonic/gin"
@@ -47,18 +46,6 @@ func SetupRouter() *gin.Engine {
 	checkListRoutes.POST("/", checkListHandler.Create)
 	checkListRoutes.PATCH("/:id", checkListHandler.Update)
 	checkListRoutes.DELETE("/:id", checkListHandler.Delete)
-
-	// -- BOOKING --
-
-	// --- Booking Setup ---
-	bookingRepo := booking.NewRepository(DB)
-	bookingService := booking.NewService(bookingRepo)
-	bookingHandler := booking.NewHandler(bookingService)
-
-	// ---  Booking Routes ---
-	bookingRoutes := api.Group("/booking")
-	bookingRoutes.POST("/:user_id", bookingHandler.Create)
-	bookingRoutes.GET("/:id", bookingHandler.GetById)
 
 	return router
 }

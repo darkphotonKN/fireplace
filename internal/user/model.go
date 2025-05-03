@@ -4,9 +4,8 @@ import "github.com/darkphotonKN/fireplace/internal/models"
 
 type Response struct {
 	models.BaseDBDateModel
-	Email    string           `db:"email" json:"email"`
-	Name     string           `db:"name" json:"name"`
-	Bookings []models.Booking `json:"bookings"`
+	Email string `db:"email" json:"email"`
+	Name  string `db:"name" json:"name"`
 }
 
 type LoginResponse struct {
