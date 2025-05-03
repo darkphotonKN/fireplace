@@ -24,6 +24,13 @@ type Booking struct {
 	EndDate   time.Time `db:"end_date" json:"endDate"`
 }
 
+type ChecklistItem struct {
+	BaseDBDateModel
+	Description string `db:"description" json:"description"`
+	Done        string `db:"done" json:"done"`
+	Sequence    string `db:"sequence" json:"sequence"`
+}
+
 /**
 * Base models for default table columns.
 **/
