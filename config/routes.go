@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/darkphotonKN/fireplace/internal/booking"
+	"github.com/darkphotonKN/fireplace/internal/checklistitems"
 	"github.com/darkphotonKN/fireplace/internal/user"
 	"github.com/gin-gonic/gin"
 )
@@ -15,19 +16,34 @@ func SetupRouter() *gin.Engine {
 	// base route
 	api := router.Group("/api")
 
-	// -- USER --
+	// --- USER ---
 
-	// --- User Setup ---
+	// -- User Setup --
 	userRepo := user.NewRepository(DB)
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
 
-	// --- User Routes ---
+	// -- User Routes --
 	userRoutes := api.Group("/user")
 	userRoutes.GET("/:id", userHandler.GetById)
 	userRoutes.GET("/", userHandler.GetAll)
 	userRoutes.POST("/signup", userHandler.Create)
 	userRoutes.POST("/signin", userHandler.Login)
+
+	// --- CHECKLIST ---
+
+	// -- Checklist Setup --
+
+	checkListRepo := checklistitems.NewRepository(DB)
+	checkListService := checklistitems.NewService(checkListRepo)
+	checkListHandler := checklistitems.NewHandler(checkListService)
+
+	// -- Checklist Routes --
+	checkListRoutes := api.Group("/checklist")
+	checkListRoutes.GET("/", checkListHandler.GetAll)
+	checkListRoutes.POST("/", checkListHandler.Create)
+	checkListRoutes.PATCH("/:id", checkListHandler.Update)
+	checkListRoutes.DELETE("/:id", checkListHandler.Delete)
 
 	// -- BOOKING --
 
