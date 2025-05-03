@@ -20,7 +20,19 @@ func NewRepository(db *sqlx.DB) Repository {
 }
 
 func (s *repository) GetAll(ctx context.Context) ([]*models.ChecklistItem, error) {
-	return nil, nil
+	query := `
+	SELECT id, description, done, sequence, created_at, updated_at, plan_id
+	FROM checklist_items
+	ORDER BY sequence ASC
+	`
+	
+	var items []*models.ChecklistItem
+	err := s.db.SelectContext(ctx, &items, query)
+	if err != nil {
+		return nil, errorutils.AnalyzeDBErr(err)
+	}
+	
+	return items, nil
 }
 
 func (s *repository) CountItems(ctx context.Context) (int, error) {
@@ -39,20 +51,22 @@ func (s *repository) CountItems(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-func (s *repository) Create(ctx context.Context, req CreateReq, sequenceNo int) error {
+func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID, sequenceNo int) error {
 	query := `
-	INSERT INTO checklist_items (description, done, sequence)
-	VALUES(:description, :done, :sequence)
+	INSERT INTO checklist_items (description, done, sequence, plan_id)
+	VALUES(:description, :done, :sequence, :plan_id)
 	`
 
 	item := struct {
-		description string `db:"description"`
-		done        bool   `db:"done"`
-		sequence    int    `db:"sequence"`
+		Description string    `db:"description"`
+		Done        bool      `db:"done"`
+		Sequence    int       `db:"sequence"`
+		PlanID      uuid.UUID `db:"plan_id"`
 	}{
-		description: req.Description,
-		done:        req.Done,
-		sequence:    sequenceNo,
+		Description: req.Description,
+		Done:        req.Done,
+		Sequence:    sequenceNo,
+		PlanID:      planID,
 	}
 
 	_, err := s.db.NamedExecContext(ctx, query, item)
@@ -65,9 +79,41 @@ func (s *repository) Create(ctx context.Context, req CreateReq, sequenceNo int) 
 }
 
 func (s *repository) Update(ctx context.Context, id uuid.UUID, req CreateReq) error {
+	query := `
+	UPDATE checklist_items
+	SET description = :description, 
+	    done = :done
+	WHERE id = :id
+	`
+
+	item := struct {
+		ID          uuid.UUID `db:"id"`
+		Description string    `db:"description"`
+		Done        bool      `db:"done"`
+	}{
+		ID:          id,
+		Description: req.Description,
+		Done:        req.Done,
+	}
+
+	_, err := s.db.NamedExecContext(ctx, query, item)
+	if err != nil {
+		return errorutils.AnalyzeDBErr(err)
+	}
+
 	return nil
 }
 
 func (s *repository) Delete(ctx context.Context, id uuid.UUID) error {
+	query := `
+	DELETE FROM checklist_items
+	WHERE id = $1
+	`
+
+	_, err := s.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return errorutils.AnalyzeDBErr(err)
+	}
+
 	return nil
 }

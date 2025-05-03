@@ -3,9 +3,10 @@ package config
 import (
 	"fmt"
 
-	"github.com/jmoiron/sqlx"
 	"log"
 	"os"
+
+	"github.com/jmoiron/sqlx"
 
 	// Importing for side effects - Dont Remove
 	// This IS being used!
@@ -40,6 +41,9 @@ func InitDB() *sqlx.DB {
 	}
 
 	fmt.Println("Connected to the database successfully.")
+
+	// Run migrations
+	RunMigrations(db)
 
 	// set global instance for the database
 	DB = db

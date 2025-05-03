@@ -1,8 +1,9 @@
 package models
 
 import (
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 /**
@@ -24,11 +25,20 @@ type Booking struct {
 	EndDate   time.Time `db:"end_date" json:"endDate"`
 }
 
+type Plan struct {
+	BaseDBDateModel
+	UserID      uuid.UUID `db:"user_id" json:"userId"`
+	Name        string    `db:"name" json:"name"`
+	Description string    `db:"description" json:"description"`
+	PlanType    string    `db:"plan_type" json:"planType"`
+}
+
 type ChecklistItem struct {
 	BaseDBDateModel
-	Description string `db:"description" json:"description"`
-	Done        string `db:"done" json:"done"`
-	Sequence    string `db:"sequence" json:"sequence"`
+	Description string    `db:"description" json:"description"`
+	Done        string    `db:"done" json:"done"`
+	Sequence    string    `db:"sequence" json:"sequence"`
+	PlanID      uuid.UUID `db:"plan_id" json:"planId"`
 }
 
 /**

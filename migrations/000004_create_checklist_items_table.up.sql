@@ -5,8 +5,7 @@ CREATE TABLE IF NOT EXISTS checklist_items (
     done BOOLEAN NOT NULL DEFAULT false,
     sequence INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    user_id UUID NOT NULL
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
 -- Index for faster sorting by sequence

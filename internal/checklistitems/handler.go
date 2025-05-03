@@ -15,7 +15,7 @@ type Handler struct {
 
 type Service interface {
 	GetAll(ctx context.Context) ([]*models.ChecklistItem, error)
-	Create(ctx context.Context, req CreateReq) error
+	Create(ctx context.Context, req CreateReq, planID uuid.UUID) error
 	Update(ctx context.Context, id uuid.UUID, req CreateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -45,8 +45,17 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Create(c.Request.Context(), req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create checklist item"})
+	planIDParam := c.Param("plan_id")
+
+	planID, err := uuid.Parse(planIDParam)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Incorrect uuid format provided plan id in the param."})
+		return
+	}
+
+	if err := h.service.Create(c.Request.Context(), req, planID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create checklist item. Error: " + err.Error()})
 		return
 	}
 
@@ -70,7 +79,7 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 
 	if err := h.service.Update(c.Request.Context(), id, req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update checklist item"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update checklist item. Error: " + err.Error()})
 		return
 	}
 

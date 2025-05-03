@@ -33,7 +33,6 @@ func SetupRouter() *gin.Engine {
 	// --- CHECKLIST ---
 
 	// -- Checklist Setup --
-
 	checkListRepo := checklistitems.NewRepository(DB)
 	checkListService := checklistitems.NewService(checkListRepo)
 	checkListHandler := checklistitems.NewHandler(checkListService)
@@ -41,9 +40,12 @@ func SetupRouter() *gin.Engine {
 	// -- Checklist Routes --
 	checkListRoutes := api.Group("/checklist")
 	checkListRoutes.GET("/", checkListHandler.GetAll)
-	checkListRoutes.POST("/", checkListHandler.Create)
-	checkListRoutes.PATCH("/:id", checkListHandler.Update)
-	checkListRoutes.DELETE("/:id", checkListHandler.Delete)
+
+	// Plan-specific routes
+	planCheckListRoutes := api.Group("/plan/:plan_id/checklist")
+	planCheckListRoutes.POST("/", checkListHandler.Create)
+	planCheckListRoutes.PATCH("/:id", checkListHandler.Update)
+	planCheckListRoutes.DELETE("/:id", checkListHandler.Delete)
 
 	// -- BOOKING --
 
