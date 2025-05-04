@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/darkphotonKN/fireplace/internal/insights"
+	"github.com/darkphotonKN/fireplace/internal/interfaces"
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -27,7 +27,7 @@ const (
 	retryDelay time.Duration = time.Second
 )
 
-func NewContentGen() insights.ContentGenAI {
+func NewContentGen() interfaces.ContentGenerator {
 	// NOTE:
 	// Secret Management: In production, use a secrets manager like HashiCorp Vault, AWS Secrets Manager, or GCP Secret Manager
 	client := openai.NewClient(os.Getenv("OPENAI_API_KEY"))

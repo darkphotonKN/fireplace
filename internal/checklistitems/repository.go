@@ -25,13 +25,13 @@ func (s *repository) GetAll(ctx context.Context) ([]*models.ChecklistItem, error
 	FROM checklist_items
 	ORDER BY sequence ASC
 	`
-	
+
 	var items []*models.ChecklistItem
 	err := s.db.SelectContext(ctx, &items, query)
 	if err != nil {
 		return nil, errorutils.AnalyzeDBErr(err)
 	}
-	
+
 	return items, nil
 }
 

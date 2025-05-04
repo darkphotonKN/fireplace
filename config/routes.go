@@ -1,7 +1,9 @@
 package config
 
 import (
+	"github.com/darkphotonKN/fireplace/internal/ai"
 	"github.com/darkphotonKN/fireplace/internal/checklistitems"
+	"github.com/darkphotonKN/fireplace/internal/insights"
 	"github.com/darkphotonKN/fireplace/internal/user"
 	"github.com/gin-gonic/gin"
 )
@@ -46,6 +48,18 @@ func SetupRouter() *gin.Engine {
 	checkListRoutes.POST("/", checkListHandler.Create)
 	checkListRoutes.PATCH("/:id", checkListHandler.Update)
 	checkListRoutes.DELETE("/:id", checkListHandler.Delete)
+
+	// --- INSIGHTS ---
+
+	// -- Insights Setup --
+	contentGen := ai.NewContentGen()
+	insightsRepo := insights.NewRepository
+	insightsService := insights.NewService(insightsRepo, contentGen)
+	insightsHandler := insights.NewHandler(insightsService)
+
+	// -- User Routes --
+	insightsRoutes := api.Group("/insights")
+	insightsRoutes.GET("/checklist-suggestion", insightsHandler.GenerateChecklistSuggestionHandler)
 
 	return router
 }
