@@ -20,6 +20,7 @@ type Plan struct {
 	BaseDBDateModel
 	UserID      uuid.UUID `db:"user_id" json:"userId"`
 	Name        string    `db:"name" json:"name"`
+	Focus       string    `db:"focus" json:"focus"`
 	Description string    `db:"description" json:"description"`
 	PlanType    string    `db:"plan_type" json:"planType"`
 }

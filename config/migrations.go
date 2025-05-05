@@ -160,14 +160,15 @@ func seedTestPlan(db *sqlx.DB) error {
 		},
 		UserID:      testUserID,
 		Name:        "Flow Project",
+		Focus:       "Making a nextjs project frontend and go gin backend app about productivity.",
 		Description: "A project for testing the Flow application",
 		PlanType:    "development",
 	}
 
 	// Insert test plan
 	_, err = db.NamedExec(`
-		INSERT INTO plans (id, user_id, name, description, plan_type, created_at, updated_at)
-		VALUES (:id, :user_id, :name, :description, :plan_type, NOW(), NOW())
+		INSERT INTO plans (id, user_id, name, focus, description, plan_type, created_at, updated_at)
+		VALUES (:id, :user_id, :name, :focus, :description, :plan_type, NOW(), NOW())
 	`, plan)
 
 	if err != nil {

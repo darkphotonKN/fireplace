@@ -40,6 +40,14 @@ func (g *ContentGen) ChatCompletion(message string) (string, error) {
 	var resp openai.ChatCompletionResponse
 	var err error
 
+	systemPrompt := `You are an AI assistant for the Fireplace productivity platform. Your purpose is to help users maintain focus, organize their tasks, and make progress on their learning and work projects.
+
+Always provide concise, practical, and actionable responses. Your suggestions should be specific and tailored to the user's stated focus. When generating checklist items, each item should be concrete and implementable.
+
+For plan summaries, identify the core objectives and key components. For checklist suggestions, recommend the next logical step to move the project forward.
+
+Keep responses under 5 sentences unless detailed instructions are specifically requested.`
+
 	// retry on error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		resp, err = g.client.CreateChatCompletion(
@@ -49,13 +57,15 @@ func (g *ContentGen) ChatCompletion(message string) (string, error) {
 				Messages: []openai.ChatCompletionMessage{
 					{
 						Role:    openai.ChatMessageRoleSystem,
-						Content: "You are a helpful assistant.",
+						Content: systemPrompt,
 					},
 					{
 						Role:    openai.ChatMessageRoleUser,
-						Content: "Hello, can you tell me about integrating LLMs with Go?",
+						Content: message,
 					},
 				},
+				Temperature: 0.7,
+				MaxTokens:   200,
 			},
 		)
 
