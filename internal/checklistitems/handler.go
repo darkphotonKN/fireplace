@@ -15,7 +15,7 @@ type Handler struct {
 
 type Service interface {
 	GetAll(ctx context.Context) ([]*models.ChecklistItem, error)
-	Create(ctx context.Context, req CreateReq, planID uuid.UUID) error
+	Create(ctx context.Context, req CreateReq, planID uuid.UUID) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -61,12 +61,14 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Create(c.Request.Context(), req, planID); err != nil {
+	newItem, err := h.service.Create(c.Request.Context(), req, planID)
+
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create checklist item. Error: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"statusCode:": http.StatusOK, "message": "successfully created checklist item.", "result": success})
+	c.JSON(http.StatusCreated, gin.H{"statusCode:": http.StatusOK, "message": "successfully created checklist item.", "result": newItem})
 }
 
 // Update modifies an existing checklist item

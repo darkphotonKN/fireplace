@@ -2,6 +2,7 @@ package checklistitems
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/darkphotonKN/fireplace/internal/utils/errorutils"
@@ -51,10 +52,11 @@ func (s *repository) CountItems(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID, sequenceNo int) error {
+func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID, sequenceNo int) (*models.ChecklistItem, error) {
 	query := `
 	INSERT INTO checklist_items (description, done, sequence, plan_id)
 	VALUES(:description, :done, :sequence, :plan_id)
+	RETURNING id, description, done, sequence, plan_id, created_at, updated_at
 	`
 
 	item := struct {
@@ -69,13 +71,27 @@ func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID
 		PlanID:      planID,
 	}
 
-	_, err := s.db.NamedExecContext(ctx, query, item)
+	newItem := &models.ChecklistItem{}
+
+	rows, err := s.db.NamedQueryContext(ctx, query, item)
 
 	if err != nil {
-		return errorutils.AnalyzeDBErr(err)
+		fmt.Printf("Error from db when attempting to create item: %v\n", err)
+		return nil, errorutils.AnalyzeDBErr(err)
+	}
+	defer rows.Close()
+
+	// acquire the first item
+	if rows.Next() {
+		if err := rows.StructScan(newItem); err != nil {
+			fmt.Printf("Error from db when attempting to scan created item: %v\n", err)
+			return nil, errorutils.AnalyzeDBErr(err)
+		}
+	} else {
+		return nil, errorutils.ErrNotFound
 	}
 
-	return nil
+	return newItem, nil
 }
 
 func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) error {
