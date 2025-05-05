@@ -64,7 +64,7 @@ func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID
 		PlanID      uuid.UUID `db:"plan_id"`
 	}{
 		Description: req.Description,
-		Done:        req.Done,
+		Done:        false,
 		Sequence:    sequenceNo,
 		PlanID:      planID,
 	}
@@ -78,18 +78,19 @@ func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID
 	return nil
 }
 
-func (s *repository) Update(ctx context.Context, id uuid.UUID, req CreateReq) error {
+func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) error {
 	query := `
 	UPDATE checklist_items
-	SET description = :description, 
-	    done = :done
+	SET 
+		description = COALESCE(:description, description),
+		done = COALESCE(:done, done)	
 	WHERE id = :id
 	`
 
 	item := struct {
 		ID          uuid.UUID `db:"id"`
-		Description string    `db:"description"`
-		Done        bool      `db:"done"`
+		Description *string   `db:"description"`
+		Done        *bool     `db:"done"`
 	}{
 		ID:          id,
 		Description: req.Description,

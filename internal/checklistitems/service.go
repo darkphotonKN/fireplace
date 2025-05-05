@@ -13,7 +13,7 @@ type service struct {
 
 type Repository interface {
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID, sequenceNo int) error
-	Update(ctx context.Context, id uuid.UUID, req CreateReq) error
+	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetAll(ctx context.Context) ([]*models.ChecklistItem, error)
 	CountItems(ctx context.Context) (int, error)
@@ -41,7 +41,7 @@ func (s *service) Create(ctx context.Context, req CreateReq, planID uuid.UUID) e
 	return s.repo.Create(ctx, req, planID, count+1)
 }
 
-func (s *service) Update(ctx context.Context, id uuid.UUID, req CreateReq) error {
+func (s *service) Update(ctx context.Context, id uuid.UUID, req UpdateReq) error {
 	return s.repo.Update(ctx, id, req)
 }
 

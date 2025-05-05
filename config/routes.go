@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/ai"
 	"github.com/darkphotonKN/fireplace/internal/checklistitems"
@@ -25,12 +26,13 @@ func SetupRouter() *gin.Engine {
 
 	// TODO: CORS for development, remove in PROD
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PATCH", "OPTIONS"},
-		AllowHeaders:     []string{"Content-Type", "Authorization"},
+		AllowOrigins:     []string{"http://localhost:3010"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
 		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
 	}))
-
 	// base route
 	api := router.Group("/api")
 
@@ -44,7 +46,7 @@ func SetupRouter() *gin.Engine {
 	// -- User Routes --
 	userRoutes := api.Group("/user")
 	userRoutes.GET("/:id", userHandler.GetById)
-	userRoutes.GET("/", userHandler.GetAll)
+	userRoutes.GET("", userHandler.GetAll)
 	userRoutes.POST("/signup", userHandler.Create)
 	userRoutes.POST("/signin", userHandler.Login)
 
@@ -61,8 +63,8 @@ func SetupRouter() *gin.Engine {
 
 	// -- Checklist Plan-Specific Routes --
 	checkListRoutes := planRoutes.Group("/:plan_id/checklist")
-	checkListRoutes.GET("/", checkListHandler.GetAll)
-	checkListRoutes.POST("/", checkListHandler.Create)
+	checkListRoutes.GET("", checkListHandler.GetAll)
+	checkListRoutes.POST("", checkListHandler.Create)
 	checkListRoutes.PATCH("/:id", checkListHandler.Update)
 	checkListRoutes.DELETE("/:id", checkListHandler.Delete)
 

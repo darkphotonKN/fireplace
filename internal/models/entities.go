@@ -27,7 +27,7 @@ type Plan struct {
 type ChecklistItem struct {
 	BaseDBDateModel
 	Description string    `db:"description" json:"description"`
-	Done        string    `db:"done" json:"done"`
+	Done        bool      `db:"done" json:"done"`
 	Sequence    string    `db:"sequence" json:"sequence"`
 	PlanID      uuid.UUID `db:"plan_id" json:"planId"`
 }

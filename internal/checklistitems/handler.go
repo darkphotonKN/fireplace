@@ -16,7 +16,7 @@ type Handler struct {
 type Service interface {
 	GetAll(ctx context.Context) ([]*models.ChecklistItem, error)
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID) error
-	Update(ctx context.Context, id uuid.UUID, req CreateReq) error
+	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -26,6 +26,13 @@ func NewHandler(service Service) *Handler {
 	}
 }
 
+type UpdateStatus string
+
+const (
+	failure UpdateStatus = "failure"
+	success UpdateStatus = "success"
+)
+
 // GetAll returns all checklist items
 func (h *Handler) GetAll(c *gin.Context) {
 	items, err := h.service.GetAll(c.Request.Context())
@@ -34,7 +41,7 @@ func (h *Handler) GetAll(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, items)
+	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully retrieved all checklist items.", "result": items})
 }
 
 // Create adds a new checklist item
@@ -59,7 +66,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	c.Status(http.StatusCreated)
+	c.JSON(http.StatusCreated, gin.H{"statusCode:": http.StatusOK, "message": "successfully created checklist item.", "result": success})
 }
 
 // Update modifies an existing checklist item
@@ -72,7 +79,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	var req CreateReq
+	var req UpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
@@ -83,7 +90,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	c.Status(http.StatusOK)
+	c.JSON(http.StatusCreated, gin.H{"statusCode:": http.StatusOK, "message": "successfully update checklist item.", "result": success})
 }
 
 // Delete removes a checklist item by ID
@@ -91,7 +98,7 @@ func (h *Handler) Delete(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format", "result": failure})
 		return
 	}
 
@@ -100,5 +107,5 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 
-	c.Status(http.StatusNoContent)
+	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully deleted checklist item.", "result": success})
 }
