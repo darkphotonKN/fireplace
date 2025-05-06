@@ -7,6 +7,7 @@ import (
 	"github.com/darkphotonKN/fireplace/internal/ai"
 	"github.com/darkphotonKN/fireplace/internal/checklistitems"
 	"github.com/darkphotonKN/fireplace/internal/insights"
+	"github.com/darkphotonKN/fireplace/internal/plans"
 	"github.com/darkphotonKN/fireplace/internal/user"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -53,6 +54,14 @@ func SetupRouter() *gin.Engine {
 	// --- Plan Routes ---
 
 	planRoutes := api.Group("/plan")
+
+	// -- Plan Setup --
+	planRepo := plans.NewRepository(DB)
+	planService := plans.NewService(planRepo)
+	planHandler := plans.NewHandler(planService)
+
+	// -- Plan Routes --
+	planRoutes.GET("/:id", planHandler.GetById)
 
 	// --- CHECKLIST ---
 

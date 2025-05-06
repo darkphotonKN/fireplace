@@ -66,8 +66,7 @@ func (h *Handler) GetById(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully retreived user.",
-		// de-reference to return the user struct, not pointer
-		"result": *user})
+		"result": user})
 }
 
 // gets all users with bookings
