@@ -1,6 +1,7 @@
 package insights
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,7 +12,7 @@ type Handler struct {
 }
 type Service interface {
 	AutocompleteChecklistSuggestion(currentTxt string) (string, error)
-	GenerateChecklistSuggestion() (string, error)
+	GenerateChecklistSuggestion(ctx context.Context) (string, error)
 }
 
 func NewHandler(service Service) *Handler {
@@ -21,7 +22,7 @@ func NewHandler(service Service) *Handler {
 }
 
 func (h *Handler) GenerateChecklistSuggestionHandler(c *gin.Context) {
-	res, err := h.service.GenerateChecklistSuggestion()
+	res, err := h.service.GenerateChecklistSuggestion(c.Request.Context())
 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"statusCode:": http.StatusBadRequest, "message": "error when generating completion for checklist: " + err.Error()})

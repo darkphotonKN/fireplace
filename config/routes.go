@@ -73,7 +73,7 @@ func SetupRouter() *gin.Engine {
 	// -- Insights Setup --
 	contentGen := ai.NewContentGen()
 	insightsRepo := insights.NewRepository
-	insightsService := insights.NewService(insightsRepo, contentGen)
+	insightsService := insights.NewService(insightsRepo, contentGen, checkListService)
 	insightsHandler := insights.NewHandler(insightsService)
 
 	// -- User Routes --
