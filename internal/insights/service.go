@@ -4,24 +4,29 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/darkphotonKN/fireplace/internal/checklistitems"
 	"github.com/darkphotonKN/fireplace/internal/interfaces"
+	"github.com/darkphotonKN/fireplace/internal/plans"
 )
 
 type service struct {
 	repo             Repository
 	contentGen       interfaces.ContentGenerator
 	checklistService checklistitems.Service
+	planService      plans.Service
 }
 
 type Repository interface {
 }
 
-func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService checklistitems.Service) Service {
+func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService checklistitems.Service, planService plans.Service) Service {
 	return &service{
 		repo:             repo,
 		contentGen:       contentGen,
 		checklistService: checklistService,
+		planService:      planService,
 	}
 }
 
@@ -29,8 +34,20 @@ func NewService(repo Repository, contentGen interfaces.ContentGenerator, checkli
 * Generates the correct checklist item suggestion with some the context of user's focus and current checklist items.
 **/
 func (s *service) GenerateChecklistSuggestion(ctx context.Context) (string, error) {
-	// TODO: update to retrieve from plans table
-	focus := "Making a react project for a web app where people can share ideas and stay productive."
+	// TODO: For now, using a static plan ID for development - this should be passed in or retrieved from context
+	planID, err := uuid.Parse("22222222-2222-2222-2222-222222222222") // Test plan ID
+	if err != nil {
+		return "", err
+	}
+	
+	plan, err := s.planService.GetById(ctx, planID)
+	if err != nil {
+		fmt.Println("Error when retrieving plan for generating checklist suggestion:", err)
+		return "", err
+	}
+	
+	// Use the plan's focus
+	planFocus := plan.Focus
 
 	// get entire checklist as context
 	checklistItems, err := s.checklistService.GetAll(ctx)
@@ -52,7 +69,7 @@ func (s *service) GenerateChecklistSuggestion(ctx context.Context) (string, erro
 	// focus - the primary topic input by the user for their plan.
 	prompt := fmt.Sprintf(`Based on this project focus: "%s"
 
-    Please suggest ONE specific, actionable task th20 would be the most valuable next step to add to my checklist.
+    Please suggest ONE specific, actionable task that would be the most valuable next step to add to my checklist.
 
     Your suggestion should:
     - Be a single, concrete task (not multiple tasks)
@@ -67,7 +84,7 @@ func (s *service) GenerateChecklistSuggestion(ctx context.Context) (string, erro
 		So far the checklist already has these items, so either add one to follow the current progress or don't suggest one that's already present:
 
 		%s
-		`, focus, checklistPrompt)
+		`, planFocus, checklistPrompt)
 
 	fmt.Printf("\nprompt was: \n%s\n\n", prompt)
 

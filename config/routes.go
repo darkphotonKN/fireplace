@@ -45,7 +45,7 @@ func SetupRouter() *gin.Engine {
 	userHandler := user.NewHandler(userService)
 
 	// -- User Routes --
-	userRoutes := api.Group("/user")
+	userRoutes := api.Group("/users")
 	userRoutes.GET("/:id", userHandler.GetById)
 	userRoutes.GET("", userHandler.GetAll)
 	userRoutes.POST("/signup", userHandler.Create)
@@ -53,15 +53,17 @@ func SetupRouter() *gin.Engine {
 
 	// --- Plan Routes ---
 
-	planRoutes := api.Group("/plan")
-
 	// -- Plan Setup --
 	planRepo := plans.NewRepository(DB)
 	planService := plans.NewService(planRepo)
 	planHandler := plans.NewHandler(planService)
 
 	// -- Plan Routes --
+	planRoutes := api.Group("/plans")
 	planRoutes.GET("/:id", planHandler.GetById)
+	planRoutes.GET("", planHandler.GetAll)
+	planRoutes.POST("", planHandler.Create)
+	planRoutes.PATCH("/:id", planHandler.Update)
 
 	// --- CHECKLIST ---
 
@@ -71,18 +73,18 @@ func SetupRouter() *gin.Engine {
 	checkListHandler := checklistitems.NewHandler(checkListService)
 
 	// -- Checklist Plan-Specific Routes --
-	checkListRoutes := planRoutes.Group("/:plan_id/checklist")
+	checkListRoutes := api.Group("/plans/:id/checklists")
 	checkListRoutes.GET("", checkListHandler.GetAll)
 	checkListRoutes.POST("", checkListHandler.Create)
-	checkListRoutes.PATCH("/:id", checkListHandler.Update)
-	checkListRoutes.DELETE("/:id", checkListHandler.Delete)
+	checkListRoutes.PATCH("/:checklist_id", checkListHandler.Update)
+	checkListRoutes.DELETE("/:checklist_id", checkListHandler.Delete)
 
 	// --- INSIGHTS ---
 
 	// -- Insights Setup --
 	contentGen := ai.NewContentGen()
-	insightsRepo := insights.NewRepository
-	insightsService := insights.NewService(insightsRepo, contentGen, checkListService)
+	insightsRepo := insights.NewRepository(DB)
+	insightsService := insights.NewService(insightsRepo, contentGen, checkListService, planService)
 	insightsHandler := insights.NewHandler(insightsService)
 
 	// -- User Routes --

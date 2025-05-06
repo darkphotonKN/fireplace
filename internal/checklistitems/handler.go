@@ -52,7 +52,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	planIDParam := c.Param("plan_id")
+	planIDParam := c.Param("id")
 
 	planID, err := uuid.Parse(planIDParam)
 
@@ -73,7 +73,7 @@ func (h *Handler) Create(c *gin.Context) {
 
 // Update modifies an existing checklist item
 func (h *Handler) Update(c *gin.Context) {
-	idParam := c.Param("id")
+	idParam := c.Param("checklist_id")
 
 	id, err := uuid.Parse(idParam)
 	if err != nil {
@@ -97,7 +97,7 @@ func (h *Handler) Update(c *gin.Context) {
 
 // Delete removes a checklist item by ID
 func (h *Handler) Delete(c *gin.Context) {
-	idStr := c.Param("id")
+	idStr := c.Param("checklist_id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format", "result": failure})
