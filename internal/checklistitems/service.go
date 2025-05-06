@@ -15,7 +15,7 @@ type Repository interface {
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID, sequenceNo int) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
-	GetAll(ctx context.Context) ([]*models.ChecklistItem, error)
+	GetAll(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error)
 	CountItems(ctx context.Context) (int, error)
 }
 
@@ -25,8 +25,8 @@ func NewService(repo Repository) Service {
 	}
 }
 
-func (s *service) GetAll(ctx context.Context) ([]*models.ChecklistItem, error) {
-	return s.repo.GetAll(ctx)
+func (s *service) GetAll(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error) {
+	return s.repo.GetAll(ctx, planId)
 }
 
 func (s *service) Create(ctx context.Context, req CreateReq, planID uuid.UUID) (*models.ChecklistItem, error) {

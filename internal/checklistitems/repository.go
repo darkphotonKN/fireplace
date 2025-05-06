@@ -20,15 +20,16 @@ func NewRepository(db *sqlx.DB) Repository {
 	}
 }
 
-func (s *repository) GetAll(ctx context.Context) ([]*models.ChecklistItem, error) {
+func (s *repository) GetAll(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error) {
 	query := `
 	SELECT id, description, done, sequence, created_at, updated_at, plan_id
 	FROM checklist_items
+	WHERE plan_id = $1
 	ORDER BY sequence ASC
 	`
 
 	var items []*models.ChecklistItem
-	err := s.db.SelectContext(ctx, &items, query)
+	err := s.db.SelectContext(ctx, &items, query, planId)
 	if err != nil {
 		return nil, errorutils.AnalyzeDBErr(err)
 	}

@@ -14,7 +14,7 @@ type Handler struct {
 }
 
 type Service interface {
-	GetAll(ctx context.Context) ([]*models.ChecklistItem, error)
+	GetAll(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error)
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -35,9 +35,17 @@ const (
 
 // GetAll returns all checklist items
 func (h *Handler) GetAll(c *gin.Context) {
-	items, err := h.service.GetAll(c.Request.Context())
+	planIdParam := c.Param("id")
+
+	planId, err := uuid.Parse(planIdParam)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get checklist items"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Incorrect uuid format."})
+		return
+	}
+
+	items, err := h.service.GetAll(c.Request.Context(), planId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get checklist items. Error:" + err.Error()})
 		return
 	}
 

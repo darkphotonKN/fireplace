@@ -33,24 +33,16 @@ func NewService(repo Repository, contentGen interfaces.ContentGenerator, checkli
 /**
 * Generates the correct checklist item suggestion with some the context of user's focus and current checklist items.
 **/
-func (s *service) GenerateChecklistSuggestion(ctx context.Context) (string, error) {
-	// TODO: For now, using a static plan ID for development - this should be passed in or retrieved from context
-	planID, err := uuid.Parse("22222222-2222-2222-2222-222222222222") // Test plan ID
-	if err != nil {
-		return "", err
-	}
-	
-	plan, err := s.planService.GetById(ctx, planID)
+func (s *service) GenerateChecklistSuggestion(ctx context.Context, planId uuid.UUID) (string, error) {
+
+	plan, err := s.planService.GetById(ctx, planId)
 	if err != nil {
 		fmt.Println("Error when retrieving plan for generating checklist suggestion:", err)
 		return "", err
 	}
-	
-	// Use the plan's focus
-	planFocus := plan.Focus
 
 	// get entire checklist as context
-	checklistItems, err := s.checklistService.GetAll(ctx)
+	checklistItems, err := s.checklistService.GetAll(ctx, planId)
 
 	if err != nil {
 		fmt.Println("Error when retrieving all checklist item for generating checklist suggestion.")
@@ -84,7 +76,7 @@ func (s *service) GenerateChecklistSuggestion(ctx context.Context) (string, erro
 		So far the checklist already has these items, so either add one to follow the current progress or don't suggest one that's already present:
 
 		%s
-		`, planFocus, checklistPrompt)
+		`, plan.Focus, checklistPrompt)
 
 	fmt.Printf("\nprompt was: \n%s\n\n", prompt)
 

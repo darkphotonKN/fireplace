@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -12,7 +13,7 @@ type Handler struct {
 }
 type Service interface {
 	AutocompleteChecklistSuggestion(currentTxt string) (string, error)
-	GenerateChecklistSuggestion(ctx context.Context) (string, error)
+	GenerateChecklistSuggestion(ctx context.Context, planId uuid.UUID) (string, error)
 }
 
 func NewHandler(service Service) *Handler {
@@ -22,7 +23,14 @@ func NewHandler(service Service) *Handler {
 }
 
 func (h *Handler) GenerateChecklistSuggestionHandler(c *gin.Context) {
-	res, err := h.service.GenerateChecklistSuggestion(c.Request.Context())
+	planIdQuery := c.Query("plan_id")
+	planId, err := uuid.Parse(planIdQuery)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"statusCode:": http.StatusBadRequest, "message": "error when parsing planId from query string: " + err.Error()})
+		return
+	}
+
+	res, err := h.service.GenerateChecklistSuggestion(c.Request.Context(), planId)
 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"statusCode:": http.StatusBadRequest, "message": "error when generating completion for checklist: " + err.Error()})
