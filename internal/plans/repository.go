@@ -87,9 +87,9 @@ func (r *repository) Create(ctx context.Context, plan models.Plan) (*models.Plan
 func (r *repository) Update(ctx context.Context, id uuid.UUID, req UpdatePlanReq, userID uuid.UUID) error {
 	query := `
 	UPDATE plans SET 
-		name = :name, 
-		description = :description,
-		focus = :focus
+		name = COALESCE(:name, name), 
+		description = COALESCE(:description, description),
+		focus = COALESCE(:focus, focus)
 	WHERE id = :id AND user_id = :user_id
 	`
 
@@ -126,13 +126,13 @@ func (r *repository) GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Pl
 	WHERE user_id = $1
 	ORDER BY created_at DESC
 	`
-	
+
 	plans := []*models.Plan{}
 	err := r.db.SelectContext(ctx, &plans, query, userID)
-	
+
 	if err != nil {
 		return nil, errorutils.AnalyzeDBErr(err)
 	}
-	
+
 	return plans, nil
 }
