@@ -42,6 +42,8 @@ func (s *service) Create(ctx context.Context, req CreateReq, planID uuid.UUID) (
 }
 
 func (s *service) Update(ctx context.Context, id uuid.UUID, req UpdateReq) error {
+	// TODO: additional business logic for scheduled time
+	// if req.ScheduledTime
 	return s.repo.Update(ctx, id, req)
 }
 

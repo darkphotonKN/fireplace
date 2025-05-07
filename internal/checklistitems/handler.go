@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/darkphotonKN/fireplace/internal/constants"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -25,13 +26,6 @@ func NewHandler(service Service) *Handler {
 		service: service,
 	}
 }
-
-type UpdateStatus string
-
-const (
-	failure UpdateStatus = "failure"
-	success UpdateStatus = "success"
-)
 
 // GetAll returns all checklist items
 func (h *Handler) GetAll(c *gin.Context) {
@@ -99,7 +93,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"statusCode:": http.StatusOK, "message": "successfully update checklist item.", "result": success})
+	c.JSON(http.StatusCreated, gin.H{"statusCode:": http.StatusOK, "message": "successfully update checklist item.", "result": constants.UpdateStatusSuccess})
 }
 
 // Delete removes a checklist item by ID
@@ -107,7 +101,7 @@ func (h *Handler) Delete(c *gin.Context) {
 	idStr := c.Param("checklist_id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format", "result": failure})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format", "result": constants.UpdateStatusFailure})
 		return
 	}
 
@@ -116,5 +110,5 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully deleted checklist item.", "result": success})
+	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully deleted checklist item.", "result": constants.UpdateStatusSuccess})
 }

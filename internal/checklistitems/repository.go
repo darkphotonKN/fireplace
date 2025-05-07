@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/darkphotonKN/fireplace/internal/constants"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/darkphotonKN/fireplace/internal/utils/errorutils"
 	"github.com/google/uuid"
@@ -22,7 +23,7 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (s *repository) GetAll(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error) {
 	query := `
-	SELECT id, description, done, sequence, created_at, updated_at, plan_id
+	SELECT id, description, done, sequence, scope, scheduled_time, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
 	ORDER BY sequence ASC
@@ -55,21 +56,23 @@ func (s *repository) CountItems(ctx context.Context) (int, error) {
 
 func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID, sequenceNo int) (*models.ChecklistItem, error) {
 	query := `
-	INSERT INTO checklist_items (description, done, sequence, plan_id)
-	VALUES(:description, :done, :sequence, :plan_id)
-	RETURNING id, description, done, sequence, plan_id, created_at, updated_at
+	INSERT INTO checklist_items (description, done, sequence, scope, plan_id)
+	VALUES(:description, :done, :sequence, :scope, :plan_id)
+	RETURNING id, description, done, sequence, plan_id, scope, created_at, updated_at
 	`
 
 	item := struct {
-		Description string    `db:"description"`
-		Done        bool      `db:"done"`
-		Sequence    int       `db:"sequence"`
-		PlanID      uuid.UUID `db:"plan_id"`
+		PlanID      uuid.UUID                    `db:"plan_id"`
+		Description string                       `db:"description"`
+		Done        bool                         `db:"done"`
+		Sequence    int                          `db:"sequence"`
+		Scope       constants.ChecklistItemScope `db:"scope"`
 	}{
+		PlanID:      planID,
 		Description: req.Description,
 		Done:        false,
 		Sequence:    sequenceNo,
-		PlanID:      planID,
+		Scope:       constants.ScopeLongterm,
 	}
 
 	newItem := &models.ChecklistItem{}

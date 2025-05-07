@@ -34,7 +34,6 @@ func NewService(repo Repository, contentGen interfaces.ContentGenerator, checkli
 * Generates the correct checklist item suggestion with some the context of user's focus and current checklist items.
 **/
 func (s *service) GenerateChecklistSuggestion(ctx context.Context, planId uuid.UUID) (string, error) {
-
 	plan, err := s.planService.GetById(ctx, planId)
 	if err != nil {
 		fmt.Println("Error when retrieving plan for generating checklist suggestion:", err)
