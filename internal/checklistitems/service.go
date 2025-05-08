@@ -54,14 +54,25 @@ func (s *service) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *service) SetSchedule(ctx context.Context, id uuid.UUID, req SetScheduleReq) error {
-	// format struct for updating scheduled time in database
-	updateData := UpdateReq{
-		ScheduledTime: req.ScheduledTime,
-	}
+	var updateData UpdateReq
 
-	// 2. validate the time, ensure it's in the future
-	if req.ScheduledTime.Before(time.Now()) {
-		return fmt.Errorf("scheduled time must be a datetime in the future")
+	if req.ScheduledTime != nil {
+
+		t, err := time.Parse("2006-01-02T15:04:05Z07:00", *req.ScheduledTime)
+
+		if err != nil {
+			return err
+		}
+
+		// format struct for updating scheduled time in database
+		updateData = UpdateReq{
+			ScheduledTime: &t,
+		}
+
+		// 2. validate the time, ensure it's in the future
+		if t.Before(time.Now()) {
+			return fmt.Errorf("scheduled time must be a datetime in the future")
+		}
 	}
 
 	// 3. if time validation checks out, update the time

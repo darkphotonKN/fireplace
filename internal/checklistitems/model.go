@@ -7,10 +7,10 @@ type CreateReq struct {
 }
 
 type UpdateReq struct {
-	Description   *string    `json:"description,omitempty"`
-	Done          *bool      `json:"done,omitempty"`
-	Sequence      *bool      `json:"sequence,omitempty"`
-	ScheduledTime *time.Time `json:"scheduledTime,omitempty" binding:"omitempty,datetime" time_format:"2006-01-02T15:04:05Z07:00"`
+	Description   *string `json:"description,omitempty"`
+	Done          *bool   `json:"done,omitempty"`
+	Sequence      *bool   `json:"sequence,omitempty"`
+	ScheduledTime *time.Time
 }
 
 type BatchUpdateReq struct {
@@ -18,5 +18,5 @@ type BatchUpdateReq struct {
 }
 
 type SetScheduleReq struct {
-	ScheduledTime *time.Time `json:"scheduledTime,omitempty" binding:"omitempty,datetime" time_format:"2006-01-02T15:04:05Z07:00"`
+	ScheduledTime *string `json:"scheduledTime,omitempty" binding:"omitempty,datetime" time_format:"2006-01-02T15:04:05Z07:00"`
 }
