@@ -16,3 +16,7 @@ type UpdateReq struct {
 type BatchUpdateReq struct {
 	list []UpdateReq
 }
+
+type SetScheduleReq struct {
+	ScheduledTime *time.Time `json:"scheduledTime,omitempty" binding:"omitempty,datetime" time_format:"2006-01-02T15:04:05Z07:00"`
+}

@@ -2,6 +2,8 @@ package checklistitems
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
@@ -49,4 +51,19 @@ func (s *service) Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 
 func (s *service) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
+}
+
+func (s *service) SetSchedule(ctx context.Context, id uuid.UUID, req SetScheduleReq) error {
+	// format struct for updating scheduled time in database
+	updateData := UpdateReq{
+		ScheduledTime: req.ScheduledTime,
+	}
+
+	// 2. validate the time, ensure it's in the future
+	if req.ScheduledTime.Before(time.Now()) {
+		return fmt.Errorf("scheduled time must be a datetime in the future")
+	}
+
+	// 3. if time validation checks out, update the time
+	return s.repo.Update(ctx, id, updateData)
 }

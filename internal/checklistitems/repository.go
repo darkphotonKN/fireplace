@@ -3,6 +3,7 @@ package checklistitems
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
 	"github.com/darkphotonKN/fireplace/internal/models"
@@ -103,18 +104,29 @@ func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) er
 	UPDATE checklist_items
 	SET 
 		description = COALESCE(:description, description),
-		done = COALESCE(:done, done)	
-	WHERE id = :id
+		done = COALESCE(:done, done),
 	`
 
+	// check if scheduled time exists, otherwise set it to nil to remove scheduled time
+	if req.ScheduledTime == nil {
+		query += "\nscheduled_time = NULL"
+	} else {
+		query += "\nscheduled_time = :scheduled_time"
+	}
+
+	// always add where clause
+	query += "\nWHERE id = :id"
+
 	item := struct {
-		ID          uuid.UUID `db:"id"`
-		Description *string   `db:"description"`
-		Done        *bool     `db:"done"`
+		ID            uuid.UUID  `db:"id"`
+		Description   *string    `db:"description"`
+		Done          *bool      `db:"done"`
+		ScheduledTime *time.Time `db:"scheduled_time"`
 	}{
-		ID:          id,
-		Description: req.Description,
-		Done:        req.Done,
+		ID:            id,
+		Description:   req.Description,
+		Done:          req.Done,
+		ScheduledTime: req.ScheduledTime,
 	}
 
 	_, err := s.db.NamedExecContext(ctx, query, item)

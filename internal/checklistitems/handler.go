@@ -19,6 +19,7 @@ type Service interface {
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	SetSchedule(ctx context.Context, id uuid.UUID, req SetScheduleReq) error
 }
 
 func NewHandler(service Service) *Handler {
@@ -27,7 +28,6 @@ func NewHandler(service Service) *Handler {
 	}
 }
 
-// GetAll returns all checklist items
 func (h *Handler) GetAll(c *gin.Context) {
 	planIdParam := c.Param("id")
 
@@ -45,7 +45,6 @@ func (h *Handler) GetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully retrieved all checklist items.", "result": items})
 }
 
-// Create adds a new checklist item
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -72,7 +71,6 @@ func (h *Handler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"statusCode:": http.StatusOK, "message": "successfully created checklist item.", "result": newItem})
 }
 
-// Update modifies an existing checklist item
 func (h *Handler) Update(c *gin.Context) {
 	idParam := c.Param("checklist_id")
 
@@ -96,7 +94,6 @@ func (h *Handler) Update(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"statusCode:": http.StatusOK, "message": "successfully update checklist item.", "result": constants.UpdateStatusSuccess})
 }
 
-// Delete removes a checklist item by ID
 func (h *Handler) Delete(c *gin.Context) {
 	idStr := c.Param("checklist_id")
 	id, err := uuid.Parse(idStr)
@@ -111,4 +108,26 @@ func (h *Handler) Delete(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully deleted checklist item.", "result": constants.UpdateStatusSuccess})
+}
+
+func (h *Handler) SetSchedule(c *gin.Context) {
+	idStr := c.Param("checklist_id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format", "result": constants.UpdateStatusFailure})
+		return
+	}
+
+	var req SetScheduleReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	if err := h.service.SetSchedule(c.Request.Context(), id, req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set schedule on checklist item. Error: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully set schedule on checklist item.", "result": constants.UpdateStatusSuccess})
 }
