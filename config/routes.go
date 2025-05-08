@@ -78,6 +78,7 @@ func SetupRouter() *gin.Engine {
 	checkListRoutes.POST("", checkListHandler.Create)
 	checkListRoutes.PATCH("/:checklist_id", checkListHandler.Update)
 	checkListRoutes.DELETE("/:checklist_id", checkListHandler.Delete)
+	checkListRoutes.PATCH("/:checklist_id/schedule", checkListHandler.SetSchedule)
 
 	// --- INSIGHTS ---
 
