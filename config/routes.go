@@ -90,7 +90,8 @@ func SetupRouter() *gin.Engine {
 
 	// -- User Routes --
 	insightsRoutes := api.Group("/insights")
-	insightsRoutes.GET("/checklist-suggestion", insightsHandler.GenerateChecklistSuggestion)
+	insightsRoutes.GET("/checklist-suggestion", insightsHandler.GenerateSuggestions)
+	insightsRoutes.GET("/checklist-suggestion-daily", insightsHandler.GenerateDailySuggestions)
 
 	return router
 }

@@ -50,38 +50,11 @@ func NewService(repo Repository, contentGen interfaces.ContentGenerator, checkli
 /**
 * Generates the correct checklist item suggestion with some the context of user's focus and current checklist items.
 **/
-func (s *service) GenerateChecklistSuggestion(ctx context.Context, planId uuid.UUID) (string, error) {
-	plan, err := s.planService.GetById(ctx, planId)
+func (s *service) GenerateSuggestions(ctx context.Context, planId uuid.UUID) (string, error) {
+	prompt, err := s.generatePromptWithChecklist(ctx, planId, "")
 	if err != nil {
-		fmt.Println("Error when retrieving plan for generating checklist suggestion:", err)
 		return "", err
 	}
-
-	// get entire checklist as context
-	checklistItems, err := s.checklistService.GetAll(ctx, planId)
-
-	if err != nil {
-		fmt.Println("Error when retrieving all checklist item for generating checklist suggestion.")
-		return "", err
-	}
-
-	checklistPrompt := ""
-
-	// construct the prompt context
-	for _, item := range checklistItems {
-		checklistPrompt += fmt.Sprintf("%s\n", item.Description)
-	}
-
-	fmt.Printf("constructed checklist item prompt: %s\n", checklistPrompt)
-
-	// focus - the primary topic input by the user for their plan.
-	prompt := fmt.Sprintf(`Based on this project focus: "%s"
-		%s
-		So far the checklist already has these items, so either add one to follow the current progress or don't suggest one that's already present:
-		%s
-		`, plan.Focus, s.basePrompt, checklistPrompt)
-
-	fmt.Printf("\nfinal prompt was: \n%s\n\n", prompt)
 
 	res, err := s.contentGen.ChatCompletion(prompt)
 
@@ -93,10 +66,23 @@ func (s *service) GenerateChecklistSuggestion(ctx context.Context, planId uuid.U
 	return res, nil
 }
 
-func (s *service) GenerateDailySuggestions(ctx context.Context, pladId uuid.UUID) ([]string, error) {
-	// get 3 suggestions based on longterm goals
+func (s *service) GenerateDailySuggestions(ctx context.Context, planId uuid.UUID) ([]string, error) {
+	prompt, err := s.generatePromptWithChecklist(ctx, planId, "")
+	if err != nil {
+		return nil, err
+	}
 
-	return nil, nil
+	suggestions := make([]string, 3)
+
+	for i := 0; i < 3; i++ {
+		res, err := s.contentGen.ChatCompletion(prompt)
+		if err != nil {
+			return nil, err
+		}
+		suggestions[i] = res
+	}
+
+	return suggestions, nil
 }
 
 /**
@@ -111,4 +97,47 @@ func (s *service) GenerateDailyReview() {
 }
 
 func (s *service) GenerateDailySummary() {
+}
+
+/**
+* Helpers
+**/
+
+func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.UUID, additionalPrompt string) (string, error) {
+	plan, err := s.planService.GetById(ctx, planId)
+	if err != nil {
+		fmt.Println("Error when retrieving plan for generating checklist suggestion:", err)
+		return "", err
+	}
+
+	// get entire checklist as context
+	checklistItems, err := s.checklistService.GetAll(ctx, planId)
+
+	if err != nil {
+		fmt.Println("Error when retrieving all checklist item for generating checklist suggestion.")
+		return "", err
+	}
+
+	focus := plan.Focus
+	checklistPrompt := ""
+
+	// construct the prompt context
+	for _, item := range checklistItems {
+		checklistPrompt += fmt.Sprintf("%s\n", item.Description)
+	}
+
+	fmt.Printf("constructed checklist item prompt: %s\n", checklistPrompt)
+
+	// focus - the primary topic input by the user for their plan.
+	prompt := fmt.Sprintf(`Based on this project focus: "%s"
+		%s
+		So far the checklist already has these items, so either add one to follow the current progress or don't suggest one that's already present.
+		This is the current existing checklist:
+		%s
+		%s
+		`, focus, s.basePrompt, checklistPrompt, additionalPrompt)
+
+	fmt.Printf("\nfinal prompt was: \n%s\n\n", prompt)
+
+	return prompt, nil
 }

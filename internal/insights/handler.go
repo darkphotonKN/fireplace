@@ -13,7 +13,7 @@ type Handler struct {
 }
 type Service interface {
 	AutocompleteChecklistSuggestion(currentTxt string) (string, error)
-	GenerateChecklistSuggestion(ctx context.Context, planId uuid.UUID) (string, error)
+	GenerateSuggestions(ctx context.Context, planId uuid.UUID) (string, error)
 	GenerateDailySuggestions(ctx context.Context, planId uuid.UUID) ([]string, error)
 }
 
@@ -23,7 +23,7 @@ func NewHandler(service Service) *Handler {
 	}
 }
 
-func (h *Handler) GenerateChecklistSuggestion(c *gin.Context) {
+func (h *Handler) GenerateSuggestions(c *gin.Context) {
 	planIdQuery := c.Query("plan_id")
 	planId, err := uuid.Parse(planIdQuery)
 	if err != nil {
@@ -31,7 +31,7 @@ func (h *Handler) GenerateChecklistSuggestion(c *gin.Context) {
 		return
 	}
 
-	res, err := h.service.GenerateChecklistSuggestion(c.Request.Context(), planId)
+	res, err := h.service.GenerateSuggestions(c.Request.Context(), planId)
 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"statusCode:": http.StatusBadRequest, "message": "error when generating completion for checklist: " + err.Error()})
