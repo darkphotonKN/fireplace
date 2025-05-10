@@ -120,7 +120,7 @@ func (h *Handler) SetSchedule(c *gin.Context) {
 
 	var req SetScheduleReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body. Error was: " + err.Error()})
 		return
 	}
 

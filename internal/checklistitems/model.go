@@ -18,5 +18,6 @@ type BatchUpdateReq struct {
 }
 
 type SetScheduleReq struct {
-	ScheduledTime *string `json:"scheduledTime,omitempty" binding:"omitempty,datetime" time_format:"2006-01-02T15:04:05Z07:00"`
+	// NOTE: no binding for validation as datetime binding had a known issue
+	ScheduledTime *string `json:"scheduledTime,omitempty"`
 }

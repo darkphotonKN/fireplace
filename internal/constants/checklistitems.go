@@ -7,3 +7,10 @@ const (
 	ScopeLongterm ChecklistItemScope = "longterm"
 	ScopeDaily    ChecklistItemScope = "daily"
 )
+
+type Animal string
+
+const (
+	dog Animal = "dog"
+	cat Animal = "cat"
+)

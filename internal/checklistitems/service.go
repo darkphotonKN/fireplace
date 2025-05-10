@@ -57,12 +57,14 @@ func (s *service) SetSchedule(ctx context.Context, id uuid.UUID, req SetSchedule
 	var updateData UpdateReq
 
 	if req.ScheduledTime != nil {
-
-		t, err := time.Parse("2006-01-02T15:04:05Z07:00", *req.ScheduledTime)
+		t, err := time.Parse(time.RFC3339, *req.ScheduledTime)
 
 		if err != nil {
+			fmt.Printf("Error when parsing into time.RFC3339: %v\n", err)
 			return err
 		}
+
+		fmt.Printf("Parsed time into time.RFC3339: %v\n", t)
 
 		// format struct for updating scheduled time in database
 		updateData = UpdateReq{
