@@ -3,7 +3,8 @@ package checklistitems
 import "time"
 
 type CreateReq struct {
-	Description string `json:"description"`
+	Description string  `json:"description"`
+	Scope       *string `json:"scope,omitempty"`
 }
 
 type UpdateReq struct {

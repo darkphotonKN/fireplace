@@ -34,7 +34,7 @@ func NewService(repo Repository, contentGen interfaces.ContentGenerator, checkli
     - Be directly relevant to the project focus
     - Use technical terminology accurately if applicable
     - Be 4-20 words in length
-    
+
     Format your response as a single task item with no additional commentary, explanation or punctuation at the end.
 		`
 
@@ -62,12 +62,12 @@ func (s *service) GenerateSuggestions(ctx context.Context, planId uuid.UUID) (st
 		return "", err
 	}
 
-	// TODO: checklist - the list of current checklist items for context
 	return res, nil
 }
 
 func (s *service) GenerateDailySuggestions(ctx context.Context, planId uuid.UUID) ([]string, error) {
-	prompt, err := s.generatePromptWithChecklist(ctx, planId, "")
+	// TODO: add default rules for daily suggestion to additional prompt argument.
+	prompt, err := s.generatePromptWithChecklist(ctx, planId, "focus on tasks that are marked as \"longterm\" and breaking them down when you make your suggestions.")
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +75,14 @@ func (s *service) GenerateDailySuggestions(ctx context.Context, planId uuid.UUID
 	suggestions := make([]string, 3)
 
 	for i := 0; i < 3; i++ {
+		// TODO:
+		// - add each new entry in to prevent collision
+		// - add longterm context
+		//
+		if i > 0 {
+			prompt = fmt.Sprintf("%sAlso, don't choose one closely related to this specific action item as this has already been added to the list too:%s", prompt, suggestions[i-1])
+		}
+		fmt.Println("updated prompt:", prompt)
 		res, err := s.contentGen.ChatCompletion(prompt)
 		if err != nil {
 			return nil, err
@@ -103,6 +111,9 @@ func (s *service) GenerateDailySummary() {
 * Helpers
 **/
 
+/**
+* Generates a prompt string based on the checklists under a specific planId and any additional prompt information provided.
+**/
 func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.UUID, additionalPrompt string) (string, error) {
 	plan, err := s.planService.GetById(ctx, planId)
 	if err != nil {
@@ -123,10 +134,8 @@ func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.U
 
 	// construct the prompt context
 	for _, item := range checklistItems {
-		checklistPrompt += fmt.Sprintf("%s\n", item.Description)
+		checklistPrompt += fmt.Sprintf("A %s task: %s\n", item.Scope, item.Description)
 	}
-
-	fmt.Printf("constructed checklist item prompt: %s\n", checklistPrompt)
 
 	// focus - the primary topic input by the user for their plan.
 	prompt := fmt.Sprintf(`Based on this project focus: "%s"

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/darkphotonKN/fireplace/internal/constants"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
 )
@@ -37,6 +38,13 @@ func (s *service) Create(ctx context.Context, req CreateReq, planID uuid.UUID) (
 
 	if err != nil {
 		return nil, err
+	}
+
+	// validate scope
+	if req.Scope != nil {
+		if *req.Scope != string(constants.ScopeLongterm) && *req.Scope != string(constants.ScopeDaily) {
+			return nil, fmt.Errorf("Scope can only be either daily or longterm.")
+		}
 	}
 
 	// add 1 to make new sequence

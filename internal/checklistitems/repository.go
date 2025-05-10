@@ -61,6 +61,11 @@ func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID
 	RETURNING id, description, done, sequence, plan_id, scope, created_at, updated_at
 	`
 
+	scope := constants.ScopeLongterm
+	if req.Scope != nil {
+		scope = constants.ChecklistItemScope(*req.Scope)
+	}
+
 	item := struct {
 		PlanID      uuid.UUID                    `db:"plan_id"`
 		Description string                       `db:"description"`
@@ -72,7 +77,7 @@ func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID
 		Description: req.Description,
 		Done:        false,
 		Sequence:    sequenceNo,
-		Scope:       constants.ScopeLongterm,
+		Scope:       scope,
 	}
 
 	newItem := &models.ChecklistItem{}
