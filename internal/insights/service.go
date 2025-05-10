@@ -16,17 +16,34 @@ type service struct {
 	contentGen       interfaces.ContentGenerator
 	checklistService checklistitems.Service
 	planService      plans.Service
+	basePrompt       string
 }
 
 type Repository interface {
 }
 
 func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService checklistitems.Service, planService plans.Service) Service {
+	// setup base prompt
+	basePrompt := `
+    Please suggest ONE specific, actionable task that would be the most valuable next step to add to my checklist.
+
+    Your suggestion should:
+    - Be a single, concrete task (not multiple tasks)
+    - Start with a verb
+    - Be specific enough to complete in a single sitting
+    - Be directly relevant to the project focus
+    - Use technical terminology accurately if applicable
+    - Be 4-20 words in length
+    
+    Format your response as a single task item with no additional commentary, explanation or punctuation at the end.
+		`
+
 	return &service{
 		repo:             repo,
 		contentGen:       contentGen,
 		checklistService: checklistService,
 		planService:      planService,
+		basePrompt:       basePrompt,
 	}
 }
 
@@ -59,25 +76,12 @@ func (s *service) GenerateChecklistSuggestion(ctx context.Context, planId uuid.U
 
 	// focus - the primary topic input by the user for their plan.
 	prompt := fmt.Sprintf(`Based on this project focus: "%s"
-
-    Please suggest ONE specific, actionable task that would be the most valuable next step to add to my checklist.
-
-    Your suggestion should:
-    - Be a single, concrete task (not multiple tasks)
-    - Start with a verb
-    - Be specific enough to complete in a single sitting
-    - Be directly relevant to the project focus
-    - Use technical terminology accurately if applicable
-    - Be 4-20 words in length
-    
-    Format your response as a single task item with no additional commentary, explanation or punctuation at the end.
-
-		So far the checklist already has these items, so either add one to follow the current progress or don't suggest one that's already present:
-
 		%s
-		`, plan.Focus, checklistPrompt)
+		So far the checklist already has these items, so either add one to follow the current progress or don't suggest one that's already present:
+		%s
+		`, plan.Focus, s.basePrompt, checklistPrompt)
 
-	fmt.Printf("\nprompt was: \n%s\n\n", prompt)
+	fmt.Printf("\nfinal prompt was: \n%s\n\n", prompt)
 
 	res, err := s.contentGen.ChatCompletion(prompt)
 
@@ -87,6 +91,12 @@ func (s *service) GenerateChecklistSuggestion(ctx context.Context, planId uuid.U
 
 	// TODO: checklist - the list of current checklist items for context
 	return res, nil
+}
+
+func (s *service) GenerateDailySuggestions(ctx context.Context, pladId uuid.UUID) ([]string, error) {
+	// get 3 suggestions based on longterm goals
+
+	return nil, nil
 }
 
 /**

@@ -14,6 +14,7 @@ type Handler struct {
 type Service interface {
 	AutocompleteChecklistSuggestion(currentTxt string) (string, error)
 	GenerateChecklistSuggestion(ctx context.Context, planId uuid.UUID) (string, error)
+	GenerateDailySuggestions(ctx context.Context, planId uuid.UUID) ([]string, error)
 }
 
 func NewHandler(service Service) *Handler {
@@ -22,7 +23,7 @@ func NewHandler(service Service) *Handler {
 	}
 }
 
-func (h *Handler) GenerateChecklistSuggestionHandler(c *gin.Context) {
+func (h *Handler) GenerateChecklistSuggestion(c *gin.Context) {
 	planIdQuery := c.Query("plan_id")
 	planId, err := uuid.Parse(planIdQuery)
 	if err != nil {
@@ -38,4 +39,23 @@ func (h *Handler) GenerateChecklistSuggestionHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully generated completion", "result": res})
+}
+
+func (h *Handler) GenerateDailySuggestions(c *gin.Context) {
+	planIdQuery := c.Query("plan_id")
+	planId, err := uuid.Parse(planIdQuery)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"statusCode:": http.StatusBadRequest, "message": "error when parsing planId from query string: " + err.Error()})
+		return
+	}
+
+	res, err := h.service.GenerateDailySuggestions(c.Request.Context(), planId)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"statusCode:": http.StatusBadRequest, "message": "error when generating completion for checklist: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully generated completion", "result": res})
+
 }
