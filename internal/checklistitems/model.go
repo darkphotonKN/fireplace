@@ -11,6 +11,7 @@ type UpdateReq struct {
 	Description   *string `json:"description,omitempty"`
 	Done          *bool   `json:"done,omitempty"`
 	Sequence      *bool   `json:"sequence,omitempty"`
+	Scope         *string `json:"scope,omitempty"`
 	ScheduledTime *time.Time
 }
 

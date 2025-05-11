@@ -6,23 +6,27 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/darkphotonKN/fireplace/internal/checklistitems"
 	"github.com/darkphotonKN/fireplace/internal/interfaces"
+	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/darkphotonKN/fireplace/internal/plans"
 )
 
 type service struct {
 	repo             Repository
 	contentGen       interfaces.ContentGenerator
-	checklistService checklistitems.Service
+	checklistService ChecklistInsightsService
 	planService      plans.Service
 	basePrompt       string
+}
+
+type ChecklistInsightsService interface {
+	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
 }
 
 type Repository interface {
 }
 
-func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService checklistitems.Service, planService plans.Service) Service {
+func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService ChecklistInsightsService, planService plans.Service) Service {
 	// setup base prompt
 	basePrompt := `
     Please suggest ONE specific, actionable task that would be the most valuable next step to add to my checklist.
@@ -122,7 +126,7 @@ func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.U
 	}
 
 	// get entire checklist as context
-	checklistItems, err := s.checklistService.GetAll(ctx, planId, nil)
+	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planId, nil)
 
 	if err != nil {
 		fmt.Println("Error when retrieving all checklist item for generating checklist suggestion.")

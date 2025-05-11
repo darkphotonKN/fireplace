@@ -18,18 +18,23 @@ type Repository interface {
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID, sequenceNo int) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
-	GetAll(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
+	GetAll(ctx context.Context, scope *string) ([]*models.ChecklistItem, error)
+	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error)
 	CountItems(ctx context.Context) (int, error)
 }
 
-func NewService(repo Repository) Service {
+func NewService(repo Repository) *service {
 	return &service{
 		repo: repo,
 	}
 }
 
-func (s *service) GetAll(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
+func (s *service) GetAll(ctx context.Context, scope *string) ([]*models.ChecklistItem, error) {
+	return s.repo.GetAll(ctx, scope)
+}
+
+func (s *service) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
 	// Validate scope if provided
 	if scope != nil {
 		if *scope != string(constants.ScopeLongterm) && *scope != string(constants.ScopeDaily) {
@@ -37,7 +42,7 @@ func (s *service) GetAll(ctx context.Context, planId uuid.UUID, scope *string) (
 		}
 	}
 
-	return s.repo.GetAll(ctx, planId, scope)
+	return s.repo.GetAllByPlanId(ctx, planId, scope)
 }
 
 func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error) {
@@ -99,4 +104,19 @@ func (s *service) SetSchedule(ctx context.Context, id uuid.UUID, req SetSchedule
 
 	// 3. if time validation checks out, update the time
 	return s.repo.Update(ctx, id, updateData)
+}
+
+/**
+* Resets the daily items from done true to false so that they can be repeated.
+**/
+func (s *service) ResetDailyItems(ctx context.Context) error {
+	longtermStr := string(constants.ScopeLongterm)
+	items, err := s.GetAll(ctx, &longtermStr)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("\nall checklist items: %+v\n\n", items)
+
+	return nil
 }

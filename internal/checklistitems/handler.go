@@ -15,7 +15,7 @@ type Handler struct {
 }
 
 type Service interface {
-	GetAll(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
+	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error)
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
@@ -44,7 +44,7 @@ func (h *Handler) GetAll(c *gin.Context) {
 		scopePtr = &scope
 	}
 
-	items, err := h.service.GetAll(c.Request.Context(), planId, scopePtr)
+	items, err := h.service.GetAllByPlanId(c.Request.Context(), planId, scopePtr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get checklist items. Error:" + err.Error()})
 		return

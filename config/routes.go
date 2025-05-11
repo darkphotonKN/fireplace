@@ -7,6 +7,7 @@ import (
 	"github.com/darkphotonKN/fireplace/internal/ai"
 	"github.com/darkphotonKN/fireplace/internal/checklistitems"
 	"github.com/darkphotonKN/fireplace/internal/insights"
+	"github.com/darkphotonKN/fireplace/internal/jobs"
 	"github.com/darkphotonKN/fireplace/internal/plans"
 	"github.com/darkphotonKN/fireplace/internal/user"
 	"github.com/gin-contrib/cors"
@@ -93,6 +94,11 @@ func SetupRouter() *gin.Engine {
 	insightsRoutes := api.Group("/insights")
 	insightsRoutes.GET("/checklist-suggestion", insightsHandler.GenerateSuggestions)
 	insightsRoutes.GET("/checklist-suggestion-daily", insightsHandler.GenerateDailySuggestions)
+
+	// --- JOBS ---
+	job := jobs.NewDailyResetJob(checkListService)
+	job.Start()
+	defer job.Stop()
 
 	return router
 }

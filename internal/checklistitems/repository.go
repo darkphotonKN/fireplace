@@ -21,7 +21,7 @@ func NewRepository(db *sqlx.DB) Repository {
 	}
 }
 
-func (s *repository) GetAll(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
+func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
 	baseQuery := `
 	SELECT id, description, done, sequence, scope, scheduled_time, created_at, updated_at, plan_id
 	FROM checklist_items
@@ -46,6 +46,47 @@ func (s *repository) GetAll(ctx context.Context, planId uuid.UUID, scope *string
 	if err != nil {
 		return nil, errorutils.AnalyzeDBErr(err)
 	}
+
+	return items, nil
+}
+
+func (s *repository) GetAll(ctx context.Context, scope *string) ([]*models.ChecklistItem, error) {
+	query := `
+	SELECT 
+		id, 
+		description,
+		done,
+		sequence,
+		scope, 
+		scheduled_time,
+		created_at,
+		updated_at,
+		plan_id
+	FROM checklist_items
+	`
+
+	var items []*models.ChecklistItem
+
+	args := []interface{}{}
+
+	if scope != nil {
+		query += "\nWHERE scope = $1"
+		args = append(args, *scope)
+		err := s.db.SelectContext(ctx, &items, query, args...)
+
+		if err != nil {
+			return nil, errorutils.AnalyzeDBErr(err)
+		}
+	} else {
+
+		err := s.db.SelectContext(ctx, &items, query)
+
+		if err != nil {
+			return nil, errorutils.AnalyzeDBErr(err)
+		}
+	}
+
+	fmt.Printf("Final constructed query: \n%s\n\n", query)
 
 	return items, nil
 }
@@ -121,6 +162,7 @@ func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) er
 	SET
 		description = COALESCE(:description, description),
 		done = COALESCE(:done, done),
+		scope = COALESCE(:scope, scope),
 	`
 
 	// check if scheduled time exists, otherwise set it to nil to remove scheduled time
@@ -137,6 +179,7 @@ func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) er
 		"id":             id,
 		"description":    req.Description,
 		"done":           req.Done,
+		"scope":          req.Scope,
 		"scheduled_time": req.ScheduledTime,
 	}
 
