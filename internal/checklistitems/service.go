@@ -18,7 +18,8 @@ type Repository interface {
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID, sequenceNo int) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
-	GetAll(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error)
+	GetAll(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error)
 	CountItems(ctx context.Context) (int, error)
 }
 
@@ -28,8 +29,19 @@ func NewService(repo Repository) Service {
 	}
 }
 
-func (s *service) GetAll(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error) {
-	return s.repo.GetAll(ctx, planId)
+func (s *service) GetAll(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
+	// Validate scope if provided
+	if scope != nil {
+		if *scope != string(constants.ScopeLongterm) && *scope != string(constants.ScopeDaily) {
+			return nil, fmt.Errorf("scope must be either 'daily' or 'longterm'")
+		}
+	}
+
+	return s.repo.GetAll(ctx, planId, scope)
+}
+
+func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error) {
+	return s.repo.GetByID(ctx, id)
 }
 
 func (s *service) Create(ctx context.Context, req CreateReq, planID uuid.UUID) (*models.ChecklistItem, error) {

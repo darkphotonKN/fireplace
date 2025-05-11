@@ -15,7 +15,8 @@ type Handler struct {
 }
 
 type Service interface {
-	GetAll(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error)
+	GetAll(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error)
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -37,7 +38,13 @@ func (h *Handler) GetAll(c *gin.Context) {
 		return
 	}
 
-	items, err := h.service.GetAll(c.Request.Context(), planId)
+	scope := c.Query("scope")
+	var scopePtr *string
+	if scope != "" {
+		scopePtr = &scope
+	}
+
+	items, err := h.service.GetAll(c.Request.Context(), planId, scopePtr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get checklist items. Error:" + err.Error()})
 		return
@@ -108,6 +115,23 @@ func (h *Handler) Delete(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully deleted checklist item.", "result": constants.UpdateStatusSuccess})
+}
+
+func (h *Handler) GetByID(c *gin.Context) {
+	idStr := c.Param("checklist_id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format"})
+		return
+	}
+
+	item, err := h.service.GetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get checklist item. Error: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully retrieved checklist item.", "result": item})
 }
 
 func (h *Handler) SetSchedule(c *gin.Context) {

@@ -122,7 +122,7 @@ func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.U
 	}
 
 	// get entire checklist as context
-	checklistItems, err := s.checklistService.GetAll(ctx, planId)
+	checklistItems, err := s.checklistService.GetAll(ctx, planId, nil)
 
 	if err != nil {
 		fmt.Println("Error when retrieving all checklist item for generating checklist suggestion.")

@@ -75,6 +75,7 @@ func SetupRouter() *gin.Engine {
 	// -- Checklist Plan-Specific Routes --
 	checkListRoutes := api.Group("/plans/:id/checklists")
 	checkListRoutes.GET("", checkListHandler.GetAll)
+	checkListRoutes.GET("/:checklist_id", checkListHandler.GetByID)
 	checkListRoutes.POST("", checkListHandler.Create)
 	checkListRoutes.PATCH("/:checklist_id", checkListHandler.Update)
 	checkListRoutes.DELETE("/:checklist_id", checkListHandler.Delete)

@@ -39,3 +39,5 @@ go.sum
 # Test results
 *.test
 coverage.out
+
+CLAUDE.md

@@ -21,16 +21,28 @@ func NewRepository(db *sqlx.DB) Repository {
 	}
 }
 
-func (s *repository) GetAll(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error) {
-	query := `
+func (s *repository) GetAll(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
+	baseQuery := `
 	SELECT id, description, done, sequence, scope, scheduled_time, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
-	ORDER BY sequence ASC
 	`
 
+	// Add scope filtering if provided
+	args := []interface{}{planId}
+	if scope != nil {
+		baseQuery += `AND scope = $2
+	`
+		args = append(args, *scope)
+	}
+
+	fmt.Printf("Args: %v\n", args)
+
+	// Always add ordering
+	baseQuery += `ORDER BY sequence ASC`
+
 	var items []*models.ChecklistItem
-	err := s.db.SelectContext(ctx, &items, query, planId)
+	err := s.db.SelectContext(ctx, &items, baseQuery, args...)
 	if err != nil {
 		return nil, errorutils.AnalyzeDBErr(err)
 	}
@@ -147,4 +159,20 @@ func (s *repository) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 
 	return nil
+}
+
+func (s *repository) GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error) {
+	query := `
+	SELECT id, description, done, sequence, scope, scheduled_time, created_at, updated_at, plan_id
+	FROM checklist_items
+	WHERE id = $1
+	`
+
+	var item models.ChecklistItem
+	err := s.db.GetContext(ctx, &item, query, id)
+	if err != nil {
+		return nil, errorutils.AnalyzeDBErr(err)
+	}
+
+	return &item, nil
 }
