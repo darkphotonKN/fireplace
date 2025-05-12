@@ -26,7 +26,9 @@ func NewDailyResetJob(checklistService ChecklistDailyResetService) *DailyResetJo
 }
 
 func (j *DailyResetJob) Start() {
-	j.scheduler.Every(1).Day().At("02:44").Do(func() {
+	fmt.Println("Starting daily reset jobs.")
+
+	j.scheduler.Every(1).Day().At("18:00").Do(func() {
 		fmt.Println("Running daily job...")
 		ctx := context.Background()
 		err := j.checklistService.ResetDailyItems(ctx)
