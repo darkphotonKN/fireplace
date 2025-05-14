@@ -74,6 +74,7 @@ func SetupRouter() *gin.Engine {
 	checkListHandler := checklistitems.NewHandler(checkListService)
 
 	// -- Checklist Plan-Specific Routes --
+	// TODO: remove after test
 	checkListRoutes := api.Group("/plans/:id/checklists")
 	checkListRoutes.GET("", checkListHandler.GetAll)
 	checkListRoutes.GET("/:checklist_id", checkListHandler.GetByID)
@@ -85,9 +86,9 @@ func SetupRouter() *gin.Engine {
 	// --- INSIGHTS ---
 
 	// -- Insights Setup --
-	contentGen := ai.NewContentGen()
+	checklistGen := ai.NewChecklistGen()
 	insightsRepo := insights.NewRepository(DB)
-	insightsService := insights.NewService(insightsRepo, contentGen, checkListService, planService)
+	insightsService := insights.NewService(insightsRepo, checklistGen, checkListService, planService)
 	insightsHandler := insights.NewHandler(insightsService)
 
 	// -- User Routes --

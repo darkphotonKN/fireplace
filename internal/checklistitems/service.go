@@ -110,13 +110,26 @@ func (s *service) SetSchedule(ctx context.Context, id uuid.UUID, req SetSchedule
 * Resets the daily items from done true to false so that they can be repeated.
 **/
 func (s *service) ResetDailyItems(ctx context.Context) error {
-	longtermStr := string(constants.ScopeLongterm)
-	items, err := s.GetAll(ctx, &longtermStr)
+	daily := string(constants.ScopeDaily)
+
+	items, err := s.GetAll(ctx, &daily)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("\nall checklist items: %+v\n\n", items)
+	for _, item := range items {
+		// update done to false, if already completed
+		if item.Done {
+			notDone := false
+			err := s.Update(ctx, item.ID, UpdateReq{
+				Done: &notDone,
+			})
+
+			if err != nil {
+				return err
+			}
+		}
+	}
 
 	return nil
 }

@@ -60,7 +60,7 @@ func (s *service) GenerateSuggestions(ctx context.Context, planId uuid.UUID) (st
 		return "", err
 	}
 
-	res, err := s.contentGen.ChatCompletion(prompt)
+	res, err := s.contentGen.Generate(prompt)
 
 	if err != nil {
 		return "", err
@@ -87,7 +87,7 @@ func (s *service) GenerateDailySuggestions(ctx context.Context, planId uuid.UUID
 			prompt = fmt.Sprintf("%sAlso, don't choose one closely related to this specific action item as this has already been added to the list too:%s", prompt, suggestions[i-1])
 		}
 		fmt.Println("updated prompt:", prompt)
-		res, err := s.contentGen.ChatCompletion(prompt)
+		res, err := s.contentGen.Generate(prompt)
 		if err != nil {
 			return nil, err
 		}

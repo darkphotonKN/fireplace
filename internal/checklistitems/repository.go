@@ -219,3 +219,28 @@ func (s *repository) GetByID(ctx context.Context, id uuid.UUID) (*models.Checkli
 
 	return &item, nil
 }
+
+func (s *repository) BatchUpdate(ctx context.Context, planId uuid.UUID, done *bool, scope *constants.ChecklistItemScope) error {
+	query := `
+	UPDATE checklist_items
+	SET
+		done = COALESCE(:done, done)
+	WHERE plan_id = :planId
+	AND scope = :scope
+	`
+
+	params := map[string]interface{}{
+		"done":  *done,
+		"scope": *scope,
+	}
+
+	_, err := s.db.NamedExecContext(ctx, query, params)
+
+	if err != nil {
+		fmt.Printf("Error when updating all checklist items: %s\n", err.Error())
+
+		return errorutils.AnalyzeDBErr(err)
+	}
+
+	return nil
+}

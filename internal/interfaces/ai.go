@@ -1,5 +1,5 @@
 package interfaces
 
 type ContentGenerator interface {
-	ChatCompletion(message string) (string, error)
+	Generate(message string) (string, error)
 }
