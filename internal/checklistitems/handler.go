@@ -21,6 +21,7 @@ type Service interface {
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	SetSchedule(ctx context.Context, id uuid.UUID, req SetScheduleReq) error
+	Archive(ctx context.Context, id uuid.UUID) error
 }
 
 func NewHandler(service Service) *Handler {
@@ -155,3 +156,20 @@ func (h *Handler) SetSchedule(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully set schedule on checklist item.", "result": constants.UpdateStatusSuccess})
 }
+
+func (h *Handler) Archive(c *gin.Context) {
+	idStr := c.Param("checklist_id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format", "result": constants.UpdateStatusFailure})
+		return
+	}
+
+	if err := h.service.Archive(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to archive checklist item. Error: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully archived checklist item.", "result": constants.UpdateStatusSuccess})
+}
+

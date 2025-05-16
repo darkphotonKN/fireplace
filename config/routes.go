@@ -82,6 +82,7 @@ func SetupRouter() *gin.Engine {
 	checkListRoutes.PATCH("/:checklist_id", checkListHandler.Update)
 	checkListRoutes.DELETE("/:checklist_id", checkListHandler.Delete)
 	checkListRoutes.PATCH("/:checklist_id/schedule", checkListHandler.SetSchedule)
+	checkListRoutes.PATCH("/:checklist_id/archive", checkListHandler.Archive)
 
 	// --- INSIGHTS ---
 
@@ -97,9 +98,30 @@ func SetupRouter() *gin.Engine {
 	insightsRoutes.GET("/checklist-suggestion-daily", insightsHandler.GenerateDailySuggestions)
 
 	// --- JOBS ---
-	job := jobs.NewDailyResetJob(checkListService)
-	job.Start()
-	defer job.Stop()
+	// TODO: write a job manager for graceful shutdown
+	dailyJob := jobs.NewDailyResetJob(checkListService)
+	scheduledItemsJob := jobs.NewScheduledItemsJob(checkListService)
+
+	jobManager := jobs.NewManager()
+	jobManager.AddJob(dailyJob)
+	jobManager.AddJob(scheduledItemsJob)
+	jobManager.StartAll()
 
 	return router
+}
+
+type testJob1 struct {
+}
+
+func (j *testJob1) Start() {
+}
+func (j *testJob1) Stop() {
+}
+
+type testJob2 struct {
+}
+
+func (j *testJob2) Start() {
+}
+func (j *testJob2) Stop() {
 }

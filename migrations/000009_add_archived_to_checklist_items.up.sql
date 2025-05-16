@@ -1,0 +1,2 @@
+ALTER TABLE checklist_items
+ADD COLUMN archived BOOLEAN DEFAULT FALSE; 

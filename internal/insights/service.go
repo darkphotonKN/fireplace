@@ -27,27 +27,13 @@ type Repository interface {
 }
 
 func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService ChecklistInsightsService, planService plans.Service) Service {
-	// setup base prompt
-	basePrompt := `
-    Please suggest ONE specific, actionable task that would be the most valuable next step to add to my checklist.
-
-    Your suggestion should:
-    - Be a single, concrete task (not multiple tasks)
-    - Start with a verb
-    - Be specific enough to complete in a single sitting
-    - Be directly relevant to the project focus
-    - Use technical terminology accurately if applicable
-    - Be 4-20 words in length
-
-    Format your response as a single task item with no additional commentary, explanation or punctuation at the end.
-		`
 
 	return &service{
 		repo:             repo,
 		contentGen:       contentGen,
 		checklistService: checklistService,
 		planService:      planService,
-		basePrompt:       basePrompt,
+		basePrompt:       "",
 	}
 }
 
@@ -69,6 +55,9 @@ func (s *service) GenerateSuggestions(ctx context.Context, planId uuid.UUID) (st
 	return res, nil
 }
 
+/**
+* Generates 3 daily suggestions based on longterm checklist items and focus.
+**/
 func (s *service) GenerateDailySuggestions(ctx context.Context, planId uuid.UUID) ([]string, error) {
 	// TODO: add default rules for daily suggestion to additional prompt argument.
 	prompt, err := s.generatePromptWithChecklist(ctx, planId, "focus on tasks that are marked as \"longterm\" and breaking them down when you make your suggestions.")
@@ -105,20 +94,30 @@ func (s *service) AutocompleteChecklistSuggestion(focus string) (string, error) 
 	return "", nil
 }
 
-func (s *service) GenerateDailyReview() {
-}
-
 func (s *service) GenerateDailySummary() {
 }
 
 /**
-* Helpers
-**/
-
-/**
-* Generates a prompt string based on the checklists under a specific planId and any additional prompt information provided.
+* Sets up all the default checklist-based settings to for appropriate prompt string based on the checklists under a specific planId and any additional prompt information provided.
 **/
 func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.UUID, additionalPrompt string) (string, error) {
+	// sets primary prompt defaults
+	// setup base prompt
+	s.basePrompt = `
+    Please suggest ONE specific, actionable task that would be the most valuable next step to add to my checklist.
+
+    Your suggestion should:
+    - Be a single, concrete task (not multiple tasks)
+    - Start with a verb
+    - Be specific enough to complete in a single sitting
+    - Be directly relevant to the project focus
+    - Use technical terminology accurately if applicable
+    - Be 4-20 words in length
+
+    Format your response as a single task item with no additional commentary, explanation or punctuation at the end.
+		`
+
+	// gets relavant planID and checklistItems
 	plan, err := s.planService.GetById(ctx, planId)
 	if err != nil {
 		fmt.Println("Error when retrieving plan for generating checklist suggestion:", err)
@@ -133,6 +132,7 @@ func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.U
 		return "", err
 	}
 
+	// gets relavant focus from plan
 	focus := plan.Focus
 	checklistPrompt := ""
 

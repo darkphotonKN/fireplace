@@ -3,14 +3,14 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"github.com/go-co-op/gocron"
+	"github.com/robfig/cron/v3"
 )
 
 type DailyResetJob struct {
 	checklistService ChecklistDailyResetService
-	scheduler        *gocron.Scheduler
+	cron             *cron.Cron
+	jobID            cron.EntryID
 }
 
 type ChecklistDailyResetService interface {
@@ -18,28 +18,39 @@ type ChecklistDailyResetService interface {
 }
 
 func NewDailyResetJob(checklistService ChecklistDailyResetService) *DailyResetJob {
-	scheduler := gocron.NewScheduler(time.UTC)
+	c := cron.New(cron.WithSeconds())
+
 	return &DailyResetJob{
 		checklistService: checklistService,
-		scheduler:        scheduler,
+		cron:             c,
 	}
 }
 
 func (j *DailyResetJob) Start() {
 	fmt.Println("Starting daily reset jobs.")
 
-	j.scheduler.Every(1).Day().At("18:00").Do(func() {
+	// Schedule reset at 18:00 every day (second minute hour day month weekday)
+	jobID, err := j.cron.AddFunc("0 0 16 * * *", func() {
 		fmt.Println("Running daily job...")
 		ctx := context.Background()
 		err := j.checklistService.ResetDailyItems(ctx)
 		if err != nil {
-			fmt.Printf("Error resetting daily items: %v\n", err)
+			fmt.Printf("Error resetting daily items: %s\n", err.Error())
 		}
 	})
 
-	j.scheduler.StartAsync()
+	if err != nil {
+		fmt.Printf("Error scheduling daily reset job: %s\n", err.Error())
+		return
+	}
+
+	j.jobID = jobID
+	j.cron.Start()
 }
 
 func (j *DailyResetJob) Stop() {
-	j.scheduler.Stop()
+	fmt.Println("Stopping daily reset job.")
+	ctx := j.cron.Stop()
+	// Wait for jobs to finish
+	<-ctx.Done()
 }

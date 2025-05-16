@@ -133,3 +133,19 @@ func (s *service) ResetDailyItems(ctx context.Context) error {
 
 	return nil
 }
+
+func (s *service) Archive(ctx context.Context, id uuid.UUID) error {
+	archived := true
+	return s.repo.Update(ctx, id, UpdateReq{
+		Archived: &archived,
+	})
+}
+
+func (s *service) CheckUpcomingItems(ctx context.Context) error {
+	fmt.Println("Checking upcoming items")
+	return nil
+}
+
+func (s *service) TriggerScheduledReminder(ctx context.Context) error {
+	return nil
+}

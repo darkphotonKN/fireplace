@@ -163,6 +163,7 @@ func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) er
 		description = COALESCE(:description, description),
 		done = COALESCE(:done, done),
 		scope = COALESCE(:scope, scope),
+		archived = COALESCE(:archived, archived)
 	`
 
 	// check if scheduled time exists, otherwise set it to nil to remove scheduled time
@@ -181,6 +182,7 @@ func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) er
 		"done":           req.Done,
 		"scope":          req.Scope,
 		"scheduled_time": req.ScheduledTime,
+		"archived":       req.Archived,
 	}
 
 	fmt.Printf("Updating checklist_items with item: %+v\n", item)
