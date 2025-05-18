@@ -19,7 +19,7 @@ type Repository interface {
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetAll(ctx context.Context, scope *string) ([]*models.ChecklistItem, error)
-	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
+	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error)
 	GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error)
 	CountItems(ctx context.Context) (int, error)
@@ -35,15 +35,20 @@ func (s *service) GetAll(ctx context.Context, scope *string) ([]*models.Checklis
 	return s.repo.GetAll(ctx, scope)
 }
 
-func (s *service) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
-	// Validate scope if provided
+func (s *service) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error) {
+
 	if scope != nil {
 		if *scope != string(constants.ScopeLongterm) && *scope != string(constants.ScopeDaily) {
 			return nil, fmt.Errorf("scope must be either 'daily' or 'longterm'")
 		}
 	}
 
-	return s.repo.GetAllByPlanId(ctx, planId, scope)
+	if upcoming != nil {
+		if *upcoming != string(constants.UpcomingWeek) && *upcoming != string(constants.UpcomingMonth) {
+			return nil, fmt.Errorf("Upcoming needs to be either 'week' or 'month'")
+		}
+	}
+	return s.repo.GetAllByPlanId(ctx, planId, scope, upcoming)
 }
 
 func (s *service) GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
@@ -153,8 +158,18 @@ func (s *service) Archive(ctx context.Context, id uuid.UUID) error {
 	})
 }
 
-func (s *service) CheckUpcomingItems(ctx context.Context) error {
-	fmt.Println("Checking upcoming items")
+func (s *service) GetUpcoming(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error) {
+	upcomingStr := string(constants.UpcomingWeek)
+	items, err := s.GetAllByPlanId(ctx, planId, nil, &upcomingStr)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func (s *service) CheckAllScheduledItems(ctx context.Context) error {
 	return nil
 }
 

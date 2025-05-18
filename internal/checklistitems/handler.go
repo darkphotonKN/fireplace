@@ -16,7 +16,7 @@ type Handler struct {
 }
 
 type Service interface {
-	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
+	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error)
 	GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error)
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID) (*models.ChecklistItem, error)
@@ -24,6 +24,7 @@ type Service interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	SetSchedule(ctx context.Context, id uuid.UUID, req SetScheduleReq) error
 	Archive(ctx context.Context, id uuid.UUID) error
+	GetUpcoming(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error)
 }
 
 func NewHandler(service Service) *Handler {
@@ -47,7 +48,7 @@ func (h *Handler) GetAll(c *gin.Context) {
 		scopePtr = &scope
 	}
 
-	items, err := h.service.GetAllByPlanId(c.Request.Context(), planId, scopePtr)
+	items, err := h.service.GetAllByPlanId(c.Request.Context(), planId, scopePtr, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get checklist items. Error:" + err.Error()})
 		return
@@ -197,4 +198,22 @@ func (h *Handler) Archive(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully archived checklist item.", "result": constants.UpdateStatusSuccess})
+}
+
+// GetUpcoming returns all upcoming tasks for a plan
+func (h *Handler) GetUpcoming(c *gin.Context) {
+	planIdParam := c.Param("id")
+
+	planId, err := uuid.Parse(planIdParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Incorrect uuid format."})
+		return
+	}
+
+	items, err := h.service.GetUpcoming(c.Request.Context(), planId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get upcoming tasks. Error:" + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully retrieved upcoming tasks.", "result": items})
 }

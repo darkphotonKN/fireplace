@@ -16,7 +16,7 @@ type ScheduledItemsJob struct {
 
 type ChecklistScheduledItemsService interface {
 	TriggerScheduledReminder(ctx context.Context) error
-	CheckUpcomingItems(ctx context.Context) error
+	CheckAllScheduledItems(ctx context.Context) error
 }
 
 func NewScheduledItemsJob(checklistService ChecklistScheduledItemsService) *ScheduledItemsJob {
@@ -32,7 +32,7 @@ func (j *ScheduledItemsJob) Start() {
 	// Run every minute (second minute hour day month weekday)
 	jobID, err := j.cron.AddFunc("0 * * * * *", func() {
 		ctx := context.Background()
-		err := j.checklistService.CheckUpcomingItems(ctx)
+		err := j.checklistService.CheckAllScheduledItems(ctx)
 		if err != nil {
 			log.Printf("error when checking scheduled checklist items in job.: %s\n", err.Error())
 		}

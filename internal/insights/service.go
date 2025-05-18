@@ -20,7 +20,7 @@ type service struct {
 }
 
 type ChecklistInsightsService interface {
-	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
+	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error)
 }
 
 type Repository interface {
@@ -125,7 +125,7 @@ func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.U
 	}
 
 	// get entire checklist as context
-	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planId, nil)
+	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planId, nil, nil)
 
 	if err != nil {
 		fmt.Println("Error when retrieving all checklist item for generating checklist suggestion.")

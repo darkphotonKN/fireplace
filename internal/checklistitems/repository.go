@@ -21,8 +21,8 @@ func NewRepository(db *sqlx.DB) Repository {
 	}
 }
 
-func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
-	baseQuery := `
+func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error) {
+	query := `
 	SELECT id, description, done, sequence, scope, scheduled_time, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
@@ -32,18 +32,32 @@ func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope
 	// Add scope filtering if provided
 	args := []interface{}{planId}
 	if scope != nil {
-		baseQuery += `AND scope = $2
+		query += `AND scope = $2
 	`
 		args = append(args, *scope)
+	}
+
+	if upcoming != nil {
+		interval := fmt.Sprintf("'1 %s'", *upcoming)
+
+		fmt.Println("constructed interval:", interval)
+		query += fmt.Sprintf(`
+			AND scheduled_time IS NOT NULL 
+	    AND scheduled_time >= CURRENT_TIMESTAMP
+			AND scheduled_time <= CURRENT_TIMESTAMP + INTERVAL %s
+		`, interval)
 	}
 
 	fmt.Printf("Args: %v\n", args)
 
 	// Always add ordering
-	baseQuery += `ORDER BY sequence ASC`
+	query += `ORDER BY sequence ASC`
+
+	fmt.Printf("constructed query: %s\n", query)
+	fmt.Printf("constructed args: %+v\n", args)
 
 	var items []*models.ChecklistItem
-	err := s.db.SelectContext(ctx, &items, baseQuery, args...)
+	err := s.db.SelectContext(ctx, &items, query, args...)
 	if err != nil {
 		return nil, errorutils.AnalyzeDBErr(err)
 	}
