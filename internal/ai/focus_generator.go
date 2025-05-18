@@ -11,7 +11,7 @@ type DailyFocusGen struct {
 }
 
 const (
-	dailyFocusSystemPrompt string        = `You are an AI assistant for the Fireplace productivity platform. Your purpose is to help users maintain focus, organize their tasks, and make progress on their learning and work projects.
+	dailyFocusSystemPrompt string = `You are an AI assistant for the Fireplace productivity platform. Your purpose is to help users maintain focus, organize their tasks, and make progress on their learning and work projects.
 
 jlways provide concise, practical, and actionable responses. Your suggestions should be specific and tailored to the user's stated focus. When generating checklist items, each item should be concrete and implementable.
 

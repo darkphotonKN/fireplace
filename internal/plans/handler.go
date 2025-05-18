@@ -1,15 +1,25 @@
 package plans
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
+	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type Handler struct {
 	service Service
+}
+
+type Service interface {
+	GetById(ctx context.Context, id uuid.UUID) (*models.Plan, error)
+	Create(ctx context.Context, req CreatePlanReq, userID uuid.UUID) (*models.Plan, error)
+	Update(ctx context.Context, id uuid.UUID, req UpdatePlanReq, userID uuid.UUID) error
+	Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
+	GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Plan, error)
 }
 
 func NewHandler(service Service) *Handler {
@@ -116,4 +126,30 @@ func (h *Handler) GetAll(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully retrieved all plans", "result": plans})
+}
+
+// Delete removes a plan by ID
+func (h *Handler) Delete(c *gin.Context) {
+	// TODO: static now, will come from jwt in future
+	userId, err := uuid.Parse("11111111-1111-1111-1111-111111111111")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"statusCode": http.StatusInternalServerError, "message": "Failed to parse user ID", "error": err.Error()})
+		return
+	}
+
+	// Get plan ID from URL parameter
+	idParam := c.Param("id")
+	id, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"statusCode": http.StatusBadRequest, "message": fmt.Sprintf("Error with id %s, not a valid uuid.", idParam)})
+		return
+	}
+
+	// Delete the plan
+	if err := h.service.Delete(c.Request.Context(), id, userId); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"statusCode": http.StatusInternalServerError, "message": "Failed to delete plan", "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully deleted plan"})
 }

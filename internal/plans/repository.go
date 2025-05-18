@@ -3,6 +3,7 @@ package plans
 import (
 	"context"
 
+	"github.com/darkphotonKN/fireplace/internal/constants"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/darkphotonKN/fireplace/internal/utils/errorutils"
 	"github.com/google/uuid"
@@ -113,14 +114,14 @@ func (r *repository) Update(ctx context.Context, id uuid.UUID, req UpdatePlanReq
 // GetAll returns all plans from the database for a specific user
 func (r *repository) GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Plan, error) {
 	query := `
-	SELECT 
-		id, 
-		user_id, 
-		name, 
-		description, 
-		focus, 
-		plan_type, 
-		created_at, 
+	SELECT
+		id,
+		user_id,
+		name,
+		description,
+		focus,
+		plan_type,
+		created_at,
 		updated_at
 	FROM plans
 	WHERE user_id = $1
@@ -135,4 +136,28 @@ func (r *repository) GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Pl
 	}
 
 	return plans, nil
+}
+
+func (r *repository) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	query := `
+	DELETE FROM plans
+	WHERE id = $1 AND user_id = $2
+	`
+
+	result, err := r.db.ExecContext(ctx, query, id, userID)
+	if err != nil {
+		return errorutils.AnalyzeDBErr(err)
+	}
+
+	// Check if any rows were affected (plan exists and belongs to user)
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return errorutils.AnalyzeDBErr(err)
+	}
+
+	if rowsAffected == 0 {
+		return constants.ErrNotFound
+	}
+
+	return nil
 }

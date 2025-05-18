@@ -65,6 +65,7 @@ func SetupRouter() *gin.Engine {
 	planRoutes.GET("", planHandler.GetAll)
 	planRoutes.POST("", planHandler.Create)
 	planRoutes.PATCH("/:id", planHandler.Update)
+	planRoutes.DELETE("/:id", planHandler.Delete)
 
 	// --- CHECKLIST ---
 
@@ -77,6 +78,7 @@ func SetupRouter() *gin.Engine {
 	// TODO: remove after test
 	checkListRoutes := api.Group("/plans/:id/checklists")
 	checkListRoutes.GET("", checkListHandler.GetAll)
+	checkListRoutes.GET("/archived", checkListHandler.GetAllArchived)
 	checkListRoutes.GET("/:checklist_id", checkListHandler.GetByID)
 	checkListRoutes.POST("", checkListHandler.Create)
 	checkListRoutes.PATCH("/:checklist_id", checkListHandler.Update)
@@ -108,20 +110,4 @@ func SetupRouter() *gin.Engine {
 	jobManager.StartAll()
 
 	return router
-}
-
-type testJob1 struct {
-}
-
-func (j *testJob1) Start() {
-}
-func (j *testJob1) Stop() {
-}
-
-type testJob2 struct {
-}
-
-func (j *testJob2) Start() {
-}
-func (j *testJob2) Stop() {
 }

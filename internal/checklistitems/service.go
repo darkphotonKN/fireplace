@@ -20,6 +20,7 @@ type Repository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetAll(ctx context.Context, scope *string) ([]*models.ChecklistItem, error)
 	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
+	GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error)
 	CountItems(ctx context.Context) (int, error)
 }
@@ -43,6 +44,17 @@ func (s *service) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *s
 	}
 
 	return s.repo.GetAllByPlanId(ctx, planId, scope)
+}
+
+func (s *service) GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
+	// Validate scope if provided
+	if scope != nil {
+		if *scope != string(constants.ScopeLongterm) && *scope != string(constants.ScopeDaily) {
+			return nil, fmt.Errorf("scope must be either 'daily' or 'longterm'")
+		}
+	}
+
+	return s.repo.GetAllArchivedByPlanId(ctx, planId, scope)
 }
 
 func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error) {

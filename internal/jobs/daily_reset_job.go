@@ -29,8 +29,7 @@ func NewDailyResetJob(checklistService ChecklistDailyResetService) *DailyResetJo
 func (j *DailyResetJob) Start() {
 	fmt.Println("Starting daily reset jobs.")
 
-	// Schedule reset at 18:00 every day (second minute hour day month weekday)
-	jobID, err := j.cron.AddFunc("0 0 16 * * *", func() {
+	jobID, err := j.cron.AddFunc("0 0 15 * * *", func() {
 		fmt.Println("Running daily job...")
 		ctx := context.Background()
 		err := j.checklistService.ResetDailyItems(ctx)

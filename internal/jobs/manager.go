@@ -9,7 +9,6 @@ type Manager struct {
 	jobs     []Job
 	stopChan chan bool
 	mu       sync.Mutex
-	wg       sync.WaitGroup
 }
 
 type Job interface {
@@ -27,15 +26,15 @@ func NewManager() *Manager {
 // starts all jobs
 func (m *Manager) StartAll() {
 	for _, job := range m.jobs {
+		j := job // prevent variable capture issue
 		go func() {
-			job.Start()
+			j.Start()
 			<-m.stopChan
 			fmt.Println("stopping ongoing channels")
-			job.Stop()
+			j.Stop()
 			return
 		}()
 	}
-
 }
 
 // starts all jobs

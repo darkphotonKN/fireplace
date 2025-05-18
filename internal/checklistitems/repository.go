@@ -23,9 +23,10 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
 	baseQuery := `
-	SELECT id, description, done, sequence, scope, scheduled_time, created_at, updated_at, plan_id
+	SELECT id, description, done, sequence, scope, scheduled_time, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
+	AND archived = false
 	`
 
 	// Add scope filtering if provided
@@ -37,6 +38,36 @@ func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope
 	}
 
 	fmt.Printf("Args: %v\n", args)
+
+	// Always add ordering
+	baseQuery += `ORDER BY sequence ASC`
+
+	var items []*models.ChecklistItem
+	err := s.db.SelectContext(ctx, &items, baseQuery, args...)
+	if err != nil {
+		return nil, errorutils.AnalyzeDBErr(err)
+	}
+
+	return items, nil
+}
+
+func (s *repository) GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
+	baseQuery := `
+	SELECT id, description, done, sequence, scope, scheduled_time, archived, created_at, updated_at, plan_id
+	FROM checklist_items
+	WHERE plan_id = $1
+	AND archived = true
+	`
+
+	// Add scope filtering if provided
+	args := []interface{}{planId}
+	if scope != nil {
+		baseQuery += `AND scope = $2
+	`
+		args = append(args, *scope)
+	}
+
+	fmt.Printf("Args for archived items: %v\n", args)
 
 	// Always add ordering
 	baseQuery += `ORDER BY sequence ASC`
@@ -163,18 +194,20 @@ func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) er
 		description = COALESCE(:description, description),
 		done = COALESCE(:done, done),
 		scope = COALESCE(:scope, scope),
-		archived = COALESCE(:archived, archived)
-	`
+		archived = COALESCE(:archived, archived),`
 
 	// check if scheduled time exists, otherwise set it to nil to remove scheduled time
 	if req.ScheduledTime == nil {
-		query += "\tscheduled_time = NULL"
+		query += `
+		scheduled_time = NULL`
 	} else {
-		query += "\tscheduled_time = :scheduled_time"
+		query += `
+		scheduled_time = :scheduled_time`
 	}
 
 	// always add where clause
-	query += "\nWHERE id = :id"
+	query += `
+	WHERE id = :id`
 
 	item := map[string]interface{}{
 		"id":             id,
@@ -185,6 +218,7 @@ func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) er
 		"archived":       req.Archived,
 	}
 
+	fmt.Printf("Updating id: %+v\n")
 	fmt.Printf("Updating checklist_items with item: %+v\n", item)
 	fmt.Printf("constructed query: %s\n", query)
 

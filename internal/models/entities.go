@@ -32,6 +32,7 @@ type ChecklistItem struct {
 	Sequence      string     `db:"sequence" json:"sequence"`
 	ScheduledTime *time.Time `db:"scheduled_time" json:"scheduledTime,omitempty"`
 	Scope         string     `db:"scope" json:"scope"`
+	Archived      bool       `db:"archived" json:"archived"`
 	PlanID        uuid.UUID  `db:"plan_id" json:"planId"`
 }
 

@@ -2,6 +2,7 @@ package checklistitems
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
@@ -16,6 +17,7 @@ type Handler struct {
 
 type Service interface {
 	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
+	GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error)
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
@@ -51,6 +53,29 @@ func (h *Handler) GetAll(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully retrieved all checklist items.", "result": items})
+}
+
+func (h *Handler) GetAllArchived(c *gin.Context) {
+	planIdParam := c.Param("id")
+
+	planId, err := uuid.Parse(planIdParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Incorrect uuid format."})
+		return
+	}
+
+	scope := c.Query("scope")
+	var scopePtr *string
+	if scope != "" {
+		scopePtr = &scope
+	}
+
+	items, err := h.service.GetAllArchivedByPlanId(c.Request.Context(), planId, scopePtr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get archived checklist items. Error:" + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully retrieved archived checklist items.", "result": items})
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -160,6 +185,7 @@ func (h *Handler) SetSchedule(c *gin.Context) {
 func (h *Handler) Archive(c *gin.Context) {
 	idStr := c.Param("checklist_id")
 	id, err := uuid.Parse(idStr)
+	fmt.Println("Checklist Id was:", idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format", "result": constants.UpdateStatusFailure})
 		return
@@ -172,4 +198,3 @@ func (h *Handler) Archive(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully archived checklist item.", "result": constants.UpdateStatusSuccess})
 }
-
