@@ -23,6 +23,7 @@ type Plan struct {
 	Focus       string    `db:"focus" json:"focus"`
 	Description string    `db:"description" json:"description"`
 	PlanType    string    `db:"plan_type" json:"planType"`
+	DailyReset  bool      `db:"daily_reset" json:"dailyReset"`
 }
 
 type ChecklistItem struct {

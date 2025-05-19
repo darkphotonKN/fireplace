@@ -65,6 +65,7 @@ func SetupRouter() *gin.Engine {
 	planRoutes.GET("", planHandler.GetAll)
 	planRoutes.POST("", planHandler.Create)
 	planRoutes.PATCH("/:id", planHandler.Update)
+	planRoutes.PATCH("/:id/toggle-daily-reset", planHandler.ToggleDailyReset)
 	planRoutes.DELETE("/:id", planHandler.Delete)
 
 	// --- CHECKLIST ---

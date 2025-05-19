@@ -56,3 +56,20 @@ func (s *service) GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Plan,
 func (s *service) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
 	return s.repo.Delete(ctx, id, userID)
 }
+
+func (s *service) ToggleDailyReset(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	// get corresponding plan, check the daily reset and flip it with an update
+
+	plan, err := s.GetById(ctx, id)
+
+	if err != nil {
+		return err
+	}
+
+	// update the daily reset setting to opposite
+	flippedResetState := !plan.DailyReset
+
+	return s.repo.Update(ctx, id, UpdatePlanReq{
+		DailyReset: &flippedResetState,
+	}, userID)
+}

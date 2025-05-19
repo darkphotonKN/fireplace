@@ -20,6 +20,7 @@ type Service interface {
 	Update(ctx context.Context, id uuid.UUID, req UpdatePlanReq, userID uuid.UUID) error
 	Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 	GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Plan, error)
+	ToggleDailyReset(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 }
 
 func NewHandler(service Service) *Handler {
@@ -152,4 +153,26 @@ func (h *Handler) Delete(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully deleted plan"})
+}
+
+// ToggleDailyReset toggles the daily reset setting for a plan
+func (h *Handler) ToggleDailyReset(c *gin.Context) {
+	// Get plan ID from URL parameter
+	idParam := c.Param("id")
+	id, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"statusCode": http.StatusBadRequest, "message": fmt.Sprintf("Error with id %s, not a valid uuid.", idParam)})
+		return
+	}
+
+	// TODO: static now, will come from jwt in future
+	userId, err := uuid.Parse("11111111-1111-1111-1111-111111111111")
+
+	// Toggle daily reset
+	if err := h.service.ToggleDailyReset(c.Request.Context(), id, userId); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"statusCode": http.StatusInternalServerError, "message": "Failed to toggle daily reset", "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully toggled daily reset"})
 }

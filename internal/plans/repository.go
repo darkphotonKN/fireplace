@@ -27,6 +27,7 @@ func (r *repository) GetById(ctx context.Context, id uuid.UUID) (*models.Plan, e
 		description, 
 		focus, 
 		plan_type, 
+		daily_reset,
 		created_at, 
 		updated_at
 	FROM plans
@@ -90,7 +91,8 @@ func (r *repository) Update(ctx context.Context, id uuid.UUID, req UpdatePlanReq
 	UPDATE plans SET 
 		name = COALESCE(:name, name), 
 		description = COALESCE(:description, description),
-		focus = COALESCE(:focus, focus)
+		focus = COALESCE(:focus, focus),
+		daily_reset = COALESCE(:daily_reset, daily_reset)
 	WHERE id = :id AND user_id = :user_id
 	`
 
@@ -100,6 +102,7 @@ func (r *repository) Update(ctx context.Context, id uuid.UUID, req UpdatePlanReq
 		"name":        req.Name,
 		"description": req.Description,
 		"focus":       req.Focus,
+		"daily_reset": req.DailyReset,
 		"user_id":     userID,
 	}
 
@@ -121,6 +124,7 @@ func (r *repository) GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Pl
 		description,
 		focus,
 		plan_type,
+		daily_reset,
 		created_at,
 		updated_at
 	FROM plans

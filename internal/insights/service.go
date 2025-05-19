@@ -94,6 +94,9 @@ func (s *service) AutocompleteChecklistSuggestion(focus string) (string, error) 
 	return "", nil
 }
 
+/**
+* Takes a string prompt and converts it into a protocol for plan and checklist service to create a custom tailored plan.
+**/
 func (s *service) GenerateDailySummary() {
 }
 

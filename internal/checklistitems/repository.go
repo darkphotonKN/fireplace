@@ -40,15 +40,12 @@ func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope
 	if upcoming != nil {
 		interval := fmt.Sprintf("'1 %s'", *upcoming)
 
-		fmt.Println("constructed interval:", interval)
 		query += fmt.Sprintf(`
 			AND scheduled_time IS NOT NULL 
 	    AND scheduled_time >= CURRENT_TIMESTAMP
 			AND scheduled_time <= CURRENT_TIMESTAMP + INTERVAL %s
 		`, interval)
 	}
-
-	fmt.Printf("Args: %v\n", args)
 
 	// Always add ordering
 	query += `ORDER BY sequence ASC`
@@ -289,6 +286,38 @@ func (s *repository) BatchUpdate(ctx context.Context, planId uuid.UUID, done *bo
 	if err != nil {
 		fmt.Printf("Error when updating all checklist items: %s\n", err.Error())
 
+		return errorutils.AnalyzeDBErr(err)
+	}
+
+	return nil
+}
+
+/**
+* Reset all checklist items with daily reset column set as true for all plans under a user.
+**/
+func (r *repository) BulkResetDailyItems(ctx context.Context) error {
+	query := `
+	WITH items_to_update AS (
+	SELECT 
+		checklist_items.id as id,
+		checklist_items.done as done,
+		checklist_items.scope as scope,
+		plans.daily_reset as daily_reset
+	FROM checklist_items
+	JOIN plans ON checklist_items.plan_id = plans.id
+	WHERE done = true 
+	AND daily_reset = true
+	AND scope = 'daily'
+	)
+
+	UPDATE checklist_items SET
+		done = false
+	WHERE id IN (SELECT id FROM items_to_update)
+	`
+
+	_, err := r.db.ExecContext(ctx, query)
+
+	if err != nil {
 		return errorutils.AnalyzeDBErr(err)
 	}
 

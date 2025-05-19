@@ -11,5 +11,6 @@ type UpdatePlanReq struct {
 	Name        *string `json:"name,omitempty"`
 	Focus       *string `json:"focus,omitempty"`
 	Description *string `json:"description,omitempty"`
+	DailyReset  *bool   `json:"dailyReset,omitempty"`
 }
 

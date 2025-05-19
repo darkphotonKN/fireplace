@@ -23,6 +23,7 @@ type Repository interface {
 	GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error)
 	CountItems(ctx context.Context) (int, error)
+	BulkResetDailyItems(ctx context.Context) error
 }
 
 func NewService(repo Repository) *service {
@@ -127,28 +128,31 @@ func (s *service) SetSchedule(ctx context.Context, id uuid.UUID, req SetSchedule
 * Resets the daily items from done true to false so that they can be repeated.
 **/
 func (s *service) ResetDailyItems(ctx context.Context) error {
-	daily := string(constants.ScopeDaily)
+	// NOTE: old implementation
+	// daily := string(constants.ScopeDaily)
+	//
+	// items, err := s.GetAll(ctx, &daily)
+	// if err != nil {
+	// 	return err
+	// }
+	//
+	// for _, item := range items {
+	// 	// update done to false, if already completed
+	// 	if item.Done {
+	// 		notDone := false
+	// 		err := s.Update(ctx, item.ID, UpdateReq{
+	// 			Done: &notDone,
+	// 		})
+	//
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 	}
+	// }
+	//
+	// return nil
 
-	items, err := s.GetAll(ctx, &daily)
-	if err != nil {
-		return err
-	}
-
-	for _, item := range items {
-		// update done to false, if already completed
-		if item.Done {
-			notDone := false
-			err := s.Update(ctx, item.ID, UpdateReq{
-				Done: &notDone,
-			})
-
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	return s.repo.BulkResetDailyItems(ctx)
 }
 
 func (s *service) Archive(ctx context.Context, id uuid.UUID) error {
