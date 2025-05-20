@@ -51,13 +51,15 @@ func (r *repository) Create(ctx context.Context, plan models.Plan) (*models.Plan
 		name, 
 		description,
 		focus,
-		plan_type
+		plan_type,
+		daily_reset
 	) VALUES (
 		:user_id, 
 		:name, 
 		:description,
 		:focus,
-		:plan_type
+		:plan_type,
+		:daily_reset
 	) RETURNING 
 		id, 
 		user_id, 
@@ -65,6 +67,7 @@ func (r *repository) Create(ctx context.Context, plan models.Plan) (*models.Plan
 		description, 
 		focus, 
 		plan_type, 
+		daily_reset,
 		created_at, 
 		updated_at
 	`

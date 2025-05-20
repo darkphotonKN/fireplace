@@ -2,7 +2,9 @@ package plans
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/darkphotonKN/fireplace/internal/constants"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
 )
@@ -30,6 +32,15 @@ func (s *service) GetById(ctx context.Context, id uuid.UUID) (*models.Plan, erro
 }
 
 func (s *service) Create(ctx context.Context, req CreatePlanReq, userID uuid.UUID) (*models.Plan, error) {
+
+	// default to true if its learning based, but false if its development based
+	dailyReset := true
+
+	fmt.Printf("%s vs %s", constants.PlanType(req.PlanType), constants.TypeDevelopment)
+	if constants.PlanType(req.PlanType) == constants.TypeDevelopment {
+		dailyReset = false
+	}
+
 	// Create a plan model from the request with user ID from auth (static for now)
 	plan := models.Plan{
 		UserID:      userID,
@@ -37,6 +48,7 @@ func (s *service) Create(ctx context.Context, req CreatePlanReq, userID uuid.UUI
 		Focus:       req.Focus,
 		Description: req.Description,
 		PlanType:    req.PlanType,
+		DailyReset:  dailyReset,
 	}
 
 	// Call repository to create the plan

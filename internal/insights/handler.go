@@ -57,5 +57,4 @@ func (h *Handler) GenerateDailySuggestions(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "successfully generated completion", "result": res})
-
 }
