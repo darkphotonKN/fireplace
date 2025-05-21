@@ -32,7 +32,7 @@ type YoutubeVideoFinder struct {
 }
 
 const (
-	defaultBaseUrl = "http://www.youtube.com"
+	defaultBaseUrl = "https://www.cloud-interactive.com/"
 )
 
 func NewYoutubeVideoFinder() (Finder, error) {
@@ -151,37 +151,43 @@ func parseHtml(htmlBinary []byte) (links []string, err error) {
 
 	// walk through html tree
 	fmt.Printf("\nStarting Html Node %+v\n\n", htmlNode)
-	walkTree(htmlNode)
+	result := walkTree(htmlNode, make([]string, 0))
+
+	fmt.Printf("\nFinal Crawled Links: %+v\n\n", result)
 
 	return nil, nil
 }
 
-func walkTree(node *html.Node) string {
-	fmt.Printf("\nStarting Html Node %+v\n\n", node)
+func walkTree(node *html.Node, links []string) []string {
+	fmt.Printf("\nHtml Node %+v\n\n", node)
 
 	// base case - end if nil
 	if node == nil {
-		return ""
+		return nil
+	}
+
+	// traverse left
+	if node.FirstChild != nil {
+		return walkTree(node.FirstChild, links)
+	}
+
+	// traverse right
+	if node.NextSibling != nil {
+		return walkTree(node.NextSibling, links)
 	}
 
 	// using pre-order traversal, so "visit" node first
 	// check if its an element tag
-	fmt.Printf("Checking type: %+v and data: %s\n", node.Type, node.Data)
+	fmt.Printf("Checking type: %+v\n", node.Type)
 
 	if node.Type == html.ElementNode && node.Data == "a" {
 		// visit node
 		for _, attribute := range node.Attr {
 			if attribute.Key == "href" {
 				fmt.Printf("Found href, value was: %s\n", attribute.Val)
-				return attribute.Val
+				return append(links, attribute.Val)
 			}
 		}
 	}
-
-	// traverse left
-	if node.FirstChild != nil {
-		return walkTree(node.FirstChild)
-	}
-
-	return ""
+	return nil
 }
