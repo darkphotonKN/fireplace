@@ -1,11 +1,14 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/ai"
 	"github.com/darkphotonKN/fireplace/internal/checklistitems"
+	"github.com/darkphotonKN/fireplace/internal/concepts"
+	"github.com/darkphotonKN/fireplace/internal/discovery"
 	"github.com/darkphotonKN/fireplace/internal/insights"
 	"github.com/darkphotonKN/fireplace/internal/jobs"
 	"github.com/darkphotonKN/fireplace/internal/plans"
@@ -37,6 +40,11 @@ func SetupRouter() *gin.Engine {
 	}))
 	// base route
 	api := router.Group("/api")
+
+	// TODO: testing crawler
+	finder, _ := discovery.NewYoutubeVideoFinder()
+
+	finder.FindResources(context.Background(), []concepts.Concept{})
 
 	// --- USER ---
 

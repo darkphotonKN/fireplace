@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/darkphotonKN/fireplace/internal/concepts"
 	"github.com/darkphotonKN/fireplace/internal/constants"
+	"golang.org/x/net/html"
 )
 
 type Resource struct {
@@ -50,7 +52,15 @@ func NewYoutubeVideoFinder() (Finder, error) {
 func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []concepts.Concept) ([]Resource, error) {
 
 	// start up crawlers and find at least 5 relevant videos
-	f.crawler.CrawlPath(ctx, "/")
+	resourceByte, err := f.crawler.CrawlPath(ctx, "/")
+
+	if err != nil {
+		return nil, err
+	}
+
+	_, _ = parseHtml(resourceByte)
+
+	fmt.Printf("Resourc:")
 
 	return nil, nil
 }
@@ -102,6 +112,7 @@ func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, e
 		return nil, err
 	}
 
+	fmt.Println("Crawling url:", resolvedURL)
 	// Create HTTP request with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, resolvedURL, nil)
 	if err != nil {
@@ -129,4 +140,48 @@ func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, e
 	}
 
 	return body, nil
+}
+
+func parseHtml(htmlBinary []byte) (links []string, err error) {
+	htmlNode, err := html.Parse(bytes.NewReader(htmlBinary))
+
+	if err != nil {
+		return nil, err
+	}
+
+	// walk through html tree
+	fmt.Printf("\nStarting Html Node %+v\n\n", htmlNode)
+	walkTree(htmlNode)
+
+	return nil, nil
+}
+
+func walkTree(node *html.Node) string {
+	fmt.Printf("\nStarting Html Node %+v\n\n", node)
+
+	// base case - end if nil
+	if node == nil {
+		return ""
+	}
+
+	// using pre-order traversal, so "visit" node first
+	// check if its an element tag
+	fmt.Printf("Checking type: %+v and data: %s\n", node.Type, node.Data)
+
+	if node.Type == html.ElementNode && node.Data == "a" {
+		// visit node
+		for _, attribute := range node.Attr {
+			if attribute.Key == "href" {
+				fmt.Printf("Found href, value was: %s\n", attribute.Val)
+				return attribute.Val
+			}
+		}
+	}
+
+	// traverse left
+	if node.FirstChild != nil {
+		return walkTree(node.FirstChild)
+	}
+
+	return ""
 }
