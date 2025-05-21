@@ -159,35 +159,34 @@ func parseHtml(htmlBinary []byte) (links []string, err error) {
 }
 
 func walkTree(node *html.Node, links []string) []string {
-	fmt.Printf("\nHtml Node %+v\n\n", node)
-
 	// base case - end if nil
 	if node == nil {
-		return nil
-	}
-
-	// traverse left
-	if node.FirstChild != nil {
-		return walkTree(node.FirstChild, links)
-	}
-
-	// traverse right
-	if node.NextSibling != nil {
-		return walkTree(node.NextSibling, links)
+		return links
 	}
 
 	// using pre-order traversal, so "visit" node first
 	// check if its an element tag
-	fmt.Printf("Checking type: %+v\n", node.Type)
+	// fmt.Printf("links in this recurse: %+v\n", links)
 
 	if node.Type == html.ElementNode && node.Data == "a" {
 		// visit node
 		for _, attribute := range node.Attr {
 			if attribute.Key == "href" {
 				fmt.Printf("Found href, value was: %s\n", attribute.Val)
-				return append(links, attribute.Val)
+				links = append(links, attribute.Val)
 			}
 		}
 	}
-	return nil
+
+	// traverse left
+	if node.FirstChild != nil {
+		links = walkTree(node.FirstChild, links)
+	}
+
+	// traverse right
+	if node.NextSibling != nil {
+		links = walkTree(node.NextSibling, links)
+	}
+
+	return links
 }

@@ -44,7 +44,7 @@ func SetupRouter() *gin.Engine {
 	// TODO: testing crawler
 	finder, _ := discovery.NewYoutubeVideoFinder()
 
-	finder.FindResources(context.Background(), []concepts.Concept{})
+	go finder.FindResources(context.Background(), []concepts.Concept{})
 
 	// --- USER ---
 
