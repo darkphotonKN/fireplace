@@ -34,14 +34,14 @@ type InsightsYoutubeVideoFinder interface {
 type Repository interface {
 }
 
-func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService ChecklistInsightsService, planService plans.Service) Service {
-
+func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService ChecklistInsightsService, planService plans.Service, youtubeVideoFinder InsightsYoutubeVideoFinder) Service {
 	return &service{
-		repo:             repo,
-		contentGen:       contentGen,
-		checklistService: checklistService,
-		planService:      planService,
-		basePrompt:       "",
+		repo:               repo,
+		contentGen:         contentGen,
+		checklistService:   checklistService,
+		planService:        planService,
+		basePrompt:         "",
+		youtubeVideoFinder: youtubeVideoFinder,
 	}
 }
 
@@ -185,7 +185,7 @@ func (s *service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) 
 /**
 * Finds the focus and recent checklist items to find relevant search terms.
 **/
-func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.UUID) ([]string, error) {
+func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.UUID) ([]discovery.Resource, error) {
 	// gather relevant data for constructing prompt
 	focus, checklistPrompt, err := s.AcquireGenRelevantData(ctx, planId)
 
@@ -204,7 +204,6 @@ func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.U
 	`, focus, checklistPrompt)
 
 	searchTermsStr, err := s.contentGen.Generate(message)
-	fmt.Println("Ran generation successfully 2")
 
 	if err != nil {
 		return nil, err
@@ -226,7 +225,12 @@ func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.U
 
 	fmt.Sprintf("\nMapped to Concepts: %+v\n\n", concepts)
 
-	s.youtubeVideoFinder.FindResources(ctx, concepts)
+	resources, err := s.youtubeVideoFinder.FindResources(ctx, concepts)
 
-	return searchTerms, nil
+	if err != nil {
+		fmt.Println("Error when finding resources", err)
+		return nil, err
+	}
+
+	return resources, nil
 }

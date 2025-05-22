@@ -7,6 +7,7 @@ import (
 
 	"github.com/darkphotonKN/fireplace/internal/ai"
 	"github.com/darkphotonKN/fireplace/internal/checklistitems"
+	"github.com/darkphotonKN/fireplace/internal/discovery"
 	"github.com/darkphotonKN/fireplace/internal/insights"
 	"github.com/darkphotonKN/fireplace/internal/jobs"
 	"github.com/darkphotonKN/fireplace/internal/plans"
@@ -100,7 +101,7 @@ func SetupRouter() *gin.Engine {
 	// -- Insights Setup (Checklist Items) --
 	checklistGen := ai.NewChecklistGen()
 	insightsRepo := insights.NewRepository(DB)
-	insightsService := insights.NewService(insightsRepo, checklistGen, checkListService, planService)
+	insightsService := insights.NewService(insightsRepo, checklistGen, checkListService, planService, nil)
 	insightsHandler := insights.NewHandler(insightsService)
 
 	// -- Insight Checklist Routes --
@@ -111,7 +112,11 @@ func SetupRouter() *gin.Engine {
 	// -- Insights Setup (Generating Video Suggestions) --
 
 	searchTermGen := ai.NewSearchTermGenerator()
-	videoInsightsRepoService := insights.NewService(insightsRepo, searchTermGen, checkListService, planService)
+	youtubeVideoFinder, err := discovery.NewYoutubeVideoFinder()
+	if err != nil {
+		fmt.Println("Error when attempting to initialize youtubeVideoFinder", youtubeVideoFinder)
+	}
+	videoInsightsRepoService := insights.NewService(insightsRepo, searchTermGen, checkListService, planService, youtubeVideoFinder)
 	videoInsightsHandler := insights.NewHandler(videoInsightsRepoService)
 
 	// -- Insight Video Routes --

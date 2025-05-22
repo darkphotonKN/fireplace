@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/concepts"
@@ -61,9 +62,12 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 	// TODO: use description for now but later need to formulate entire concepts and spin up
 	// as many goroutines to crawl the searches that match the length of concepts
 
+	fmt.Printf("\nconcepts: %+v\n\n", concepts)
+
 	resourceByte, err := f.crawler.CrawlPath(ctx, concepts[0].Description)
 
 	if err != nil {
+		fmt.Println("Error when trying to crawl url", err)
 		return nil, err
 	}
 
@@ -83,6 +87,7 @@ type BasicWebCrawler struct {
 func NewBasicWebCrawler(baseURLStr string) (*BasicWebCrawler, error) {
 	// Parse the base URL once at initialization
 	baseURL, err := url.Parse(baseURLStr)
+
 	if err != nil {
 		return nil, fmt.Errorf("invalid base URL: %w", err)
 	}
@@ -115,13 +120,19 @@ func (c *BasicWebCrawler) ResolvePath(path string) (string, error) {
 
 // Crawl fetches a webpage and returns its content
 func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, error) {
-	// Resolve the URL properly
-	resolvedURL, err := c.ResolvePath(path)
-	if err != nil {
-		return nil, err
-	}
 
-	fmt.Println("Crawling url:", resolvedURL)
+	// Resolve the URL properly
+	// resolvedURL, err := c.ResolvePath(path)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// TODO: upgrade to resolved url
+	pathSlice := strings.Split(path, " ")
+	pathNoSpaces := strings.Join(pathSlice, "%20")
+	resolvedURL := c.baseURL.String() + pathNoSpaces
+
+	fmt.Println("Crawling url at:", resolvedURL)
+
 	// Create HTTP request with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, resolvedURL, nil)
 	if err != nil {

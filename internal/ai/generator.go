@@ -73,6 +73,5 @@ func (g *Generator) Generate(message string) (string, error) {
 
 	fmt.Printf("\nresult generated content: \n%+v\n\n", resp.Choices[0].Message.Content)
 
-	fmt.Println("Ran generation successfully")
 	return resp.Choices[0].Message.Content, nil
 }

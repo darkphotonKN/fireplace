@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/darkphotonKN/fireplace/internal/discovery"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -16,7 +17,7 @@ type Service interface {
 	AutocompleteChecklistSuggestion(currentTxt string) (string, error)
 	GenerateSuggestions(ctx context.Context, planId uuid.UUID) (string, error)
 	GenerateDailySuggestions(ctx context.Context, planId uuid.UUID) ([]string, error)
-	GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.UUID) ([]string, error)
+	GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.UUID) ([]discovery.Resource, error)
 }
 
 func NewHandler(service Service) *Handler {
