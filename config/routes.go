@@ -38,6 +38,7 @@ func SetupRouter() *gin.Engine {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+
 	// base route
 	api := router.Group("/api")
 

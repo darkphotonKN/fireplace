@@ -120,28 +120,11 @@ func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.U
     Format your response as a single task item with no additional commentary, explanation or punctuation at the end.
 		`
 
-	// gets relavant planID and checklistItems
-	plan, err := s.planService.GetById(ctx, planId)
-	if err != nil {
-		fmt.Println("Error when retrieving plan for generating checklist suggestion:", err)
-		return "", err
-	}
-
-	// get entire checklist as context
-	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planId, nil, nil)
+	// gather relevant data for constructing prompt
+	focus, checklistPrompt, err := s.AcquireGenRelevantData(ctx, planId)
 
 	if err != nil {
-		fmt.Println("Error when retrieving all checklist item for generating checklist suggestion.")
 		return "", err
-	}
-
-	// gets relavant focus from plan
-	focus := plan.Focus
-	checklistPrompt := ""
-
-	// construct the prompt context
-	for _, item := range checklistItems {
-		checklistPrompt += fmt.Sprintf("A %s task: %s\n", item.Scope, item.Description)
 	}
 
 	// focus - the primary topic input by the user for their plan.
@@ -159,9 +142,43 @@ func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.U
 }
 
 /**
+* grabs relevant plan, checklist, focus data for LLM searches.
+**/
+func (s *service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) (focus string, checklistItemPrompt string, error error) {
+
+	// gets relavant planID and checklistItems
+	plan, err := s.planService.GetById(ctx, planId)
+	if err != nil {
+		fmt.Println("Error when retrieving plan for generating checklist suggestion:", err)
+		return "", "", err
+	}
+
+	// get entire checklist as context
+	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planId, nil, nil)
+
+	if err != nil {
+		fmt.Println("Error when retrieving all checklist item for generating checklist suggestion.")
+		return "", "", err
+	}
+
+	// gets relavant focus from plan
+	f := plan.Focus
+
+	c := ""
+
+	// construct the prompt context
+	for _, item := range checklistItems {
+		c += fmt.Sprintf("A %s task: %s\n", item.Scope, item.Description)
+	}
+
+	return f, c, nil
+}
+
+/**
 * Finds the focus and recent checklist items to find relevant search terms.
 **/
 
 func (s *service) GenerateRelevantSearchTerms() ([]string, error) {
+
 	return nil, nil
 }
