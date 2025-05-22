@@ -95,7 +95,7 @@ func (s *service) AutocompleteChecklistSuggestion(focus string) (string, error) 
 }
 
 /**
-* Takes a string prompt and converts it into a protocol for plan and checklist service to create a custom tailored plan.
+* Takes a string prompt and converts it into a protocol for plan and checklist service to create a custom tailored plan.create a custom tailored plan.
 **/
 func (s *service) GenerateDailySummary() {
 }
@@ -156,4 +156,12 @@ func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.U
 	fmt.Printf("\nfinal prompt was: \n%s\n\n", prompt)
 
 	return prompt, nil
+}
+
+/**
+* Finds the focus and recent checklist items to find relevant search terms.
+**/
+
+func (s *service) GenerateRelevantSearchTerms() ([]string, error) {
+	return nil, nil
 }

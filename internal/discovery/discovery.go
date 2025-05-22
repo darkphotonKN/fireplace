@@ -28,21 +28,30 @@ type Finder interface {
 }
 
 type YoutubeVideoFinder struct {
-	crawler *BasicWebCrawler
+	crawler        *BasicWebCrawler
+	baseSearchUrl  string
+	insightService InsightService
+}
+
+type InsightService interface {
+	GenerateRelevantSearchTerms() ([]string, error)
 }
 
 const (
-	defaultBaseUrl = "https://www.cloud-interactive.com/"
+	defaultBaseUrl   = "https://www.youtube.com/"
+	youtubeSearchUrl = "https://www.youtube.com/results?search_query="
 )
 
-func NewYoutubeVideoFinder() (Finder, error) {
+func NewYoutubeVideoFinder(insightsService InsightService) (Finder, error) {
 	crawler, err := NewBasicWebCrawler(defaultBaseUrl)
 	if err != nil {
 		return nil, err
 	}
 
 	return &YoutubeVideoFinder{
-		crawler: crawler,
+		crawler:        crawler,
+		baseSearchUrl:  youtubeSearchUrl,
+		insightService: insightsService,
 	}, nil
 }
 
@@ -155,7 +164,7 @@ func parseHtml(htmlBinary []byte) (links []string, err error) {
 
 	fmt.Printf("\nFinal Crawled Links: %+v\n\n", result)
 
-	return nil, nil
+	return result, nil
 }
 
 func walkTree(node *html.Node, links []string) []string {
@@ -166,7 +175,6 @@ func walkTree(node *html.Node, links []string) []string {
 
 	// using pre-order traversal, so "visit" node first
 	// check if its an element tag
-	// fmt.Printf("links in this recurse: %+v\n", links)
 
 	if node.Type == html.ElementNode && node.Data == "a" {
 		// visit node

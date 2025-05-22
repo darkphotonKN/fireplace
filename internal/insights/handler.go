@@ -11,6 +11,7 @@ import (
 type Handler struct {
 	service Service
 }
+
 type Service interface {
 	AutocompleteChecklistSuggestion(currentTxt string) (string, error)
 	GenerateSuggestions(ctx context.Context, planId uuid.UUID) (string, error)
