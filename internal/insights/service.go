@@ -200,10 +200,11 @@ func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.U
 	Current checklist items for this task: 
 	%s
 
-	Please use this information to now provide exactly 5 relevant search terms.
+	Please use this information to now provide exactly 3 relevant search terms.
 	`, focus, checklistPrompt)
 
 	searchTermsStr, err := s.contentGen.Generate(message)
+	fmt.Println("Ran generation successfully 2")
 
 	if err != nil {
 		return nil, err

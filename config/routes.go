@@ -111,8 +111,7 @@ func SetupRouter() *gin.Engine {
 	// -- Insights Setup (Generating Video Suggestions) --
 
 	searchTermGen := ai.NewSearchTermGenerator()
-	videoInsightsRepo := insights.NewRepository(DB)
-	videoInsightsRepoService := insights.NewService(videoInsightsRepo, searchTermGen, checkListService, planService)
+	videoInsightsRepoService := insights.NewService(insightsRepo, searchTermGen, checkListService, planService)
 	videoInsightsHandler := insights.NewHandler(videoInsightsRepoService)
 
 	// -- Insight Video Routes --
