@@ -28,30 +28,23 @@ type Finder interface {
 }
 
 type YoutubeVideoFinder struct {
-	crawler        *BasicWebCrawler
-	baseSearchUrl  string
-	insightService InsightService
-}
-
-type InsightService interface {
-	GenerateRelevantSearchTerms() ([]string, error)
+	crawler       *BasicWebCrawler
+	baseSearchUrl string
 }
 
 const (
-	defaultBaseUrl   = "https://www.youtube.com/"
 	youtubeSearchUrl = "https://www.youtube.com/results?search_query="
 )
 
-func NewYoutubeVideoFinder(insightsService InsightService) (Finder, error) {
-	crawler, err := NewBasicWebCrawler(defaultBaseUrl)
+func NewYoutubeVideoFinder() (Finder, error) {
+	crawler, err := NewBasicWebCrawler(youtubeSearchUrl)
 	if err != nil {
 		return nil, err
 	}
 
 	return &YoutubeVideoFinder{
-		crawler:        crawler,
-		baseSearchUrl:  youtubeSearchUrl,
-		insightService: insightsService,
+		crawler:       crawler,
+		baseSearchUrl: youtubeSearchUrl,
 	}, nil
 }
 
@@ -60,8 +53,15 @@ func NewYoutubeVideoFinder(insightsService InsightService) (Finder, error) {
 **/
 func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []concepts.Concept) ([]Resource, error) {
 
+	if concepts == nil || len(concepts) == 0 {
+		return nil, fmt.Errorf("Require concepts to start search to find relevant youtube videos.")
+	}
+
 	// start up crawlers and find at least 5 relevant videos
-	resourceByte, err := f.crawler.CrawlPath(ctx, "/")
+	// TODO: use description for now but later need to formulate entire concepts and spin up
+	// as many goroutines to crawl the searches that match the length of concepts
+
+	resourceByte, err := f.crawler.CrawlPath(ctx, concepts[0].Description)
 
 	if err != nil {
 		return nil, err

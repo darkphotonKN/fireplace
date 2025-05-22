@@ -30,17 +30,17 @@ const (
 	- Should progress from foundational to more advanced concepts when applicable
 
 	RESPONSE FORMAT:
-	- Provide exactly 5 search terms
+	- Provide exactly the specified number of search terms
 	- One term per line
 	- No bullets, numbering, or additional formatting
 	- No explanations or commentary
-	- Terms should be ready to use as YouTube search queries
+	- Terms should be ready to use as YouTube search queries, as if user typed it in to the youtube search bar
 
 	Focus on finding content that will directly help the user make progress on their current project and learning objectives.
 	`
 )
 
-func NewSearchTermGenerator(clientKey string) interfaces.ContentGenerator {
+func NewSearchTermGenerator() interfaces.ContentGenerator {
 	return &SearchTermsGenerator{
 		Generator: NewGenerator(systemPrompt, os.Getenv("OPENAI_API_KEY")).(*Generator),
 	}

@@ -3,24 +3,32 @@ package insights
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
+	"github.com/darkphotonKN/fireplace/internal/concepts"
+	"github.com/darkphotonKN/fireplace/internal/discovery"
 	"github.com/darkphotonKN/fireplace/internal/interfaces"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/darkphotonKN/fireplace/internal/plans"
 )
 
 type service struct {
-	repo             Repository
-	contentGen       interfaces.ContentGenerator
-	checklistService ChecklistInsightsService
-	planService      plans.Service
-	basePrompt       string
+	repo               Repository
+	contentGen         interfaces.ContentGenerator
+	checklistService   ChecklistInsightsService
+	planService        plans.Service
+	basePrompt         string
+	youtubeVideoFinder InsightsYoutubeVideoFinder
 }
 
 type ChecklistInsightsService interface {
 	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error)
+}
+
+type InsightsYoutubeVideoFinder interface {
+	FindResources(ctx context.Context, concepts []concepts.Concept) ([]discovery.Resource, error)
 }
 
 type Repository interface {
@@ -164,9 +172,9 @@ func (s *service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) 
 	// gets relavant focus from plan
 	f := plan.Focus
 
+	// construct the prompt context with checklist items
 	c := ""
 
-	// construct the prompt context
 	for _, item := range checklistItems {
 		c += fmt.Sprintf("A %s task: %s\n", item.Scope, item.Description)
 	}
@@ -177,8 +185,47 @@ func (s *service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) 
 /**
 * Finds the focus and recent checklist items to find relevant search terms.
 **/
+func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.UUID) ([]string, error) {
+	// gather relevant data for constructing prompt
+	focus, checklistPrompt, err := s.AcquireGenRelevantData(ctx, planId)
 
-func (s *service) GenerateRelevantSearchTerms() ([]string, error) {
+	if err != nil {
+		return nil, err
+	}
 
-	return nil, nil
+	// construct search term prompts
+
+	message := fmt.Sprintf(`
+	The user's focus for this task: %s
+	Current checklist items for this task: 
+	%s
+
+	Please use this information to now provide exactly 5 relevant search terms.
+	`, focus, checklistPrompt)
+
+	searchTermsStr, err := s.contentGen.Generate(message)
+
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Sprintf("\nGenerated Search Terms String: %s\n\n", searchTermsStr)
+
+	// format
+	searchTerms := strings.Split(searchTermsStr, "\n")
+
+	fmt.Sprintf("\nSearch Terms Formatted: %+v\n\n", searchTerms)
+
+	// crawl and find at least 5 suggested videos
+	concepts := make([]concepts.Concept, len(searchTerms))
+
+	for index, searchTerm := range searchTerms {
+		concepts[index].Description = searchTerm
+	}
+
+	fmt.Sprintf("\nMapped to Concepts: %+v\n\n", concepts)
+
+	s.youtubeVideoFinder.FindResources(ctx, concepts)
+
+	return searchTerms, nil
 }

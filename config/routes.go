@@ -1,14 +1,12 @@
 package config
 
 import (
-	"context"
+	// "context"
 	"fmt"
 	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/ai"
 	"github.com/darkphotonKN/fireplace/internal/checklistitems"
-	"github.com/darkphotonKN/fireplace/internal/concepts"
-	"github.com/darkphotonKN/fireplace/internal/discovery"
 	"github.com/darkphotonKN/fireplace/internal/insights"
 	"github.com/darkphotonKN/fireplace/internal/jobs"
 	"github.com/darkphotonKN/fireplace/internal/plans"
@@ -43,9 +41,9 @@ func SetupRouter() *gin.Engine {
 	api := router.Group("/api")
 
 	// TODO: testing crawler
-	finder, _ := discovery.NewYoutubeVideoFinder()
-
-	go finder.FindResources(context.Background(), []concepts.Concept{})
+	// finder, _ := discovery.NewYoutubeVideoFinder()
+	//
+	// go finder.FindResources(context.Background(), []concepts.Concept{})
 
 	// --- USER ---
 
@@ -99,16 +97,26 @@ func SetupRouter() *gin.Engine {
 
 	// --- INSIGHTS ---
 
-	// -- Insights Setup --
+	// -- Insights Setup (Checklist Items) --
 	checklistGen := ai.NewChecklistGen()
 	insightsRepo := insights.NewRepository(DB)
 	insightsService := insights.NewService(insightsRepo, checklistGen, checkListService, planService)
 	insightsHandler := insights.NewHandler(insightsService)
 
-	// -- User Routes --
+	// -- Insight Checklist Routes --
 	insightsRoutes := api.Group("/insights")
 	insightsRoutes.GET("/checklist-suggestion", insightsHandler.GenerateSuggestions)
 	insightsRoutes.GET("/checklist-suggestion-daily", insightsHandler.GenerateDailySuggestions)
+
+	// -- Insights Setup (Generating Video Suggestions) --
+
+	searchTermGen := ai.NewSearchTermGenerator()
+	videoInsightsRepo := insights.NewRepository(DB)
+	videoInsightsRepoService := insights.NewService(videoInsightsRepo, searchTermGen, checkListService, planService)
+	videoInsightsHandler := insights.NewHandler(videoInsightsRepoService)
+
+	// -- Insight Video Routes --
+	insightsRoutes.GET("/suggest-videos", videoInsightsHandler.GenerateSuggestedVideoLinks)
 
 	// --- JOBS ---
 	// TODO: write a job manager for graceful shutdown
