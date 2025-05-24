@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"log"
 	"os"
@@ -13,8 +14,10 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// NOTE: for global db access, do not remove or move inside a function
-var DB *sqlx.DB
+const (
+	maxOpenConnections = 25
+	maxIdleConnections = 5
+)
 
 /**
 * Sets up the Database connection and provides its access as a singleton to
@@ -40,12 +43,16 @@ func InitDB() *sqlx.DB {
 		log.Fatalf("Failed to connect to the database: %v", err)
 	}
 
-	fmt.Println("Connected to the database successfully.")
+	fmt.Printf("Connected to database with connection pool: MaxOpen=%d, MaxIdle=%d\n", maxOpenConnections, maxIdleConnections)
+
+	db.SetMaxOpenConns(maxOpenConnections) // Max 25 concurrent connections
+	db.SetMaxIdleConns(maxIdleConnections) // Keep 5 connections alive when idle
+	db.SetConnMaxLifetime(5 * time.Minute) // Recycle connections every 5 minutes
+	db.SetConnMaxIdleTime(1 * time.Minute) // Close idle connections after 1 minute
 
 	// Run migrations
 	RunMigrations(db)
 
 	// set global instance for the database
-	DB = db
-	return DB
+	return db
 }

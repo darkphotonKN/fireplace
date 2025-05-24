@@ -37,7 +37,6 @@ func (s *service) GetAll(ctx context.Context, scope *string) ([]*models.Checklis
 }
 
 func (s *service) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error) {
-
 	if scope != nil {
 		if *scope != string(constants.ScopeLongterm) && *scope != string(constants.ScopeDaily) {
 			return nil, fmt.Errorf("scope must be either 'daily' or 'longterm'")

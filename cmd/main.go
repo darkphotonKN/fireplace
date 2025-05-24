@@ -25,7 +25,7 @@ func main() {
 	defer db.Close()
 
 	// router setup
-	router := config.SetupRouter()
+	router := config.SetupRouter(db)
 
 	defaultDevPort := ":8080"
 

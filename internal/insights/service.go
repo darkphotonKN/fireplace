@@ -17,13 +17,13 @@ import (
 type service struct {
 	repo               Repository
 	contentGen         interfaces.ContentGenerator
-	checklistService   ChecklistInsightsService
+	checklistService   InsightsChecklistService
 	planService        plans.Service
 	basePrompt         string
 	youtubeVideoFinder InsightsYoutubeVideoFinder
 }
 
-type ChecklistInsightsService interface {
+type InsightsChecklistService interface {
 	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error)
 }
 
@@ -34,7 +34,7 @@ type InsightsYoutubeVideoFinder interface {
 type Repository interface {
 }
 
-func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService ChecklistInsightsService, planService plans.Service, youtubeVideoFinder InsightsYoutubeVideoFinder) Service {
+func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService InsightsChecklistService, planService plans.Service, youtubeVideoFinder InsightsYoutubeVideoFinder) Service {
 	return &service{
 		repo:               repo,
 		contentGen:         contentGen,

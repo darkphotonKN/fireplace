@@ -50,7 +50,7 @@ func NewYoutubeVideoFinder() (Finder, error) {
 }
 
 /**
-* Starts a crawler to find relevant website links concurrently.
+* Starts a crawler to find relevant website links concurrently. Relevance is based on "concepts".
 **/
 func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []concepts.Concept) ([]Resource, error) {
 
@@ -108,7 +108,13 @@ func NewBasicWebCrawler(baseURLStr string) (*BasicWebCrawler, error) {
 
 // ResolvePath properly resolves a URL string against the base URL
 func (c *BasicWebCrawler) ResolvePath(path string) (string, error) {
-	pathURL, err := url.Parse(path)
+
+	// constructing proper path incase of spaces
+	pathSlice := strings.Split(path, " ")
+	pathNoSpaces := strings.Join(pathSlice, "%20")
+	joinedUrl := c.baseURL.String() + pathNoSpaces
+
+	pathURL, err := url.Parse(joinedUrl)
 	if err != nil {
 		return "", err
 	}
@@ -122,14 +128,11 @@ func (c *BasicWebCrawler) ResolvePath(path string) (string, error) {
 func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, error) {
 
 	// Resolve the URL properly
-	// resolvedURL, err := c.ResolvePath(path)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	resolvedURL, err := c.ResolvePath(path)
+	if err != nil {
+		return nil, err
+	}
 	// TODO: upgrade to resolved url
-	pathSlice := strings.Split(path, " ")
-	pathNoSpaces := strings.Join(pathSlice, "%20")
-	resolvedURL := c.baseURL.String() + pathNoSpaces
 
 	fmt.Println("Crawling url at:", resolvedURL)
 
@@ -162,6 +165,7 @@ func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, e
 	return body, nil
 }
 
+// recursive dfs crawler
 func parseHtml(htmlBinary []byte) (links []string, err error) {
 	htmlNode, err := html.Parse(bytes.NewReader(htmlBinary))
 
@@ -178,6 +182,7 @@ func parseHtml(htmlBinary []byte) (links []string, err error) {
 	return result, nil
 }
 
+// recursive walk function for parseHtml
 func walkTree(node *html.Node, links []string) []string {
 	// base case - end if nil
 	if node == nil {

@@ -14,12 +14,13 @@ import (
 	"github.com/darkphotonKN/fireplace/internal/user"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/jmoiron/sqlx"
 )
 
 /**
 * Sets up API prefix route and all routers.
 **/
-func SetupRouter() *gin.Engine {
+func SetupRouter(db *sqlx.DB) *gin.Engine {
 	router := gin.Default()
 
 	// NOTE: debugging middleware
@@ -49,7 +50,7 @@ func SetupRouter() *gin.Engine {
 	// --- USER ---
 
 	// -- User Setup --
-	userRepo := user.NewRepository(DB)
+	userRepo := user.NewRepository(db)
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
 
@@ -63,7 +64,7 @@ func SetupRouter() *gin.Engine {
 	// --- Plan Routes ---
 
 	// -- Plan Setup --
-	planRepo := plans.NewRepository(DB)
+	planRepo := plans.NewRepository(db)
 	planService := plans.NewService(planRepo)
 	planHandler := plans.NewHandler(planService)
 
@@ -79,7 +80,7 @@ func SetupRouter() *gin.Engine {
 	// --- CHECKLIST ---
 
 	// -- Checklist Setup --
-	checkListRepo := checklistitems.NewRepository(DB)
+	checkListRepo := checklistitems.NewRepository(db)
 	checkListService := checklistitems.NewService(checkListRepo)
 	checkListHandler := checklistitems.NewHandler(checkListService)
 
@@ -100,7 +101,7 @@ func SetupRouter() *gin.Engine {
 
 	// -- Insights Setup (Checklist Items) --
 	checklistGen := ai.NewChecklistGen()
-	insightsRepo := insights.NewRepository(DB)
+	insightsRepo := insights.NewRepository(db)
 	insightsService := insights.NewService(insightsRepo, checklistGen, checkListService, planService, nil)
 	insightsHandler := insights.NewHandler(insightsService)
 
