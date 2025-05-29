@@ -132,8 +132,8 @@ func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, e
 	if err != nil {
 		return nil, err
 	}
-	// TODO: upgrade to resolved url
 
+	// TODO: upgrade to resolved url
 	fmt.Println("Crawling url at:", resolvedURL)
 
 	// Create HTTP request with context
@@ -169,6 +169,7 @@ func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, e
 func parseHtml(htmlBinary []byte) (links []string, err error) {
 	htmlNode, err := html.Parse(bytes.NewReader(htmlBinary))
 
+	fmt.Printf("\n\nBody parsed from html: %+v\n\n\n", htmlNode)
 	if err != nil {
 		return nil, err
 	}
