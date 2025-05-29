@@ -71,9 +71,10 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 		return nil, err
 	}
 
-	_, _ = parseHtml(resourceByte)
+	// @TEST: For debugging crawled content
+	debugPageContent(string(resourceByte))
 
-	fmt.Printf("Resourc:")
+	_, _ = parseHtml(resourceByte)
 
 	return nil, nil
 }
@@ -142,9 +143,10 @@ func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, e
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 
-	// Set user agent to avoid being blocked
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+	// set up appropriate headers to avoid being blocked by youtube
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
+	// make request
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching URL %s: %w", resolvedURL, err)
@@ -214,4 +216,38 @@ func walkTree(node *html.Node, links []string) []string {
 	}
 
 	return links
+}
+
+// for debugging
+func debugPageContent(htmlContent string) {
+	// Look for title tag
+	if strings.Contains(htmlContent, "<title>") {
+		start := strings.Index(htmlContent, "<title>") + 7
+		end := strings.Index(htmlContent[start:], "</title>")
+		if end > 0 {
+			title := htmlContent[start : start+end]
+			fmt.Printf("Page title: %s\n", title)
+		}
+	}
+
+	// look for search-specific elements
+	hasSearchResults := strings.Contains(htmlContent, "search-results") ||
+		strings.Contains(htmlContent, "watch?v=")
+	fmt.Printf("Contains search results: %t\n", hasSearchResults)
+
+	// Look for video containers that might be empty
+	hasVideoContainers := strings.Contains(htmlContent, "ytd-video-renderer") ||
+		strings.Contains(htmlContent, "video-title") ||
+		strings.Contains(htmlContent, "ytd-compact-video-renderer")
+	fmt.Printf("Contains video containers: %t\n", hasVideoContainers)
+
+	// Count total links vs video links
+	totalLinks := strings.Count(htmlContent, "href=")
+	videoLinks := strings.Count(htmlContent, "watch?v=")
+	fmt.Printf("Total links: %d, Video links: %d\n", totalLinks, videoLinks)
+
+	// Look for JavaScript indicators
+	hasJavaScript := strings.Contains(htmlContent, "<script") ||
+		strings.Contains(htmlContent, "application/json")
+	fmt.Printf("Contains JavaScript: %t\n", hasJavaScript)
 }
