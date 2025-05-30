@@ -53,7 +53,6 @@ func NewYoutubeVideoFinder() (Finder, error) {
 * Starts a crawler to find relevant website links concurrently. Relevance is based on "concepts".
 **/
 func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []concepts.Concept) ([]Resource, error) {
-
 	if concepts == nil || len(concepts) == 0 {
 		return nil, fmt.Errorf("Require concepts to start search to find relevant youtube videos.")
 	}
@@ -64,6 +63,7 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 
 	fmt.Printf("\nconcepts: %+v\n\n", concepts)
 
+	fmt.Println("Crawl Path at concepts description:", concepts[0].Description)
 	resourceByte, err := f.crawler.CrawlPath(ctx, concepts[0].Description)
 
 	if err != nil {
@@ -195,24 +195,18 @@ func walkTree(node *html.Node, links []string) []string {
 	// using pre-order traversal, so "visit" node first
 	// check if its an element tag
 
-	if node.Type == html.ElementNode && node.Data == "a" {
-		// visit node
-		for _, attribute := range node.Attr {
-			if attribute.Key == "href" {
-				fmt.Printf("Found href, value was: %s\n", attribute.Val)
-				links = append(links, attribute.Val)
+	if node.Type == html.ElementNode {
+		// check all attributes for video IDs
+		for _, attr := range node.Attr {
+			if strings.Contains(attr.Val, "watch?v=") {
+				links = append(links, attr.Val)
 			}
 		}
 	}
 
-	// traverse left
-	if node.FirstChild != nil {
-		links = walkTree(node.FirstChild, links)
-	}
-
-	// traverse right
-	if node.NextSibling != nil {
-		links = walkTree(node.NextSibling, links)
+	// traverse through all exisitng nested children
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		links = walkTree(child, links)
 	}
 
 	return links
@@ -231,22 +225,47 @@ func debugPageContent(htmlContent string) {
 	}
 
 	// look for search-specific elements
-	hasSearchResults := strings.Contains(htmlContent, "search-results") ||
-		strings.Contains(htmlContent, "watch?v=")
+	hasSearchResults := strings.Contains(htmlContent, "watch?v=")
 	fmt.Printf("Contains search results: %t\n", hasSearchResults)
 
-	// Look for video containers that might be empty
+	parts := strings.Split(htmlContent, "watch?v=")
+
+	for i := 1; i < min(5, len(parts)); i++ { // Show first 4 examples
+		// Get 100 chars before and after each "watch?v="
+		before := ""
+		after := ""
+
+		if len(parts[i-1]) > 100 {
+			before = parts[i-1][len(parts[i-1])-100:]
+		} else {
+			before = parts[i-1]
+		}
+
+		if len(parts[i]) > 100 {
+			after = parts[i][:100]
+		} else {
+			after = parts[i]
+		}
+
+		fmt.Printf("\n=== VIDEO LINK CONTEXT %d ===\n", i)
+		fmt.Printf("BEFORE: %s\n", before)
+		fmt.Printf("WATCH?V=")
+		fmt.Printf("AFTER: %s\n", after)
+		fmt.Printf("========================\n")
+	}
+
+	// look for video containers that might be empty
 	hasVideoContainers := strings.Contains(htmlContent, "ytd-video-renderer") ||
 		strings.Contains(htmlContent, "video-title") ||
 		strings.Contains(htmlContent, "ytd-compact-video-renderer")
 	fmt.Printf("Contains video containers: %t\n", hasVideoContainers)
 
-	// Count total links vs video links
+	// count total links vs video links
 	totalLinks := strings.Count(htmlContent, "href=")
 	videoLinks := strings.Count(htmlContent, "watch?v=")
 	fmt.Printf("Total links: %d, Video links: %d\n", totalLinks, videoLinks)
 
-	// Look for JavaScript indicators
+	// look for JavaScript indicators
 	hasJavaScript := strings.Contains(htmlContent, "<script") ||
 		strings.Contains(htmlContent, "application/json")
 	fmt.Printf("Contains JavaScript: %t\n", hasJavaScript)
