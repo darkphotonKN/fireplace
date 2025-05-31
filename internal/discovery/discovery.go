@@ -38,6 +38,7 @@ type YoutubeVideoFinder struct {
 
 const (
 	youtubeSearchUrl = "https://www.youtube.com/results?search_query="
+	youtubeUrl       = "https://www.youtube.com"
 )
 
 func NewYoutubeVideoFinder() (Finder, error) {
@@ -90,7 +91,7 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 		resources[index] = Resource{
 			Title:       "Video " + strconv.Itoa(index+1),
 			Description: "Recommended Video " + strconv.Itoa(index+1),
-			URL:         f.baseSearchUrl + crawledVideoIds[index],
+			URL:         youtubeUrl + crawledVideoIds[index],
 		}
 	}
 
@@ -255,7 +256,7 @@ func extractVideoIdsFromRawHtml(htmlContent string) []string {
 		err := json.Unmarshal([]byte(matchJson), &videoId)
 
 		if err != nil {
-			fmt.Printf("unmarshal err: %s\n", err.Error())
+			fmt.Printf("Unmarshal video url err: %s\n", err.Error())
 			// skip over video
 			continue
 		}
