@@ -227,6 +227,8 @@ func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.U
 
 	resources, err := s.youtubeVideoFinder.FindResources(ctx, concepts)
 
+	fmt.Printf("\nFound resources: %+v\n\n", resources)
+
 	if err != nil {
 		fmt.Println("Error when finding resources", err)
 		return nil, err

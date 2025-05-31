@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,11 +75,26 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 	}
 
 	// @TEST: For debugging crawled content
-	debugPageContent(string(resourceByte))
+	// debugPageContent(string(resourceByte))
 
-	_, _ = parseHtml(resourceByte)
+	// extract videos from fetched raw html
+	crawledVideoIds := extractVideoIdsFromRawHtml(string(resourceByte))
 
-	return nil, nil
+	// no recursive walk for now, as vidoes can't be found in the html DOM nodes
+	// _, _ = parseHtml(resourceByte)
+
+	// grab 3 videos and create 3 resources from them
+	resources := make([]Resource, 3)
+
+	for index := range resources {
+		resources[index] = Resource{
+			Title:       "Video " + strconv.Itoa(index+1),
+			Description: "Recommended Video " + strconv.Itoa(index+1),
+			URL:         f.baseSearchUrl + crawledVideoIds[index],
+		}
+	}
+
+	return resources, nil
 }
 
 type BasicWebCrawler struct {
@@ -234,15 +250,18 @@ func extractVideoIdsFromRawHtml(htmlContent string) []string {
 		fmt.Printf("\nmatch before: %+v\n\n", match)
 
 		matchJson := fmt.Sprintf("{%s\"}", match[0])
+
 		var videoId VideoId
 		err := json.Unmarshal([]byte(matchJson), &videoId)
-		videoIds[index] = videoId.Url
 
 		if err != nil {
 			fmt.Printf("unmarshal err: %s\n", err.Error())
+			// skip over video
+			continue
 		}
+
+		videoIds[index] = videoId.Url
 	}
-	fmt.Printf("Parsed Video Ids: %+v", videoIds)
 
 	return videoIds
 }
