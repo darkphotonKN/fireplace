@@ -3,10 +3,12 @@ package discovery
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -212,6 +214,39 @@ func walkTree(node *html.Node, links []string) []string {
 	return links
 }
 
+/**
+* Finds all the matching video ids from raw html string, parse them into json, then collect them into a slice.
+**/
+type VideoId struct {
+	Url string `json:"url"`
+}
+
+func extractVideoIdsFromRawHtml(htmlContent string) []string {
+	// check for the regex pattern: "url":"/watch?v=VIDEO_ID"
+
+	watchPattern := `"url":"/watch\?v=([^"&]+)`
+	regex := regexp.MustCompile(watchPattern)
+
+	matches := regex.FindAllStringSubmatch(htmlContent, -1)
+	videoIds := make([]string, len(matches))
+
+	for index, match := range matches {
+		fmt.Printf("\nmatch before: %+v\n\n", match)
+
+		matchJson := fmt.Sprintf("{%s\"}", match[0])
+		var videoId VideoId
+		err := json.Unmarshal([]byte(matchJson), &videoId)
+		videoIds[index] = videoId.Url
+
+		if err != nil {
+			fmt.Printf("unmarshal err: %s\n", err.Error())
+		}
+	}
+	fmt.Printf("Parsed Video Ids: %+v", videoIds)
+
+	return videoIds
+}
+
 // for debugging
 func debugPageContent(htmlContent string) {
 	// Look for title tag
@@ -224,35 +259,8 @@ func debugPageContent(htmlContent string) {
 		}
 	}
 
-	// look for search-specific elements
-	hasSearchResults := strings.Contains(htmlContent, "watch?v=")
-	fmt.Printf("Contains search results: %t\n", hasSearchResults)
-
-	parts := strings.Split(htmlContent, "watch?v=")
-
-	for i := 1; i < min(5, len(parts)); i++ { // Show first 4 examples
-		// Get 100 chars before and after each "watch?v="
-		before := ""
-		after := ""
-
-		if len(parts[i-1]) > 100 {
-			before = parts[i-1][len(parts[i-1])-100:]
-		} else {
-			before = parts[i-1]
-		}
-
-		if len(parts[i]) > 100 {
-			after = parts[i][:100]
-		} else {
-			after = parts[i]
-		}
-
-		fmt.Printf("\n=== VIDEO LINK CONTEXT %d ===\n", i)
-		fmt.Printf("BEFORE: %s\n", before)
-		fmt.Printf("WATCH?V=")
-		fmt.Printf("AFTER: %s\n", after)
-		fmt.Printf("========================\n")
-	}
+	// extract video ids
+	extractVideoIdsFromRawHtml(htmlContent)
 
 	// look for video containers that might be empty
 	hasVideoContainers := strings.Contains(htmlContent, "ytd-video-renderer") ||
