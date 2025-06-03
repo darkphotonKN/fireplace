@@ -66,29 +66,47 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 		return nil, fmt.Errorf("Require concepts to start search to find relevant youtube videos.")
 	}
 
-	// start up crawlers and find at least 5 relevant videos
+	// start up crawlers and find at least 3 relevant videos
 	// TODO: use description for now but later need to formulate entire concepts and spin up
 	// as many goroutines to crawl the searches that match the length of concepts
 
 	fmt.Printf("\nconcepts: %+v\n\n", concepts)
 
-	fmt.Println("Crawl Path at concepts description:", concepts[0].Description)
 	// loop and crawl all resources concurrently
+	resourceBytes := make([][]byte, 0)
 	f.wg.Add(3)
+
 	for _, concept := range concepts {
-		resourceByte, err := f.crawler.CrawlPath(ctx, concept.Description)
+		go func() {
+			resourceByte, err := f.crawler.CrawlPath(ctx, concept.Description)
+			if err != nil {
+				f.errCh <- err
+			} else {
+				resourceBytes = append(resourceBytes, resourceByte)
+			}
+			f.wg.Done()
+		}()
 	}
+
+	f.wg.Wait()
 
 	// @TEST: For debugging crawled content
 	// debugPageContent(string(resourceByte))
 
 	// extract videos from fetched raw html
-	crawledVideoIds := extractVideoIdsFromRawHtml(string(resourceByte))
+	crawledVideoIds := make([]string, 3)
+	for index, resourceByte := range resourceBytes {
+		// grab 3 videos, one video each search term
+		// TODO: choose a random video
+		singleExtractedVideo := extractVideoIdsFromRawHtml(string(resourceByte))[index]
+		fmt.Printf("\nSingle Extracted Video: %s\nFrom Search Term: %s\n\n", singleExtractedVideo, concepts[index])
+		crawledVideoIds[index] = singleExtractedVideo
+	}
 
 	// NOTE: no recursive walk for now, as vidoes can't be found in the html DOM nodes
 	// _, _ = parseHtml(resourceByte)
 
-	// grab 3 videos and create 3 resources from them
+	// create 3 resources from them
 	resources := make([]Resource, 3)
 
 	for index := range resources {
@@ -149,7 +167,7 @@ func (c *BasicWebCrawler) ResolvePath(path string) (string, error) {
 }
 
 // Crawl fetches a webpage and returns its content
-func (c *BasicWebCrawler) CrawlPath(ctx context.Context, wg *sync.WaitGroup, path string) ([]byte, error) {
+func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, error) {
 
 	// Resolve the URL properly
 	resolvedURL, err := c.ResolvePath(path)
