@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/concepts"
@@ -34,6 +35,8 @@ type Finder interface {
 type YoutubeVideoFinder struct {
 	crawler       *BasicWebCrawler
 	baseSearchUrl string
+	errCh         chan error
+	wg            *sync.WaitGroup
 }
 
 const (
@@ -50,6 +53,8 @@ func NewYoutubeVideoFinder() (Finder, error) {
 	return &YoutubeVideoFinder{
 		crawler:       crawler,
 		baseSearchUrl: youtubeSearchUrl,
+		errCh:         make(chan error),
+		wg:            &sync.WaitGroup{},
 	}, nil
 }
 
@@ -68,11 +73,10 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 	fmt.Printf("\nconcepts: %+v\n\n", concepts)
 
 	fmt.Println("Crawl Path at concepts description:", concepts[0].Description)
-	resourceByte, err := f.crawler.CrawlPath(ctx, concepts[0].Description)
-
-	if err != nil {
-		fmt.Println("Error when trying to crawl url", err)
-		return nil, err
+	// loop and crawl all resources concurrently
+	f.wg.Add(3)
+	for _, concept := range concepts {
+		resourceByte, err := f.crawler.CrawlPath(ctx, concept.Description)
 	}
 
 	// @TEST: For debugging crawled content
@@ -81,7 +85,7 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 	// extract videos from fetched raw html
 	crawledVideoIds := extractVideoIdsFromRawHtml(string(resourceByte))
 
-	// no recursive walk for now, as vidoes can't be found in the html DOM nodes
+	// NOTE: no recursive walk for now, as vidoes can't be found in the html DOM nodes
 	// _, _ = parseHtml(resourceByte)
 
 	// grab 3 videos and create 3 resources from them
@@ -145,7 +149,7 @@ func (c *BasicWebCrawler) ResolvePath(path string) (string, error) {
 }
 
 // Crawl fetches a webpage and returns its content
-func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, error) {
+func (c *BasicWebCrawler) CrawlPath(ctx context.Context, wg *sync.WaitGroup, path string) ([]byte, error) {
 
 	// Resolve the URL properly
 	resolvedURL, err := c.ResolvePath(path)
