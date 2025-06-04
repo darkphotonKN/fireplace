@@ -70,19 +70,24 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 	// TODO: use description for now but later need to formulate entire concepts and spin up
 	// as many goroutines to crawl the searches that match the length of concepts
 
-	fmt.Printf("\nconcepts: %+v\n\n", concepts)
+	fmt.Printf("\nAll concepts: %+v\n\n", concepts)
 
 	// loop and crawl all resources concurrently
-	resourceBytes := make([][]byte, 0)
 	f.wg.Add(3)
 
-	for _, concept := range concepts {
+	crawledVideoIds := make([]string, 3)
+
+	for index, concept := range concepts {
 		go func() {
 			resourceByte, err := f.crawler.CrawlPath(ctx, concept.Description)
 			if err != nil {
 				f.errCh <- err
 			} else {
-				resourceBytes = append(resourceBytes, resourceByte)
+				// grab first one
+				singleExtractedVideo := extractVideoIdsFromRawHtml(string(resourceByte))[0]
+
+				fmt.Printf("\nSingle Extracted Video: %s\nFrom Search Term: %s\n\n", singleExtractedVideo, concepts[index])
+				crawledVideoIds[index] = singleExtractedVideo
 			}
 			f.wg.Done()
 		}()
@@ -93,16 +98,6 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 	// @TEST: For debugging crawled content
 	// debugPageContent(string(resourceByte))
 
-	// extract videos from fetched raw html
-	crawledVideoIds := make([]string, 3)
-	for index, resourceByte := range resourceBytes {
-		// grab 3 videos, one video each search term
-		// TODO: choose a random video
-		singleExtractedVideo := extractVideoIdsFromRawHtml(string(resourceByte))[index]
-		fmt.Printf("\nSingle Extracted Video: %s\nFrom Search Term: %s\n\n", singleExtractedVideo, concepts[index])
-		crawledVideoIds[index] = singleExtractedVideo
-	}
-
 	// NOTE: no recursive walk for now, as vidoes can't be found in the html DOM nodes
 	// _, _ = parseHtml(resourceByte)
 
@@ -112,7 +107,7 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 	for index := range resources {
 		resources[index] = Resource{
 			Title:       "Video " + strconv.Itoa(index+1),
-			Description: "Recommended Video " + strconv.Itoa(index+1),
+			Description: "Recommended Video for " + concepts[index].Description,
 			URL:         youtubeUrl + crawledVideoIds[index],
 		}
 	}
@@ -270,7 +265,7 @@ func extractVideoIdsFromRawHtml(htmlContent string) []string {
 	videoIds := make([]string, len(matches))
 
 	for index, match := range matches {
-		fmt.Printf("\nmatch before: %+v\n\n", match)
+		// fmt.Printf("\nmatch before: %+v\n\n", match)
 
 		matchJson := fmt.Sprintf("{%s\"}", match[0])
 
