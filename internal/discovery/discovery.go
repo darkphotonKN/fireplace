@@ -35,7 +35,6 @@ type Finder interface {
 type YoutubeVideoFinder struct {
 	crawler       *BasicWebCrawler
 	baseSearchUrl string
-	errCh         chan error
 	wg            *sync.WaitGroup
 	mu            *sync.Mutex
 }
@@ -54,7 +53,6 @@ func NewYoutubeVideoFinder() (Finder, error) {
 	return &YoutubeVideoFinder{
 		crawler:       crawler,
 		baseSearchUrl: youtubeSearchUrl,
-		errCh:         make(chan error),
 		wg:            &sync.WaitGroup{},
 	}, nil
 }
@@ -62,7 +60,18 @@ func NewYoutubeVideoFinder() (Finder, error) {
 /**
 * Starts a crawler to find relevant website links concurrently. Relevance is based on "concepts".
 **/
+
+type CrawlResult struct {
+	index   int
+	videoID string
+	err     error
+}
+
 func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []concepts.Concept) ([]Resource, error) {
+
+	// channel for holding concurrent results and errors
+	crawlResultCh := make(chan CrawlResult)
+
 	if concepts == nil || len(concepts) == 0 {
 		return nil, fmt.Errorf("Require concepts to start search to find relevant youtube videos.")
 	}
@@ -81,20 +90,26 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 	for index, concept := range concepts {
 		go func() {
 			resourceByte, err := f.crawler.CrawlPath(ctx, concept.Description)
+
 			if err != nil {
-				f.errCh <- err
+				crawlResultCh <- CrawlResult{
+					err: err,
+				}
 			} else {
 				// grab first one
 				singleExtractedVideo := extractVideoIdsFromRawHtml(string(resourceByte))[0]
 
-				fmt.Printf("\nSingle Extracted Video: %s\nFrom Search Term: %s\n\n", singleExtractedVideo, concepts[index])
-				f.mu.Lock()
-				crawledVideoIds[index] = singleExtractedVideo
-				f.mu.Unlock()
+				crawlResultCh <- CrawlResult{
+					index:   index,
+					videoID: singleExtractedVideo,
+				}
+
 			}
 			f.wg.Done()
 		}()
 	}
+
+	// parse crawl results from channel
 
 	f.wg.Wait()
 
