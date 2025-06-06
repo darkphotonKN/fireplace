@@ -9,4 +9,3 @@ type repository struct {
 func NewRepository(db *sqlx.DB) Repository {
 	return &repository{db: db}
 }
-

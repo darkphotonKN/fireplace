@@ -37,6 +37,7 @@ type YoutubeVideoFinder struct {
 	baseSearchUrl string
 	errCh         chan error
 	wg            *sync.WaitGroup
+	mu            *sync.Mutex
 }
 
 const (
@@ -87,7 +88,9 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 				singleExtractedVideo := extractVideoIdsFromRawHtml(string(resourceByte))[0]
 
 				fmt.Printf("\nSingle Extracted Video: %s\nFrom Search Term: %s\n\n", singleExtractedVideo, concepts[index])
+				f.mu.Lock()
 				crawledVideoIds[index] = singleExtractedVideo
+				f.mu.Unlock()
 			}
 			f.wg.Done()
 		}()
