@@ -68,7 +68,7 @@ type CrawlResult struct {
 }
 
 func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []concepts.Concept) ([]Resource, error) {
-	var wg *sync.WaitGroup
+	var wg sync.WaitGroup
 	conceptsLength := len(concepts)
 
 	// channel for holding concurrent results and errors
@@ -95,11 +95,23 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 
 			if err != nil {
 				crawlResultCh <- CrawlResult{
-					err: err,
+					index: index,
+					err:   err,
 				}
 			} else {
+				// TODO: update to capture and parse via ai insights multiple different ones and make comparisons for the best
 				// grab first one
-				singleExtractedVideo := extractVideoIdsFromRawHtml(string(resourceByte))[0]
+				extractedVideos := extractVideoIdsFromRawHtml(string(resourceByte))
+
+				if len(extractedVideos) == 0 || extractedVideos == nil {
+					fmt.Println("Error occured when extracting video ids from raw htmls, no result could be extracted.")
+					crawlResultCh <- CrawlResult{
+						err: fmt.Errorf("Error occured when extracting video ids from raw htmls, no result could be extracted."),
+					}
+					return
+				}
+
+				singleExtractedVideo := extractedVideos[0]
 
 				crawlResultCh <- CrawlResult{
 					index:   index,
@@ -109,8 +121,7 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 		}()
 	}
 
-	crawledVideoIds := make([]string, 3, conceptsLength)
-	crawlCount := 0
+	crawledVideoIds := make([]string, conceptsLength)
 
 	// to stop channel when done
 	go func() {
@@ -119,25 +130,13 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 	}()
 
 	// parse crawl results from channel
-crawlBlock:
-	for {
-		select {
-
-		case crawlResult := <-crawlResultCh:
-			if crawlResult.err != nil {
-				fmt.Println("Error occured when crawling:", crawlResult.err)
-
-				crawlCount++
-				continue
-			}
-
-			crawledVideoIds[crawlResult.index] = crawlResult.videoID
-			crawlCount++
-
-			if crawlCount >= conceptsLength {
-				break crawlBlock
-			}
+	for crawlResult := range crawlResultCh {
+		if crawlResult.err != nil {
+			fmt.Printf("Error occured when crawling for this concept: %s", crawlResult.err.Error())
+			continue
 		}
+
+		crawledVideoIds[crawlResult.index] = crawlResult.videoID
 	}
 
 	// @TEST: For debugging crawled content
@@ -147,7 +146,7 @@ crawlBlock:
 	// _, _ = parseHtml(resourceByte)
 
 	// create 3 resources from them
-	resources := make([]Resource, 3)
+	resources := make([]Resource, conceptsLength)
 
 	for index := range resources {
 		resources[index] = Resource{
