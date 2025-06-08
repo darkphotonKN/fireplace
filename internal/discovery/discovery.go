@@ -68,11 +68,13 @@ type CrawlResult struct {
 }
 
 func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []concepts.Concept) ([]Resource, error) {
+	var wg *sync.WaitGroup
+	conceptsLength := len(concepts)
 
 	// channel for holding concurrent results and errors
 	crawlResultCh := make(chan CrawlResult)
 
-	if concepts == nil || len(concepts) == 0 {
+	if concepts == nil || conceptsLength == 0 {
 		return nil, fmt.Errorf("Require concepts to start search to find relevant youtube videos.")
 	}
 
@@ -82,13 +84,13 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 
 	fmt.Printf("\nAll concepts: %+v\n\n", concepts)
 
+	wg.Add(conceptsLength)
+
 	// loop and crawl all resources concurrently
-	f.wg.Add(3)
-
-	crawledVideoIds := make([]string, 3)
-
 	for index, concept := range concepts {
 		go func() {
+			defer wg.Done()
+
 			resourceByte, err := f.crawler.CrawlPath(ctx, concept.Description)
 
 			if err != nil {
@@ -103,15 +105,40 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 					index:   index,
 					videoID: singleExtractedVideo,
 				}
-
 			}
-			f.wg.Done()
 		}()
 	}
 
-	// parse crawl results from channel
+	crawledVideoIds := make([]string, 3, conceptsLength)
+	crawlCount := 0
 
-	f.wg.Wait()
+	// to stop channel when done
+	go func() {
+		wg.Wait()
+		close(crawlResultCh)
+	}()
+
+	// parse crawl results from channel
+crawlBlock:
+	for {
+		select {
+
+		case crawlResult := <-crawlResultCh:
+			if crawlResult.err != nil {
+				fmt.Println("Error occured when crawling:", crawlResult.err)
+
+				crawlCount++
+				continue
+			}
+
+			crawledVideoIds[crawlResult.index] = crawlResult.videoID
+			crawlCount++
+
+			if crawlCount >= conceptsLength {
+				break crawlBlock
+			}
+		}
+	}
 
 	// @TEST: For debugging crawled content
 	// debugPageContent(string(resourceByte))
