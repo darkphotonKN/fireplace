@@ -209,12 +209,8 @@ func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.U
 		return nil, err
 	}
 
-	fmt.Sprintf("\nGenerated Search Terms String: %s\n\n", searchTermsStr)
-
-	// format
+	// format the string into individual search terms
 	searchTerms := strings.Split(searchTermsStr, "\n")
-
-	fmt.Sprintf("\nSearch Terms Formatted: %+v\n\n", searchTerms)
 
 	// crawl and find at least 5 suggested videos
 	concepts := make([]concepts.Concept, len(searchTerms))
@@ -223,7 +219,7 @@ func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.U
 		concepts[index].Description = searchTerm
 	}
 
-	fmt.Sprintf("\nMapped to Concepts: %+v\n\n", concepts)
+	fmt.Sprintf("\nmapped to concepts before finding resources: %+v\n\n", concepts)
 
 	resources, err := s.youtubeVideoFinder.FindResources(ctx, concepts)
 

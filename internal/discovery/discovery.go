@@ -123,7 +123,7 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 		}()
 	}
 
-	crawledVideoIds := make([]string, conceptsLength)
+	crawledResults := make([]CrawlResult, conceptsLength)
 
 	// to stop channel when done
 	go func() {
@@ -133,12 +133,13 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 
 	// parse crawl results from channel
 	for crawlResult := range crawlResultCh {
+		fmt.Printf("\nreceived a crawl result: %+v\n\n", crawlResult)
 		if crawlResult.err != nil {
 			fmt.Printf("Error occured when crawling for this concept: %s", crawlResult.err.Error())
 			continue
 		}
 
-		crawledVideoIds[crawlResult.index] = crawlResult.videoID
+		crawledResults[crawlResult.index] = crawlResult
 	}
 
 	// @TEST: For debugging crawled content
@@ -150,12 +151,29 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 	// create 3 resources from them
 	resources := make([]Resource, conceptsLength)
 
-	for index := range resources {
-		resources[index] = Resource{
-			Title:       "Video " + strconv.Itoa(index+1),
-			Description: "Recommended Video for " + concepts[index].Description,
-			URL:         youtubeUrl + crawledVideoIds[index],
+	errCount := 0
+	for index, crawlResult := range crawledResults {
+		if crawlResult.err != nil {
+			resources[index] = Resource{
+				Title:       "No relevant video found",
+				Description: "Recommended Video for " + concepts[index].Description,
+				URL:         "",
+			}
+
+			errCount++
+		} else {
+			resources[index] = Resource{
+				Title:       "Video " + strconv.Itoa(index+1),
+				Description: "Recommended Video for " + concepts[index].Description,
+				URL:         youtubeUrl + crawlResult.videoID,
+			}
 		}
+	}
+
+	// return one general error if all errored
+	allErrored := errCount == conceptsLength
+	if allErrored {
+		return nil, fmt.Errorf("No results could crawled.")
 	}
 
 	return resources, nil
