@@ -91,6 +91,7 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 		go func() {
 			defer wg.Done()
 
+			// crawls youtube search results + decription
 			resourceByte, err := f.crawler.CrawlPath(ctx, concept.Description)
 
 			if err != nil {
@@ -99,8 +100,9 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 					err:   err,
 				}
 			} else {
-				// TODO: update to capture and parse via ai insights multiple different ones and make comparisons for the best
-				// grab first one
+				// TODO: update to capture and parse via ai insights multiple different crawl results and make comparisons for the best
+
+				// grab the first one
 				extractedVideos := extractVideoIdsFromRawHtml(string(resourceByte))
 
 				if len(extractedVideos) == 0 || extractedVideos == nil {
@@ -328,7 +330,7 @@ func extractVideoIdsFromRawHtml(htmlContent string) []string {
 	return videoIds
 }
 
-// for debugging
+// NOTE: only for debugging
 func debugPageContent(htmlContent string) {
 	// Look for title tag
 	if strings.Contains(htmlContent, "<title>") {
