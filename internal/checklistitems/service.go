@@ -22,6 +22,7 @@ type Repository interface {
 	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error)
 	GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error)
+	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*models.ChecklistItem, error)
 	CountItems(ctx context.Context) (int, error)
 	BulkResetDailyItems(ctx context.Context) error
 }
@@ -174,6 +175,10 @@ func (s *service) GetUpcoming(ctx context.Context, planId uuid.UUID) ([]*models.
 
 func (s *service) CheckAllScheduledItems(ctx context.Context) error {
 	return nil
+}
+
+func (s *service) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*models.ChecklistItem, error) {
+	return s.repo.GetByUserID(ctx, userID)
 }
 
 func (s *service) TriggerScheduledReminder(ctx context.Context) error {

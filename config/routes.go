@@ -12,6 +12,7 @@ import (
 	"github.com/darkphotonKN/fireplace/internal/jobs"
 	"github.com/darkphotonKN/fireplace/internal/plans"
 	"github.com/darkphotonKN/fireplace/internal/user"
+	"github.com/darkphotonKN/fireplace/internal/useranalytics"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -46,6 +47,19 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	// finder, _ := discovery.NewYoutubeVideoFinder()
 	//
 	// go finder.FindResources(context.Background(), []concepts.Concept{})
+
+	// --- USER ANALYTICS ---
+
+	// -- User Analytics Setup --
+	userAnalyticsRepo := useranalytics.NewRepository(db)
+	userAnalyticsService := useranalytics.NewService(userAnalyticsRepo)
+	userAnalyticsHandler := useranalytics.NewHandler(userAnalyticsService)
+
+	// -- User Analytics Routes --
+	userAnalyticsRoutes := api.Group("/analytics")
+	{
+		userAnalyticsRoutes.GET("/user/:userId", userAnalyticsHandler.GetUserAnalytics)
+	}
 
 	// --- USER ---
 

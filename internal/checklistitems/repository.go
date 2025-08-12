@@ -323,3 +323,32 @@ func (r *repository) BulkResetDailyItems(ctx context.Context) error {
 
 	return nil
 }
+
+func (r *repository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*models.ChecklistItem, error) {
+	query := `
+	SELECT 
+		ci.id, 
+		ci.description, 
+		ci.done, 
+		ci.sequence, 
+		ci.scope, 
+		ci.scheduled_time, 
+		ci.archived, 
+		ci.created_at, 
+		ci.updated_at, 
+		ci.plan_id
+	FROM checklist_items ci
+	JOIN plans p ON ci.plan_id = p.id
+	WHERE p.user_id = $1
+	AND ci.archived = false
+	ORDER BY ci.created_at DESC
+	`
+
+	var items []*models.ChecklistItem
+	err := r.db.SelectContext(ctx, &items, query, userID)
+	if err != nil {
+		return nil, errorutils.AnalyzeDBErr(err)
+	}
+
+	return items, nil
+}
