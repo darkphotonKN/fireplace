@@ -48,19 +48,6 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	//
 	// go finder.FindResources(context.Background(), []concepts.Concept{})
 
-	// --- USER ANALYTICS ---
-
-	// -- User Analytics Setup --
-	userAnalyticsRepo := useranalytics.NewRepository(db)
-	userAnalyticsService := useranalytics.NewService(userAnalyticsRepo)
-	userAnalyticsHandler := useranalytics.NewHandler(userAnalyticsService)
-
-	// -- User Analytics Routes --
-	userAnalyticsRoutes := api.Group("/analytics")
-	{
-		userAnalyticsRoutes.GET("/user/:userId", userAnalyticsHandler.GetUserAnalytics)
-	}
-
 	// --- USER ---
 
 	// -- User Setup --
@@ -110,6 +97,19 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	checkListRoutes.DELETE("/:checklist_id", checkListHandler.Delete)
 	checkListRoutes.PATCH("/:checklist_id/schedule", checkListHandler.SetSchedule)
 	checkListRoutes.PATCH("/:checklist_id/archive", checkListHandler.Archive)
+
+	// --- USER ANALYTICS ---
+
+	// -- User Analytics Setup --
+	userAnalyticsRepo := useranalytics.NewRepository(db)
+	userAnalyticsService := useranalytics.NewService(userAnalyticsRepo, checkListService)
+	userAnalyticsHandler := useranalytics.NewHandler(userAnalyticsService)
+
+	// -- User Analytics Routes --
+	userAnalyticsRoutes := api.Group("/analytics")
+	{
+		userAnalyticsRoutes.GET("/user/:userId", userAnalyticsHandler.GetUserAnalytics)
+	}
 
 	// --- INSIGHTS ---
 
