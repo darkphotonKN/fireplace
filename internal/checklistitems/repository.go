@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/darkphotonKN/fireplace/internal/utils/errorutils"
 	"github.com/google/uuid"
@@ -50,8 +51,7 @@ func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope
 	// Always add ordering
 	query += `ORDER BY sequence ASC`
 
-	fmt.Printf("constructed query: %s\n", query)
-	fmt.Printf("constructed args: %+v\n", args)
+	logger.Debug("Executing GetAllByPlanId query", "query", query, "args", args)
 
 	var items []*models.ChecklistItem
 	err := s.db.SelectContext(ctx, &items, query, args...)
@@ -78,7 +78,7 @@ func (s *repository) GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUI
 		args = append(args, *scope)
 	}
 
-	fmt.Printf("Args for archived items: %v\n", args)
+	logger.Debug("Fetching archived items", "args", args)
 
 	// Always add ordering
 	baseQuery += `ORDER BY sequence ASC`

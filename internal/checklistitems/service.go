@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
 )
@@ -103,11 +104,11 @@ func (s *service) SetSchedule(ctx context.Context, id uuid.UUID, req SetSchedule
 		t, err := time.Parse(time.RFC3339, *req.ScheduledTime)
 
 		if err != nil {
-			fmt.Printf("Error when parsing into time.RFC3339: %v\n", err)
+			logger.Error("Error parsing scheduled time", "error", err)
 			return err
 		}
 
-		fmt.Printf("Parsed time into time.RFC3339: %v\n", t)
+		logger.Debug("Parsed scheduled time", "time", t)
 
 		// format struct for updating scheduled time in database
 		updateData = UpdateReq{

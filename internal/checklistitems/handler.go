@@ -2,10 +2,10 @@ package checklistitems
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -186,7 +186,7 @@ func (h *Handler) SetSchedule(c *gin.Context) {
 func (h *Handler) Archive(c *gin.Context) {
 	idStr := c.Param("checklist_id")
 	id, err := uuid.Parse(idStr)
-	fmt.Println("Checklist Id was:", idStr)
+	logger.Debug("Archiving checklist item", "checklistId", idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format", "result": constants.UpdateStatusFailure})
 		return

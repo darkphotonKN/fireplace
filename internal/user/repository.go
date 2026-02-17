@@ -1,8 +1,7 @@
 package user
 
 import (
-	"fmt"
-
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -70,10 +69,12 @@ func (r *repository) GetUserByEmail(email string) (*models.User, error) {
 	var user models.User
 	query := `SELECT * FROM users WHERE users.email = $1`
 
-	fmt.Println("Querying user with email:", email)
+	logger.Debug("Querying user with email", "email", email)
 
 	err := r.DB.Get(&user, query, email)
-	fmt.Println("Error:", err)
+	if err != nil {
+		logger.Error("Error querying user by email", "error", err, "email", email)
+	}
 
 	if err != nil {
 		return nil, err

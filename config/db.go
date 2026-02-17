@@ -2,11 +2,11 @@ package config
 
 import (
 	"fmt"
-	"time"
-
 	"log"
 	"os"
+	"time"
 
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/jmoiron/sqlx"
 
 	// Importing for side effects - Dont Remove
@@ -35,7 +35,7 @@ func InitDB() *sqlx.DB {
 		os.Getenv("DB_NAME"),
 	)
 
-	fmt.Println("constructed dsn", dsn)
+	logger.Debug("Database connection string constructed", "dsn", dsn)
 
 	// pass the db connection string to connect to our database
 	db, err := sqlx.Connect("postgres", dsn)
@@ -43,7 +43,7 @@ func InitDB() *sqlx.DB {
 		log.Fatalf("Failed to connect to the database: %v", err)
 	}
 
-	fmt.Printf("Connected to database with connection pool: MaxOpen=%d, MaxIdle=%d\n", maxOpenConnections, maxIdleConnections)
+	logger.Info("Connected to database", "maxOpen", maxOpenConnections, "maxIdle", maxIdleConnections)
 
 	db.SetMaxOpenConns(maxOpenConnections) // Max 25 concurrent connections
 	db.SetMaxIdleConns(maxIdleConnections) // Keep 5 connections alive when idle

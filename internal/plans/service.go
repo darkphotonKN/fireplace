@@ -2,9 +2,9 @@ package plans
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
 )
@@ -36,7 +36,7 @@ func (s *service) Create(ctx context.Context, req CreatePlanReq, userID uuid.UUI
 	// default to true if its learning based, but false if its development based
 	dailyReset := true
 
-	fmt.Printf("%s vs %s", constants.PlanType(req.PlanType), constants.TypeDevelopment)
+	logger.Debug("Comparing plan types", "requestType", constants.PlanType(req.PlanType), "developmentType", constants.TypeDevelopment)
 	if constants.PlanType(req.PlanType) == constants.TypeDevelopment {
 		dailyReset = false
 	}

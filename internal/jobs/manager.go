@@ -1,8 +1,9 @@
 package jobs
 
 import (
-	"fmt"
 	"sync"
+
+	"github.com/darkphotonKN/fireplace/internal/logger"
 )
 
 type Manager struct {
@@ -30,7 +31,7 @@ func (m *Manager) StartAll() {
 		go func() {
 			j.Start()
 			<-m.stopChan
-			fmt.Println("stopping ongoing channels")
+			logger.Info("Stopping job")
 			j.Stop()
 			return
 		}()

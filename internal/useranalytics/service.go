@@ -2,9 +2,9 @@ package useranalytics
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
 )
@@ -31,7 +31,7 @@ func (s *service) GetUserAnalytics(ctx context.Context, userID uuid.UUID, date t
 		return nil, err
 	}
 
-	fmt.Printf("\nAll checklist data for user %s: %+v\n\n", userID, data)
+	logger.Debug("Retrieved checklist data for user", "userID", userID, "data", data)
 
 	return s.repo.GetByUserAndDate(ctx, userID, date)
 }

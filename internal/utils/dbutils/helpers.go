@@ -3,6 +3,7 @@ package dbutils
 import (
 	"fmt"
 
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -18,7 +19,7 @@ func ExecTx(db *sqlx.DB, fn func(tx *sqlx.Tx) error) (err error) {
 	tx, txBeginErr := db.Beginx() // NOTE: use "beginx" for the **sqlx* version
 
 	if txBeginErr != nil {
-		fmt.Printf("Error when attempting to start transaction: %v\n", txBeginErr)
+		logger.Error("Error starting transaction", "error", txBeginErr)
 		return fmt.Errorf("Error when attempting to start transaction: %v", txBeginErr)
 	}
 
@@ -27,14 +28,14 @@ func ExecTx(db *sqlx.DB, fn func(tx *sqlx.Tx) error) (err error) {
 		if p := recover(); p != nil {
 			tx.Rollback()
 
-			fmt.Println("Transaction rolled back due to panic:", p)
+			logger.Error("Transaction rolled back due to panic", "panic", p)
 
 			// re-throw panic after rollback
 			panic(p)
 		}
 
 		if err != nil {
-			fmt.Printf("Error during transaction, rolling back: Error:%v\n", err)
+			logger.Error("Error during transaction, rolling back", "error", err)
 			tx.Rollback()
 		}
 	}()
@@ -48,7 +49,7 @@ func ExecTx(db *sqlx.DB, fn func(tx *sqlx.Tx) error) (err error) {
 
 	// no error, safe to commit
 	if commitErr := tx.Commit(); commitErr != nil {
-		fmt.Printf("Failed to commit transaction, rolling back. Error: %s\n", commitErr)
+		logger.Error("Failed to commit transaction, rolling back", "error", commitErr)
 		tx.Rollback() // rollback if commit fails
 
 		return commitErr

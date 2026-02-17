@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/darkphotonKN/fireplace/config"
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/joho/godotenv"
 )
 
@@ -17,7 +17,7 @@ func main() {
 
 	// env setup
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using system environment variables")
+		logger.Info("No .env file found, using system environment variables")
 	}
 
 	// database setup
@@ -35,5 +35,8 @@ func main() {
 	}
 
 	// starts server and listen on port
-	router.Run(fmt.Sprintf(":%s", port)) // port = ":" + PORT
+	logger.Info("Starting server", "port", port)
+	if err := router.Run(fmt.Sprintf(":%s", port)); err != nil {
+		logger.Error("Failed to start server", "error", err)
+	}
 }

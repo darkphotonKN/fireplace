@@ -3,9 +3,9 @@ package errorutils
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
+	"github.com/darkphotonKN/fireplace/internal/logger"
 )
 
 /**
@@ -55,7 +55,7 @@ func AnalyzeDBResults(err error, result sql.Result) error {
 	}
 
 	if rowsAffected == 0 {
-		fmt.Printf("There were no errors but no rows affected by the sql query.\n")
+		logger.Debug("No rows affected by SQL query")
 		return constants.ErrNoRowsAffected
 	}
 

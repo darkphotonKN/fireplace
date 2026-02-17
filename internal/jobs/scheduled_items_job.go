@@ -2,9 +2,8 @@ package jobs
 
 import (
 	"context"
-	"fmt"
-	"log"
 
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/robfig/cron/v3"
 )
 
@@ -28,18 +27,18 @@ func NewScheduledItemsJob(checklistService ChecklistScheduledItemsService) *Sche
 }
 
 func (j *ScheduledItemsJob) Start() {
-	fmt.Println("Starting scheduled reminder checker job.")
+	logger.Info("Starting scheduled reminder checker job")
 	// Run every minute (second minute hour day month weekday)
 	jobID, err := j.cron.AddFunc("0 * * * * *", func() {
 		ctx := context.Background()
 		err := j.checklistService.CheckAllScheduledItems(ctx)
 		if err != nil {
-			log.Printf("error when checking scheduled checklist items in job.: %s\n", err.Error())
+			logger.Error("Error checking scheduled checklist items", "error", err)
 		}
 	})
 
 	if err != nil {
-		log.Printf("Error scheduling checklist items job: %s\n", err.Error())
+		logger.Error("Error scheduling checklist items job", "error", err)
 		return
 	}
 
@@ -48,7 +47,7 @@ func (j *ScheduledItemsJob) Start() {
 }
 
 func (j *ScheduledItemsJob) Stop() {
-	fmt.Println("Stopping scheduled items job.")
+	logger.Info("Stopping scheduled items job")
 
 	ctx := j.cron.Stop()
 	// Wait for jobs to finish

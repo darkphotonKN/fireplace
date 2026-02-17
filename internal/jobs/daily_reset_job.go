@@ -2,8 +2,8 @@ package jobs
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/robfig/cron/v3"
 )
 
@@ -27,19 +27,19 @@ func NewDailyResetJob(checklistService ChecklistDailyResetService) *DailyResetJo
 }
 
 func (j *DailyResetJob) Start() {
-	fmt.Println("Starting daily reset jobs.")
+	logger.Info("Starting daily reset job")
 
 	jobID, err := j.cron.AddFunc("0 0 14 * * *", func() {
-		fmt.Println("Running daily job...")
+		logger.Info("Running daily reset job")
 		ctx := context.Background()
 		err := j.checklistService.ResetDailyItems(ctx)
 		if err != nil {
-			fmt.Printf("Error resetting daily items: %s\n", err.Error())
+			logger.Error("Error resetting daily items", "error", err)
 		}
 	})
 
 	if err != nil {
-		fmt.Printf("Error scheduling daily reset job: %s\n", err.Error())
+		logger.Error("Error scheduling daily reset job", "error", err)
 		return
 	}
 
@@ -48,7 +48,7 @@ func (j *DailyResetJob) Start() {
 }
 
 func (j *DailyResetJob) Stop() {
-	fmt.Println("Stopping daily reset job.")
+	logger.Info("Stopping daily reset job")
 	ctx := j.cron.Stop()
 	// Wait for jobs to finish
 	<-ctx.Done()

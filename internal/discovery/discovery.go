@@ -16,6 +16,7 @@ import (
 
 	"github.com/darkphotonKN/fireplace/internal/concepts"
 	"github.com/darkphotonKN/fireplace/internal/constants"
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"golang.org/x/net/html"
 )
 
@@ -27,7 +28,8 @@ type Resource struct {
 	Description string                 `json:"description"`
 }
 
-// a discovery finder need to be able to find relevant resources (NOTE: right now only website urls)
+// a discovery finder needs to be able to find relevant resources
+// NOTE: right now this is only website urls
 type Finder interface {
 	FindResources(ctx context.Context, concepts []concepts.Concept) ([]Resource, error)
 }
@@ -82,7 +84,7 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 	// TODO: use description for now but later need to formulate entire concepts and spin up
 	// as many goroutines to crawl the searches that match the length of concepts
 
-	fmt.Printf("\nAll concepts: %+v\n\n", concepts)
+	logger.Debug("Starting resource discovery", "concepts", concepts)
 
 	wg.Add(conceptsLength)
 
@@ -106,7 +108,7 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 				extractedVideos := extractVideoIdsFromRawHtml(string(resourceByte))
 
 				if len(extractedVideos) == 0 || extractedVideos == nil {
-					fmt.Println("Error occured when extracting video ids from raw htmls, no result could be extracted.")
+					logger.Error("Error extracting video IDs from HTML")
 					crawlResultCh <- CrawlResult{
 						err: fmt.Errorf("Error occured when extracting video ids from raw htmls, no result could be extracted."),
 					}
@@ -133,9 +135,9 @@ func (f *YoutubeVideoFinder) FindResources(ctx context.Context, concepts []conce
 
 	// parse crawl results from channel
 	for crawlResult := range crawlResultCh {
-		fmt.Printf("\nreceived a crawl result: %+v\n\n", crawlResult)
+		logger.Debug("Received crawl result", "result", crawlResult)
 		if crawlResult.err != nil {
-			fmt.Printf("Error occured when crawling for this concept: %s", crawlResult.err.Error())
+			logger.Error("Error crawling for concept", "error", crawlResult.err)
 			continue
 		}
 
@@ -235,7 +237,7 @@ func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, e
 	}
 
 	// TODO: upgrade to resolved url
-	fmt.Println("Crawling url at:", resolvedURL)
+	logger.Debug("Crawling URL", "url", resolvedURL)
 
 	// Create HTTP request with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, resolvedURL, nil)
@@ -271,16 +273,16 @@ func (c *BasicWebCrawler) CrawlPath(ctx context.Context, path string) ([]byte, e
 func parseHtml(htmlBinary []byte) (links []string, err error) {
 	htmlNode, err := html.Parse(bytes.NewReader(htmlBinary))
 
-	fmt.Printf("\n\nBody parsed from html: %+v\n\n\n", htmlNode)
+	logger.Debug("HTML body parsed", "node", htmlNode)
 	if err != nil {
 		return nil, err
 	}
 
 	// walk through html tree
-	fmt.Printf("\nStarting Html Node %+v\n\n", htmlNode)
+	logger.Debug("Starting HTML tree walk", "node", htmlNode)
 	result := walkTree(htmlNode, make([]string, 0))
 
-	fmt.Printf("\nFinal Crawled Links: %+v\n\n", result)
+	logger.Debug("Final crawled links", "links", result)
 
 	return result, nil
 }
@@ -337,7 +339,7 @@ func extractVideoIdsFromRawHtml(htmlContent string) []string {
 		err := json.Unmarshal([]byte(matchJson), &videoId)
 
 		if err != nil {
-			fmt.Printf("Unmarshal video url err: %s\n", err.Error())
+			logger.Error("Error unmarshaling video URL", "error", err)
 			// skip over video
 			continue
 		}
@@ -356,7 +358,7 @@ func debugPageContent(htmlContent string) {
 		end := strings.Index(htmlContent[start:], "</title>")
 		if end > 0 {
 			title := htmlContent[start : start+end]
-			fmt.Printf("Page title: %s\n", title)
+			logger.Debug("Page title found", "title", title)
 		}
 	}
 
@@ -367,15 +369,15 @@ func debugPageContent(htmlContent string) {
 	hasVideoContainers := strings.Contains(htmlContent, "ytd-video-renderer") ||
 		strings.Contains(htmlContent, "video-title") ||
 		strings.Contains(htmlContent, "ytd-compact-video-renderer")
-	fmt.Printf("Contains video containers: %t\n", hasVideoContainers)
+	logger.Debug("Video containers check", "hasContainers", hasVideoContainers)
 
 	// count total links vs video links
 	totalLinks := strings.Count(htmlContent, "href=")
 	videoLinks := strings.Count(htmlContent, "watch?v=")
-	fmt.Printf("Total links: %d, Video links: %d\n", totalLinks, videoLinks)
+	logger.Debug("Link counts", "totalLinks", totalLinks, "videoLinks", videoLinks)
 
 	// look for JavaScript indicators
 	hasJavaScript := strings.Contains(htmlContent, "<script") ||
 		strings.Contains(htmlContent, "application/json")
-	fmt.Printf("Contains JavaScript: %t\n", hasJavaScript)
+	logger.Debug("JavaScript check", "hasJavaScript", hasJavaScript)
 }

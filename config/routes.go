@@ -2,7 +2,7 @@ package config
 
 import (
 	// "context"
-	"fmt"
+	"log"
 	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/ai"
@@ -10,6 +10,7 @@ import (
 	"github.com/darkphotonKN/fireplace/internal/discovery"
 	"github.com/darkphotonKN/fireplace/internal/insights"
 	"github.com/darkphotonKN/fireplace/internal/jobs"
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/darkphotonKN/fireplace/internal/plans"
 	"github.com/darkphotonKN/fireplace/internal/user"
 	"github.com/darkphotonKN/fireplace/internal/useranalytics"
@@ -26,7 +27,7 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 
 	// NOTE: debugging middleware
 	router.Use(func(c *gin.Context) {
-		fmt.Println("Incoming request to:", c.Request.Method, c.Request.URL.Path, "from", c.Request.Host)
+		logger.Debug("Incoming request", "method", c.Request.Method, "path", c.Request.URL.Path, "host", c.Request.Host)
 		c.Next()
 	})
 
@@ -129,7 +130,7 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	searchTermGen := ai.NewSearchTermGenerator()
 	youtubeVideoFinder, err := discovery.NewYoutubeVideoFinder()
 	if err != nil {
-		fmt.Println("Error when attempting to initialize youtubeVideoFinder", youtubeVideoFinder)
+		log.Fatalf("Error when attempting to initialize youtubeVideoFinder, error: %+v\n", err)
 	}
 	videoInsightsRepoService := insights.NewService(insightsRepo, searchTermGen, checkListService, planService, youtubeVideoFinder)
 	videoInsightsHandler := insights.NewHandler(videoInsightsRepoService)

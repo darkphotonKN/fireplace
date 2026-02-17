@@ -10,6 +10,7 @@ import (
 	"github.com/darkphotonKN/fireplace/internal/concepts"
 	"github.com/darkphotonKN/fireplace/internal/discovery"
 	"github.com/darkphotonKN/fireplace/internal/interfaces"
+	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/darkphotonKN/fireplace/internal/plans"
 )
@@ -83,7 +84,7 @@ func (s *service) GenerateDailySuggestions(ctx context.Context, planId uuid.UUID
 		if i > 0 {
 			prompt = fmt.Sprintf("%sAlso, don't choose one closely related to this specific action item as this has already been added to the list too:%s", prompt, suggestions[i-1])
 		}
-		fmt.Println("updated prompt:", prompt)
+		logger.Debug("Updated prompt for daily suggestions", "prompt", prompt)
 		res, err := s.contentGen.Generate(prompt)
 		if err != nil {
 			return nil, err
@@ -144,7 +145,7 @@ func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.U
 		%s
 		`, focus, s.basePrompt, checklistPrompt, additionalPrompt)
 
-	fmt.Printf("\nfinal prompt was: \n%s\n\n", prompt)
+	logger.Debug("Final prompt for checklist generation", "prompt", prompt)
 
 	return prompt, nil
 }
@@ -157,7 +158,7 @@ func (s *service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) 
 	// gets relavant planID and checklistItems
 	plan, err := s.planService.GetById(ctx, planId)
 	if err != nil {
-		fmt.Println("Error when retrieving plan for generating checklist suggestion:", err)
+		logger.Error("Error retrieving plan for checklist suggestion", "error", err, "planId", planId)
 		return "", "", err
 	}
 
@@ -165,7 +166,7 @@ func (s *service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) 
 	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planId, nil, nil)
 
 	if err != nil {
-		fmt.Println("Error when retrieving all checklist item for generating checklist suggestion.")
+		logger.Error("Error retrieving checklist items for suggestion", "error", err, "planId", planId)
 		return "", "", err
 	}
 
@@ -219,14 +220,14 @@ func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.U
 		concepts[index].Description = searchTerm
 	}
 
-	fmt.Sprintf("\nmapped to concepts before finding resources: %+v\n\n", concepts)
+	logger.Debug("Mapped search terms to concepts", "concepts", concepts)
 
 	resources, err := s.youtubeVideoFinder.FindResources(ctx, concepts)
 
-	fmt.Printf("\nFound resources: %+v\n\n", resources)
+	logger.Debug("Found video resources", "resources", resources)
 
 	if err != nil {
-		fmt.Println("Error when finding resources", err)
+		logger.Error("Error finding video resources", "error", err)
 		return nil, err
 	}
 
