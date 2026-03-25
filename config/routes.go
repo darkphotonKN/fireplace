@@ -11,6 +11,7 @@ import (
 	"github.com/darkphotonKN/fireplace/internal/insights"
 	"github.com/darkphotonKN/fireplace/internal/jobs"
 	"github.com/darkphotonKN/fireplace/internal/logger"
+	"github.com/darkphotonKN/fireplace/internal/notes"
 	"github.com/darkphotonKN/fireplace/internal/plans"
 	"github.com/darkphotonKN/fireplace/internal/user"
 	"github.com/darkphotonKN/fireplace/internal/useranalytics"
@@ -137,6 +138,24 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 
 	// -- Insight Video Routes --
 	insightsRoutes.GET("/suggest-videos", videoInsightsHandler.GenerateSuggestedVideoLinks)
+
+	// --- NOTES ---
+
+	// -- Notes Setup --
+	notesRepo := notes.NewRepository(db)
+	// Create a notes-specific AI generator
+	notesGen := ai.NewNotesGenerator()
+	notesService := notes.NewService(notesRepo, notesGen, checkListService, planService)
+	notesHandler := notes.NewHandler(notesService)
+
+	// -- Notes Routes --
+	notesRoutes := api.Group("/plans/:id/notes")
+	notesRoutes.GET("", notesHandler.GetAll)
+	notesRoutes.GET("/:noteId", notesHandler.GetByID)
+	notesRoutes.POST("", notesHandler.Create)
+	notesRoutes.PATCH("/:noteId", notesHandler.Update)
+	notesRoutes.DELETE("/:noteId", notesHandler.Delete)
+	notesRoutes.POST("/generate-ai", notesHandler.GenerateAINotes)
 
 	// --- JOBS ---
 	// TODO: write a job manager for graceful shutdown
