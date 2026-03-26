@@ -20,6 +20,7 @@ type Repository interface {
 	GetById(id uuid.UUID) (*models.User, error)
 	GetAll() ([]*Response, error)
 	GetUserByEmail(email string) (*models.User, error)
+	UpdateProfile(id uuid.UUID, req UpdateProfileRequest) (*models.User, error)
 }
 
 func NewService(repo Repository) Service {
@@ -30,6 +31,22 @@ func NewService(repo Repository) Service {
 
 func (s *service) GetById(id uuid.UUID) (*models.User, error) {
 	return s.Repo.GetById(id)
+}
+
+func (s *service) GetProfile(id uuid.UUID) (*models.User, error) {
+	user, err := s.Repo.GetById(id)
+	if err != nil {
+		return nil, err
+	}
+	user.Password = ""
+	return user, nil
+}
+
+func (s *service) UpdateProfile(id uuid.UUID, req UpdateProfileRequest) (*models.User, error) {
+	if req.Name != nil && *req.Name == "" {
+		return nil, errors.New("name cannot be empty")
+	}
+	return s.Repo.UpdateProfile(id, req)
 }
 
 func (s *service) Create(user models.User) error {

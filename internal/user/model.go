@@ -4,8 +4,10 @@ import "github.com/darkphotonKN/fireplace/internal/models"
 
 type Response struct {
 	models.BaseDBDateModel
-	Email string `db:"email" json:"email"`
-	Name  string `db:"name" json:"name"`
+	Email       string  `db:"email" json:"email"`
+	Name        string  `db:"name" json:"name"`
+	DisplayName *string `db:"display_name" json:"displayName"`
+	Bio         *string `db:"bio" json:"bio"`
 }
 
 type LoginResponse struct {
@@ -20,4 +22,10 @@ type LoginResponse struct {
 type LoginRequest struct {
 	Email    string `db:"email" json:"email"`
 	Password string `db:"password" json:"password"`
+}
+
+type UpdateProfileRequest struct {
+	Name        *string `json:"name"`
+	DisplayName *string `json:"displayName"`
+	Bio         *string `json:"bio"`
 }

@@ -60,6 +60,8 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 
 	// -- User Routes --
 	userRoutes := api.Group("/users")
+	userRoutes.GET("/profile", userHandler.GetProfile)
+	userRoutes.PATCH("/profile", userHandler.UpdateProfile)
 	userRoutes.GET("/:id", userHandler.GetById)
 	userRoutes.GET("", userHandler.GetAll)
 	userRoutes.POST("/signup", userHandler.Create)

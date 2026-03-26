@@ -11,9 +11,11 @@ import (
 **/
 type User struct {
 	BaseDBDateModel
-	Email    string `db:"email" json:"email"`
-	Name     string `db:"name" json:"name"`
-	Password string `db:"password" json:"password,omitempty"`
+	Email       string  `db:"email" json:"email"`
+	Name        string  `db:"name" json:"name"`
+	Password    string  `db:"password" json:"password,omitempty"`
+	DisplayName *string `db:"display_name" json:"displayName"`
+	Bio         *string `db:"bio" json:"bio"`
 }
 
 type Plan struct {

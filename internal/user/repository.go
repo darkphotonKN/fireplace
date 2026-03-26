@@ -1,6 +1,8 @@
 package user
 
 import (
+	"strings"
+
 	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
@@ -48,13 +50,15 @@ func (r *repository) GetById(id uuid.UUID) (*models.User, error) {
 
 func (r *repository) GetAll() ([]*Response, error) {
 	query := `
-	SELECT 
+	SELECT
 		users.id,
 		users.name,
 		users.email,
+		users.display_name,
+		users.bio,
 		users.created_at,
 		users.updated_at
-	FROM users 
+	FROM users
 	`
 
 	var users []*Response
@@ -63,6 +67,36 @@ func (r *repository) GetAll() ([]*Response, error) {
 	}
 
 	return users, nil
+}
+
+func (r *repository) UpdateProfile(id uuid.UUID, req UpdateProfileRequest) (*models.User, error) {
+	setClauses := []string{}
+	args := map[string]interface{}{"id": id}
+
+	if req.Name != nil {
+		setClauses = append(setClauses, "name = :name")
+		args["name"] = *req.Name
+	}
+	if req.DisplayName != nil {
+		setClauses = append(setClauses, "display_name = :display_name")
+		args["display_name"] = *req.DisplayName
+	}
+	if req.Bio != nil {
+		setClauses = append(setClauses, "bio = :bio")
+		args["bio"] = *req.Bio
+	}
+
+	if len(setClauses) == 0 {
+		return r.GetById(id)
+	}
+
+	query := "UPDATE users SET " + strings.Join(setClauses, ", ") + ", updated_at = NOW() WHERE id = :id"
+	_, err := r.DB.NamedExec(query, args)
+	if err != nil {
+		return nil, err
+	}
+
+	return r.GetById(id)
 }
 
 func (r *repository) GetUserByEmail(email string) (*models.User, error) {

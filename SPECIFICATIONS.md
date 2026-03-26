@@ -91,6 +91,33 @@
 - [ ] Pinning: manually moved items marked `pinned=true`, skipped on re-optimization
 - [ ] Reset: unpin all entries and re-generate schedule
 
+### Frontend Auth (`flow-client`)
+
+- [ ] FE: `/auth` page with tab toggle between "Sign In" and "Sign Up"
+- [ ] FE: Sign In form — email, password, submit
+- [ ] FE: Sign Up form — name, email, password, confirm password, submit
+- [ ] FE: Inline field validation errors (empty fields, password mismatch, email format)
+- [ ] FE: On success — store JWT tokens (accessToken, refreshToken) in localStorage, redirect to dashboard
+- [ ] FE: Auth guard on all routes — no token → redirect to `/auth`
+- [ ] FE: `/auth` redirects to dashboard if already authenticated
+- [ ] FE: Attach `Authorization: Bearer <token>` to all API requests
+- [ ] FE: On 401 response — attempt token refresh, if fails → clear tokens → redirect to `/auth`
+
+> Uses existing BE endpoints: POST `/api/users/signup`, POST `/api/users/signin`. No backend changes.
+> Not in scope: forgot password, OAuth, email verification, profile page
+
+### User Profile
+
+- [ ] BE: Migration — add `display_name` and `bio` columns to users table
+- [ ] BE: GET `/api/users/profile` — return own profile using JWT identity
+- [ ] BE: PATCH `/api/users/profile` — update own profile (display_name, bio, name)
+- [ ] FE (`flow-client`): Header dropdown shows real user name (display_name, falls back to name)
+- [ ] FE (`flow-client`): Header dropdown with "Profile" and "Sign Out" options
+- [ ] FE (`flow-client`): Dedicated `/profile` page with inline editing (click to edit, save button)
+- [ ] FE (`flow-client`): Profile fields — display_name (editable), name (editable), email (read-only), bio (editable)
+
+> Not in scope: avatar, timezone, notifications, public profiles, password change
+
 ---
 
 ## Features (Future — Not Started)
@@ -101,7 +128,6 @@
 - [ ] AI-generated daily focus narrative and reflection prompts
 - [ ] User-configurable ratios and daily cap
 - [ ] Google Calendar / external calendar sync
-- [ ] Frontend (Next.js with shadcn/tailwind)
 - [ ] Workspace / music integration
 - [ ] Real-time notifications for scheduled items
 
@@ -117,6 +143,8 @@ users
 ├── name (TEXT, NOT NULL)
 ├── email (TEXT, UNIQUE, NOT NULL)
 ├── password (TEXT, NOT NULL, bcrypt hash)
+├── display_name (TEXT, nullable)
+├── bio (TEXT, nullable)
 ├── created_at (TIMESTAMP)
 └── updated_at (TIMESTAMP)
 ```
@@ -195,12 +223,14 @@ Indexes:
 
 ### User API
 
-| Method | Endpoint            | Auth | Description                         |
-| ------ | ------------------- | ---- | ----------------------------------- |
-| POST   | `/api/users/signup` | None | Register new user                   |
-| POST   | `/api/users/signin` | None | Login → JWT access + refresh tokens |
-| GET    | `/api/users/:id`    | JWT  | Get user by ID                      |
-| GET    | `/api/users`        | JWT  | List all users                      |
+| Method | Endpoint              | Auth | Description                                  |
+| ------ | --------------------- | ---- | -------------------------------------------- |
+| POST   | `/api/users/signup`   | None | Register new user                            |
+| POST   | `/api/users/signin`   | None | Login → JWT access + refresh tokens          |
+| GET    | `/api/users/profile`  | JWT  | Get own profile (from JWT identity)          |
+| PATCH  | `/api/users/profile`  | JWT  | Update own profile (display_name, bio, name) |
+| GET    | `/api/users/:id`      | JWT  | Get user by ID                               |
+| GET    | `/api/users`          | JWT  | List all users                               |
 
 ### Plan API
 
@@ -314,6 +344,14 @@ func GenerateSchedule(plan, dailyItems, longtermItems, recommendations, pinnedEn
 - Move endpoint returns 409 if target slot is occupied
 - Hard cap of 8 positions per day enforced by algorithm (not DB constraint)
 
+### Frontend Auth Token Lifecycle
+
+- Access token stored in `localStorage` as `accessToken`, refresh token as `refreshToken`
+- All API requests include `Authorization: Bearer <accessToken>` header
+- On 401 response: attempt refresh via POST `/api/users/refresh` with refreshToken, store new accessToken
+- If refresh fails (401/expired): clear both tokens, redirect to `/auth`
+- `/auth` page checks for existing valid token on mount — if present, redirect to dashboard
+
 ### Calendar Overflow
 
 - If a day has 8 pinned items, no algorithm-generated items are placed there
@@ -334,6 +372,18 @@ func GenerateSchedule(plan, dailyItems, longtermItems, recommendations, pinnedEn
 | Task deleted after scheduling   | CASCADE delete removes the calendar_entry                             |
 | Plan type changed               | Next generate/reset recalculates with new ratios                      |
 | LLM ranking fails               | Fallback to sequence-order for longterm items, log error              |
+
+### Frontend Auth
+
+| Scenario                          | Handling                                                            |
+| --------------------------------- | ------------------------------------------------------------------- |
+| Token missing from localStorage   | Redirect to `/auth`                                                 |
+| Access token expired, refresh ok  | Silently refresh, retry original request                            |
+| Both tokens expired               | Clear tokens, redirect to `/auth`                                   |
+| Sign up with existing email       | Show API error message inline                                       |
+| Sign in with wrong password       | Show API error message inline                                       |
+| Password and confirm don't match  | Client-side validation, block submit                                |
+| User manually navigates to /auth  | If already authenticated, redirect to dashboard                     |
 
 ### Concurrent Access
 
