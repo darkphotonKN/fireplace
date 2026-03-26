@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/ai"
+	"github.com/darkphotonKN/fireplace/internal/calendar"
 	"github.com/darkphotonKN/fireplace/internal/checklistitems"
 	"github.com/darkphotonKN/fireplace/internal/discovery"
 	"github.com/darkphotonKN/fireplace/internal/insights"
@@ -156,6 +157,17 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	notesRoutes.PATCH("/:noteId", notesHandler.Update)
 	notesRoutes.DELETE("/:noteId", notesHandler.Delete)
 	notesRoutes.POST("/generate-ai", notesHandler.GenerateAINotes)
+
+	// --- CALENDAR ---
+
+	// -- Calendar Setup --
+	calendarRepo := calendar.NewRepository(db)
+	calendarService := calendar.NewService(calendarRepo)
+	calendarHandler := calendar.NewHandler(calendarService)
+
+	// -- Calendar Routes --
+	calendarRoutes := api.Group("/plans/:id/calendar")
+	calendarRoutes.GET("", calendarHandler.GetMonth)
 
 	// --- JOBS ---
 	// TODO: write a job manager for graceful shutdown
