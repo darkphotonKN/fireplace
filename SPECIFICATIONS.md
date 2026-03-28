@@ -147,6 +147,24 @@
 > Frontend-only, no backend changes.
 > Not in scope: system preference detection, backend storage, per-component overrides
 
+### Toast Notifications + Sidebar Hints (`flow-client`)
+
+- [ ] FE: Reusable toast component — warm fireplace theme, theme-aware (dark/light)
+- [ ] FE: Default position bottom-right, configurable bottom-left for sidebar hints
+- [ ] FE: Auto-dismiss after 5 seconds, manual close (X button)
+- [ ] FE: Vertical stacking when multiple toasts fire simultaneously
+- [ ] FE: Toast on successful login — "Welcome back, {name}" (bottom-right)
+- [ ] FE: Toast on profile updated — "Profile updated" (bottom-right)
+- [ ] FE: Toast on plan created — "Plan created" (bottom-right)
+- [ ] FE: Sidebar hint (first-timer) — "Tip: Your plans live in the side panel ←" (bottom-left, once)
+- [ ] FE: Sidebar reminder (inactive 24hrs) — "Tip: Switch plans from the side panel ←" (bottom-left)
+- [ ] FE: localStorage tracking: `hasSeenSidebarHint`, `lastSidebarOpen` timestamp
+- [ ] FE: Fix sidebar collapse button overlapping Projects/Learning toggle
+
+> Frontend-only, no backend changes.
+> Not triggered by: checklist CRUD, scheduling, archiving, or any in-plan micro-actions.
+> Not in scope: sound effects, notification history, backend-driven notifications, push notifications
+
 ---
 
 ## Features (Future — Not Started)
@@ -398,6 +416,16 @@ func GenerateSchedule(plan, dailyItems, longtermItems, recommendations, pinnedEn
 - Checklist/calendar/insights operations verify the parent plan belongs to the authenticated user → 403 if not
 - No cross-user data access is possible through any endpoint
 
+### Toast Notification Triggers
+
+- System-level events only — login, profile update, plan creation
+- NOT triggered by checklist item CRUD, scheduling, archiving, or in-plan micro-actions
+- Sidebar hint shown once per user (`hasSeenSidebarHint` in localStorage) on first plan page visit
+- Sidebar reminder shown if user hasn't opened sidebar in 24hrs (`lastSidebarOpen` timestamp) and is on a plan page
+- `lastSidebarOpen` updated each time user opens the sidebar
+- Toasts auto-dismiss after 5 seconds unless manually closed
+- Multiple simultaneous toasts stack vertically
+
 ### Calendar Overflow
 
 - If a day has 8 pinned items, no algorithm-generated items are placed there
@@ -430,6 +458,16 @@ func GenerateSchedule(plan, dailyItems, longtermItems, recommendations, pinnedEn
 | Sign in with wrong password      | Show API error message inline                   |
 | Password and confirm don't match | Client-side validation, block submit            |
 | User manually navigates to /auth | If already authenticated, redirect to dashboard |
+
+### Toast Notifications
+
+| Scenario                                    | Handling                                                    |
+| ------------------------------------------- | ----------------------------------------------------------- |
+| Multiple toasts at same time                | Stack vertically, each auto-dismisses independently         |
+| localStorage cleared (hasSeenSidebarHint)   | Sidebar hint shows again on next plan page visit            |
+| User opens sidebar then doesn't for 24hrs   | Reminder toast shown on next plan page visit (bottom-left)  |
+| User never visits a plan page               | Sidebar hints never fire (only triggered on plan pages)     |
+| Toast fired while another is dismissing     | New toast stacks, dismissing toast animates out             |
 
 ### Authorization & Ownership
 
