@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/ai"
+	"github.com/darkphotonKN/fireplace/internal/auth"
 	"github.com/darkphotonKN/fireplace/internal/calendar"
 	"github.com/darkphotonKN/fireplace/internal/checklistitems"
 	"github.com/darkphotonKN/fireplace/internal/discovery"
@@ -51,31 +52,66 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	//
 	// go finder.FindResources(context.Background(), []concepts.Concept{})
 
-	// --- USER ---
+	// --- SERVICE SETUP ---
 
-	// -- User Setup --
 	userRepo := user.NewRepository(db)
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
 
-	// -- User Routes --
-	userRoutes := api.Group("/users")
-	userRoutes.GET("/profile", userHandler.GetProfile)
-	userRoutes.PATCH("/profile", userHandler.UpdateProfile)
-	userRoutes.GET("/:id", userHandler.GetById)
-	userRoutes.GET("", userHandler.GetAll)
-	userRoutes.POST("/signup", userHandler.Create)
-	userRoutes.POST("/signin", userHandler.Login)
-
-	// --- Plan Routes ---
-
-	// -- Plan Setup --
 	planRepo := plans.NewRepository(db)
 	planService := plans.NewService(planRepo)
 	planHandler := plans.NewHandler(planService)
 
+	checkListRepo := checklistitems.NewRepository(db)
+	checkListService := checklistitems.NewService(checkListRepo)
+	checkListHandler := checklistitems.NewHandler(checkListService)
+
+	userAnalyticsRepo := useranalytics.NewRepository(db)
+	userAnalyticsService := useranalytics.NewService(userAnalyticsRepo, checkListService)
+	userAnalyticsHandler := useranalytics.NewHandler(userAnalyticsService)
+
+	checklistGen := ai.NewChecklistGen()
+	insightsRepo := insights.NewRepository(db)
+	insightsService := insights.NewService(insightsRepo, checklistGen, checkListService, planService, nil)
+	insightsHandler := insights.NewHandler(insightsService)
+
+	searchTermGen := ai.NewSearchTermGenerator()
+	youtubeVideoFinder, err := discovery.NewYoutubeVideoFinder()
+	if err != nil {
+		log.Fatalf("Error when attempting to initialize youtubeVideoFinder, error: %+v\n", err)
+	}
+	videoInsightsRepoService := insights.NewService(insightsRepo, searchTermGen, checkListService, planService, youtubeVideoFinder)
+	videoInsightsHandler := insights.NewHandler(videoInsightsRepoService)
+
+	notesRepo := notes.NewRepository(db)
+	notesGen := ai.NewNotesGenerator()
+	notesService := notes.NewService(notesRepo, notesGen, checkListService, planService)
+	notesHandler := notes.NewHandler(notesService)
+
+	calendarRepo := calendar.NewRepository(db)
+	calendarService := calendar.NewService(calendarRepo)
+	calendarHandler := calendar.NewHandler(calendarService)
+
+	// --- PUBLIC ROUTES (no auth) ---
+
+	publicUsers := api.Group("/users")
+	publicUsers.POST("/signup", userHandler.Create)
+	publicUsers.POST("/signin", userHandler.Login)
+
+	// --- PROTECTED ROUTES (auth middleware) ---
+
+	protected := api.Group("")
+	protected.Use(auth.AuthMiddleware())
+
+	// -- User Routes --
+	protectedUsers := protected.Group("/users")
+	protectedUsers.GET("/profile", userHandler.GetProfile)
+	protectedUsers.PATCH("/profile", userHandler.UpdateProfile)
+	protectedUsers.GET("/:id", userHandler.GetById)
+	protectedUsers.GET("", userHandler.GetAll)
+
 	// -- Plan Routes --
-	planRoutes := api.Group("/plans")
+	planRoutes := protected.Group("/plans")
 	planRoutes.GET("/:id", planHandler.GetById)
 	planRoutes.GET("", planHandler.GetAll)
 	planRoutes.POST("", planHandler.Create)
@@ -83,16 +119,8 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	planRoutes.PATCH("/:id/toggle-daily-reset", planHandler.ToggleDailyReset)
 	planRoutes.DELETE("/:id", planHandler.Delete)
 
-	// --- CHECKLIST ---
-
-	// -- Checklist Setup --
-	checkListRepo := checklistitems.NewRepository(db)
-	checkListService := checklistitems.NewService(checkListRepo)
-	checkListHandler := checklistitems.NewHandler(checkListService)
-
-	// -- Checklist Plan-Specific Routes --
-	// TODO: remove after test
-	checkListRoutes := api.Group("/plans/:id/checklists")
+	// -- Checklist Routes --
+	checkListRoutes := protected.Group("/plans/:id/checklists")
 	checkListRoutes.GET("", checkListHandler.GetAll)
 	checkListRoutes.GET("/archived", checkListHandler.GetAllArchived)
 	checkListRoutes.GET("/upcoming", checkListHandler.GetUpcoming)
@@ -103,56 +131,18 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	checkListRoutes.PATCH("/:checklist_id/schedule", checkListHandler.SetSchedule)
 	checkListRoutes.PATCH("/:checklist_id/archive", checkListHandler.Archive)
 
-	// --- USER ANALYTICS ---
-
-	// -- User Analytics Setup --
-	userAnalyticsRepo := useranalytics.NewRepository(db)
-	userAnalyticsService := useranalytics.NewService(userAnalyticsRepo, checkListService)
-	userAnalyticsHandler := useranalytics.NewHandler(userAnalyticsService)
-
 	// -- User Analytics Routes --
-	userAnalyticsRoutes := api.Group("/analytics")
-	{
-		userAnalyticsRoutes.GET("/user/:userId", userAnalyticsHandler.GetUserAnalytics)
-	}
+	userAnalyticsRoutes := protected.Group("/analytics")
+	userAnalyticsRoutes.GET("/user/:userId", userAnalyticsHandler.GetUserAnalytics)
 
-	// --- INSIGHTS ---
-
-	// -- Insights Setup (Checklist Items) --
-	checklistGen := ai.NewChecklistGen()
-	insightsRepo := insights.NewRepository(db)
-	insightsService := insights.NewService(insightsRepo, checklistGen, checkListService, planService, nil)
-	insightsHandler := insights.NewHandler(insightsService)
-
-	// -- Insight Checklist Routes --
-	insightsRoutes := api.Group("/insights")
+	// -- Insight Routes --
+	insightsRoutes := protected.Group("/insights")
 	insightsRoutes.GET("/checklist-suggestion", insightsHandler.GenerateSuggestions)
 	insightsRoutes.GET("/checklist-suggestion-daily", insightsHandler.GenerateDailySuggestions)
-
-	// -- Insights Setup (Generating Video Suggestions) --
-
-	searchTermGen := ai.NewSearchTermGenerator()
-	youtubeVideoFinder, err := discovery.NewYoutubeVideoFinder()
-	if err != nil {
-		log.Fatalf("Error when attempting to initialize youtubeVideoFinder, error: %+v\n", err)
-	}
-	videoInsightsRepoService := insights.NewService(insightsRepo, searchTermGen, checkListService, planService, youtubeVideoFinder)
-	videoInsightsHandler := insights.NewHandler(videoInsightsRepoService)
-
-	// -- Insight Video Routes --
 	insightsRoutes.GET("/suggest-videos", videoInsightsHandler.GenerateSuggestedVideoLinks)
 
-	// --- NOTES ---
-
-	// -- Notes Setup --
-	notesRepo := notes.NewRepository(db)
-	// Create a notes-specific AI generator
-	notesGen := ai.NewNotesGenerator()
-	notesService := notes.NewService(notesRepo, notesGen, checkListService, planService)
-	notesHandler := notes.NewHandler(notesService)
-
 	// -- Notes Routes --
-	notesRoutes := api.Group("/plans/:id/notes")
+	notesRoutes := protected.Group("/plans/:id/notes")
 	notesRoutes.GET("", notesHandler.GetAll)
 	notesRoutes.GET("/:noteId", notesHandler.GetByID)
 	notesRoutes.POST("", notesHandler.Create)
@@ -160,15 +150,8 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	notesRoutes.DELETE("/:noteId", notesHandler.Delete)
 	notesRoutes.POST("/generate-ai", notesHandler.GenerateAINotes)
 
-	// --- CALENDAR ---
-
-	// -- Calendar Setup --
-	calendarRepo := calendar.NewRepository(db)
-	calendarService := calendar.NewService(calendarRepo)
-	calendarHandler := calendar.NewHandler(calendarService)
-
 	// -- Calendar Routes --
-	calendarRoutes := api.Group("/plans/:id/calendar")
+	calendarRoutes := protected.Group("/plans/:id/calendar")
 	calendarRoutes.GET("", calendarHandler.GetMonth)
 
 	// --- JOBS ---

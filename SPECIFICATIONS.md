@@ -118,6 +118,35 @@
 
 > Not in scope: avatar, timezone, notifications, public profiles, password change
 
+### Authorization Middleware + Landing Page
+
+- [ ] BE: Gin auth middleware — extract `user_id` from JWT `sub` claim, inject into `gin.Context`
+- [ ] BE: Apply middleware to all routes except POST `/api/users/signup` and POST `/api/users/signin`
+- [ ] BE: Remove all hardcoded `"11111111-1111-1111-1111-111111111111"` — read user ID from context
+- [ ] BE: 401 for missing/expired token, 403 for ownership violations
+- [ ] BE: Plans — add `WHERE user_id = ?` from JWT on all queries (list, get, update, delete)
+- [ ] BE: Checklist items — verify plan belongs to authenticated user before any operation
+- [ ] BE: Insights — verify `plan_id` belongs to authenticated user before generating
+- [ ] FE (`flow-client`): `/` root shows splash page for unauthenticated users
+- [ ] FE (`flow-client`): Splash tagline "Start your plan now. Sit down by the fire." with coral theme
+- [ ] FE (`flow-client`): Sign In / Sign Up buttons linking to `/auth`
+- [ ] FE (`flow-client`): Authenticated users on `/` redirect to dashboard
+
+> Not in scope: RBAC, admin roles, sharing, public plans
+
+### Light Mode Toggle (`flow-client`)
+
+- [ ] FE: Sun/moon icon in header, positioned between existing content and username dropdown
+- [ ] FE: Click toggles between dark mode and light mode
+- [ ] FE: Dark mode (existing) — orange accent + dark brown/warm blacks
+- [ ] FE: Light mode (new) — same orange accent + warm cream/off-white/parchment backgrounds, no cold whites
+- [ ] FE: Theme preference saved in localStorage (`theme` key), defaults to `dark`
+- [ ] FE: Apply theme class to `<html>` element on load to prevent flash of wrong theme
+- [ ] FE: All pages and components respect the active theme
+
+> Frontend-only, no backend changes.
+> Not in scope: system preference detection, backend storage, per-component overrides
+
 ---
 
 ## Features (Future — Not Started)
@@ -223,14 +252,14 @@ Indexes:
 
 ### User API
 
-| Method | Endpoint              | Auth | Description                                  |
-| ------ | --------------------- | ---- | -------------------------------------------- |
-| POST   | `/api/users/signup`   | None | Register new user                            |
-| POST   | `/api/users/signin`   | None | Login → JWT access + refresh tokens          |
-| GET    | `/api/users/profile`  | JWT  | Get own profile (from JWT identity)          |
-| PATCH  | `/api/users/profile`  | JWT  | Update own profile (display_name, bio, name) |
-| GET    | `/api/users/:id`      | JWT  | Get user by ID                               |
-| GET    | `/api/users`          | JWT  | List all users                               |
+| Method | Endpoint             | Auth | Description                                  |
+| ------ | -------------------- | ---- | -------------------------------------------- |
+| POST   | `/api/users/signup`  | None | Register new user                            |
+| POST   | `/api/users/signin`  | None | Login → JWT access + refresh tokens          |
+| GET    | `/api/users/profile` | JWT  | Get own profile (from JWT identity)          |
+| PATCH  | `/api/users/profile` | JWT  | Update own profile (display_name, bio, name) |
+| GET    | `/api/users/:id`     | JWT  | Get user by ID                               |
+| GET    | `/api/users`         | JWT  | List all users                               |
 
 ### Plan API
 
@@ -352,6 +381,23 @@ func GenerateSchedule(plan, dailyItems, longtermItems, recommendations, pinnedEn
 - If refresh fails (401/expired): clear both tokens, redirect to `/auth`
 - `/auth` page checks for existing valid token on mount — if present, redirect to dashboard
 
+### Theme Toggle
+
+- Theme stored in `localStorage` as `theme` with values `dark` or `light`, defaults to `dark`
+- On app load: read `localStorage.theme`, apply class to `<html>` before first paint (inline script or layout effect)
+- Dark mode: warm dark palette (`#1f1f1f` background, `#d1cfc0` text, `rgb(247,111,83)` accent)
+- Light mode: warm light palette (cream/parchment backgrounds, dark warm text, same orange accent)
+- Both modes maintain fireplace warmth — no cold grays or pure whites
+
+### Authorization & Ownership
+
+- Auth middleware runs on all routes except `/api/users/signup` and `/api/users/signin`
+- Middleware extracts `user_id` from JWT `sub` claim and sets `gin.Context` key `userId`
+- Missing or expired token → 401 Unauthorized
+- Plan queries filter by `user_id` from JWT — user can only see/modify their own plans
+- Checklist/calendar/insights operations verify the parent plan belongs to the authenticated user → 403 if not
+- No cross-user data access is possible through any endpoint
+
 ### Calendar Overflow
 
 - If a day has 8 pinned items, no algorithm-generated items are placed there
@@ -375,15 +421,27 @@ func GenerateSchedule(plan, dailyItems, longtermItems, recommendations, pinnedEn
 
 ### Frontend Auth
 
-| Scenario                          | Handling                                                            |
-| --------------------------------- | ------------------------------------------------------------------- |
-| Token missing from localStorage   | Redirect to `/auth`                                                 |
-| Access token expired, refresh ok  | Silently refresh, retry original request                            |
-| Both tokens expired               | Clear tokens, redirect to `/auth`                                   |
-| Sign up with existing email       | Show API error message inline                                       |
-| Sign in with wrong password       | Show API error message inline                                       |
-| Password and confirm don't match  | Client-side validation, block submit                                |
-| User manually navigates to /auth  | If already authenticated, redirect to dashboard                     |
+| Scenario                         | Handling                                        |
+| -------------------------------- | ----------------------------------------------- |
+| Token missing from localStorage  | Redirect to `/auth`                             |
+| Access token expired, refresh ok | Silently refresh, retry original request        |
+| Both tokens expired              | Clear tokens, redirect to `/auth`               |
+| Sign up with existing email      | Show API error message inline                   |
+| Sign in with wrong password      | Show API error message inline                   |
+| Password and confirm don't match | Client-side validation, block submit            |
+| User manually navigates to /auth | If already authenticated, redirect to dashboard |
+
+### Authorization & Ownership
+
+| Scenario                                | Handling                                          |
+| --------------------------------------- | ------------------------------------------------- |
+| No Authorization header                 | 401 Unauthorized                                  |
+| Expired JWT                             | 401 Unauthorized                                  |
+| Valid JWT but plan belongs to other user | 403 Forbidden                                     |
+| Checklist op on other user's plan       | 403 Forbidden (verify plan ownership first)       |
+| Insights request for other user's plan  | 403 Forbidden                                     |
+| Unauthenticated user visits `/`         | See splash/landing page                           |
+| Authenticated user visits `/`           | Redirect to dashboard                             |
 
 ### Concurrent Access
 
