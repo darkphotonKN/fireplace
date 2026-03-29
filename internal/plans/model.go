@@ -1,5 +1,9 @@
 package plans
 
+import (
+	"github.com/darkphotonKN/fireplace/internal/models"
+)
+
 type CreatePlanReq struct {
 	Name        string `json:"name" binding:"required"`
 	Focus       string `json:"focus" binding:"required"`
@@ -14,3 +18,8 @@ type UpdatePlanReq struct {
 	DailyReset  *bool   `json:"dailyReset,omitempty"`
 }
 
+// plans including shared plans
+type AllPlansResponse struct {
+	PlansOwned  []*models.Plan
+	SharedPlans []*models.Plan
+}

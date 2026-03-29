@@ -264,6 +264,22 @@ Indexes:
   (plan_id, pinned) WHERE pinned = true — partial index for optimizer
 ```
 
+### Plan Shares
+
+```
+plan_shares
+├── user_id (PK, FK → users, ON DELETE CASCADE)
+├── plan_id (PK, FK → plans, ON DELETE CASCADE)
+├── role (TEXT, NOT NULL, DEFAULT 'edit' — CHECK IN ('edit', 'view'))
+├── created_at (TIMESTAMPTZ)
+└── updated_at (TIMESTAMPTZ, trigger-updated)
+
+Indexes:
+  PRIMARY KEY (user_id, plan_id) — composite key, one share per user per plan
+  (user_id) — fast lookup: "which plans are shared with me?"
+  (plan_id) — fast lookup: "who has access to this plan?"
+```
+
 ---
 
 ## API Surface

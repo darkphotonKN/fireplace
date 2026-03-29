@@ -145,6 +145,50 @@ func (r *repository) GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Pl
 	return plans, nil
 }
 
+// Get all but including plans shared to user
+func (r *repository) GetAllShared(ctx context.Context, userID uuid.UUID) ([]*models.Plan, error) {
+	query := `
+	SELECT
+		id,
+		user_id,
+		name,
+		description,
+		focus,
+		plan_type,
+		daily_reset,
+		created_at,
+		updated_at
+	FROM plans
+	WHERE plans.user_id = $1
+	
+	UNION ALL
+
+	SELECT
+		plans.id,
+		plans.user_id,
+		name,
+		description,
+		focus,
+		plan_type,
+		daily_reset,
+		plans.created_at,
+		plans.updated_at
+	FROM plans
+	JOIN shared_plans
+	ON shared_plans.plan_id = plans.id
+	WHERE shared_plans.user_id = $1
+	`
+
+	plans := []*models.Plan{}
+	err := r.db.SelectContext(ctx, &plans, query, userID)
+
+	if err != nil {
+		return nil, errorutils.AnalyzeDBErr(err)
+	}
+
+	return plans, nil
+}
+
 func (r *repository) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
 	query := `
 	DELETE FROM plans
