@@ -10,7 +10,8 @@ import (
 )
 
 type service struct {
-	repo Repository
+	repo        Repository
+	userService UserService
 }
 
 type Repository interface {
@@ -19,6 +20,12 @@ type Repository interface {
 	Update(ctx context.Context, id uuid.UUID, req UpdatePlanReq, userID uuid.UUID) error
 	Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 	GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Plan, error)
+	GetAllShared(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.Plan, error)
+	CreateSharedPlans(ctx context.Context, planID uuid.UUID, userID uuid.UUID) error
+}
+
+type UserService interface {
+	GetById(ctx context.Context, id uuid.UUID) (*models.User, error)
 }
 
 func NewService(repo Repository) Service {
@@ -62,6 +69,23 @@ func (s *service) Update(ctx context.Context, id uuid.UUID, req UpdatePlanReq, u
 // GetAll returns all plans for a specific user
 func (s *service) GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Plan, error) {
 	return s.repo.GetAll(ctx, userID)
+}
+
+// GetAllShared returns all plans owned by or shared with the user
+func (s *service) GetAllShared(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.Plan, error) {
+	return s.repo.GetAllShared(ctx, userID, limit, offset)
+}
+
+// Share a plan
+func (s *service) SharePlan(ctx context.Context, planID uuid.UUID, userID uuid.UUID) error {
+	// validate the user to share to
+	_, err := s.userService.GetById(ctx, userID)
+
+	if err != nil {
+		return err
+	}
+
+	return s.repo.UpdateSharedPlans(ctx, planID, userID)
 }
 
 // Delete removes a plan by ID if it belongs to the specified user

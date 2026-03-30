@@ -145,8 +145,50 @@ func (r *repository) GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Pl
 	return plans, nil
 }
 
+// Share a single plan under a user to another user
+func (r *repository) CreateSharedPlans(ctx context.Context, planID uuid.UUID, userID uuid.UUID) error {
+	query := `
+	INSERT INTO plan_shares (plan_id, user_id)
+	VALUES (:plan_id, :user_id)
+	`
+
+	insertParams := struct {
+		PlanID uuid.UUID `json:"plan_id" db:"plan_id"`
+		UserID uuid.UUID `json:"user_id" db:"user_id"`
+	}{
+		PlanID: planID,
+		UserID: userID,
+	}
+
+	_, err := r.db.NamedExecContext(ctx, query, insertParams)
+
+	if err != nil {
+		return errorutils.AnalyzeDBErr(err)
+	}
+
+	return nil
+}
+
+// Share a single plan under a user to another user
+func (r *repository) UpdateSharedPlans(ctx context.Context, planID uuid.UUID, userID uuid.UUID) error {
+	query := `
+	UPDATE plans_shares SET 
+		user_id = $2, 
+	WHERE plans.id = $1
+	`
+
+	_, err := r.db.ExecContext(ctx, query, planID, userID)
+
+	if err != nil {
+		return errorutils.AnalyzeDBErr(err)
+	}
+
+	return nil
+}
+
 // Get all but including plans shared to user
-func (r *repository) GetAllShared(ctx context.Context, userID uuid.UUID) ([]*models.Plan, error) {
+func (r *repository) GetAllShared(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.Plan, error) {
+
 	query := `
 	SELECT
 		id,
@@ -166,7 +208,7 @@ func (r *repository) GetAllShared(ctx context.Context, userID uuid.UUID) ([]*mod
 	SELECT
 		plans.id,
 		plans.user_id,
-		name,
+		name, 
 		description,
 		focus,
 		plan_type,
@@ -174,13 +216,16 @@ func (r *repository) GetAllShared(ctx context.Context, userID uuid.UUID) ([]*mod
 		plans.created_at,
 		plans.updated_at
 	FROM plans
-	JOIN shared_plans
-	ON shared_plans.plan_id = plans.id
-	WHERE shared_plans.user_id = $1
+	JOIN plan_shares
+	ON plan_shares.plan_id = plans.id
+	WHERE plan_shares.user_id = $1
+
+	ORDER BY created_at DESC
+	LIMIT $2 OFFSET $3
 	`
 
 	plans := []*models.Plan{}
-	err := r.db.SelectContext(ctx, &plans, query, userID)
+	err := r.db.SelectContext(ctx, &plans, query, userID, limit, offset)
 
 	if err != nil {
 		return nil, errorutils.AnalyzeDBErr(err)

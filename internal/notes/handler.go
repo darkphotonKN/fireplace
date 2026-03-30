@@ -263,3 +263,4 @@ func (h *Handler) GenerateAINotes(c *gin.Context) {
 		"statusCode": http.StatusOK,
 	})
 }
+

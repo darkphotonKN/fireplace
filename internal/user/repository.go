@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"strings"
 
 	"github.com/darkphotonKN/fireplace/internal/logger"
@@ -31,7 +32,7 @@ func (r *repository) Create(user models.User) error {
 	return nil
 }
 
-func (r *repository) GetById(id uuid.UUID) (*models.User, error) {
+func (r *repository) GetById(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	query := `SELECT * FROM users WHERE users.id = $1`
 
 	var user models.User
@@ -69,7 +70,7 @@ func (r *repository) GetAll() ([]*Response, error) {
 	return users, nil
 }
 
-func (r *repository) UpdateProfile(id uuid.UUID, req UpdateProfileRequest) (*models.User, error) {
+func (r *repository) UpdateProfile(ctx context.Context, id uuid.UUID, req UpdateProfileRequest) (*models.User, error) {
 	setClauses := []string{}
 	args := map[string]interface{}{"id": id}
 
@@ -87,7 +88,7 @@ func (r *repository) UpdateProfile(id uuid.UUID, req UpdateProfileRequest) (*mod
 	}
 
 	if len(setClauses) == 0 {
-		return r.GetById(id)
+		return r.GetById(ctx, id)
 	}
 
 	query := "UPDATE users SET " + strings.Join(setClauses, ", ") + ", updated_at = NOW() WHERE id = :id"
@@ -96,7 +97,7 @@ func (r *repository) UpdateProfile(id uuid.UUID, req UpdateProfileRequest) (*mod
 		return nil, err
 	}
 
-	return r.GetById(id)
+	return r.GetById(ctx, id)
 }
 
 func (r *repository) GetUserByEmail(email string) (*models.User, error) {

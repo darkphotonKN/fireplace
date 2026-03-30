@@ -114,6 +114,7 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	planRoutes := protected.Group("/plans")
 	planRoutes.GET("/:id", planHandler.GetById)
 	planRoutes.GET("", planHandler.GetAll)
+	planRoutes.GET("/shared", planHandler.GetAllShared)
 	planRoutes.POST("", planHandler.Create)
 	planRoutes.PATCH("/:id", planHandler.Update)
 	planRoutes.PATCH("/:id/toggle-daily-reset", planHandler.ToggleDailyReset)

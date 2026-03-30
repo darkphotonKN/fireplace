@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -15,9 +16,9 @@ type Handler struct {
 }
 
 type Service interface {
-	GetById(id uuid.UUID) (*models.User, error)
-	GetProfile(id uuid.UUID) (*models.User, error)
-	UpdateProfile(id uuid.UUID, req UpdateProfileRequest) (*models.User, error)
+	GetById(ctx context.Context, id uuid.UUID) (*models.User, error)
+	GetProfile(ctx context.Context, id uuid.UUID) (*models.User, error)
+	UpdateProfile(ctx context.Context, id uuid.UUID, req UpdateProfileRequest) (*models.User, error)
 	Create(user models.User) error
 	HashPassword(password string) (string, error)
 	GetAll() ([]*Response, error)
@@ -37,7 +38,7 @@ func (h *Handler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	profile, err := h.service.GetProfile(userID)
+	profile, err := h.service.GetProfile(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"statusCode": http.StatusInternalServerError, "message": fmt.Sprintf("Error fetching profile: %s", err.Error())})
 		return
@@ -59,7 +60,7 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	profile, err := h.service.UpdateProfile(userID, req)
+	profile, err := h.service.UpdateProfile(c.Request.Context(), userID, req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"statusCode": http.StatusBadRequest, "message": fmt.Sprintf("Error updating profile: %s", err.Error())})
 		return
@@ -94,7 +95,7 @@ func (h *Handler) GetById(c *gin.Context) {
 		return
 	}
 
-	user, err := h.service.GetById(id)
+	user, err := h.service.GetById(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"statusCode:": http.StatusBadRequest, "message": fmt.Sprintf("Error when attempting to get user with id %d %s", id, err.Error())})
 		return

@@ -477,25 +477,25 @@ func GenerateSchedule(plan, dailyItems, longtermItems, recommendations, pinnedEn
 
 ### Toast Notifications
 
-| Scenario                                    | Handling                                                    |
-| ------------------------------------------- | ----------------------------------------------------------- |
-| Multiple toasts at same time                | Stack vertically, each auto-dismisses independently         |
-| localStorage cleared (hasSeenSidebarHint)   | Sidebar hint shows again on next plan page visit            |
-| User opens sidebar then doesn't for 24hrs   | Reminder toast shown on next plan page visit (bottom-left)  |
-| User never visits a plan page               | Sidebar hints never fire (only triggered on plan pages)     |
-| Toast fired while another is dismissing     | New toast stacks, dismissing toast animates out             |
+| Scenario                                  | Handling                                                   |
+| ----------------------------------------- | ---------------------------------------------------------- |
+| Multiple toasts at same time              | Stack vertically, each auto-dismisses independently        |
+| localStorage cleared (hasSeenSidebarHint) | Sidebar hint shows again on next plan page visit           |
+| User opens sidebar then doesn't for 24hrs | Reminder toast shown on next plan page visit (bottom-left) |
+| User never visits a plan page             | Sidebar hints never fire (only triggered on plan pages)    |
+| Toast fired while another is dismissing   | New toast stacks, dismissing toast animates out            |
 
 ### Authorization & Ownership
 
-| Scenario                                | Handling                                          |
-| --------------------------------------- | ------------------------------------------------- |
-| No Authorization header                 | 401 Unauthorized                                  |
-| Expired JWT                             | 401 Unauthorized                                  |
-| Valid JWT but plan belongs to other user | 403 Forbidden                                     |
-| Checklist op on other user's plan       | 403 Forbidden (verify plan ownership first)       |
-| Insights request for other user's plan  | 403 Forbidden                                     |
-| Unauthenticated user visits `/`         | See splash/landing page                           |
-| Authenticated user visits `/`           | Redirect to dashboard                             |
+| Scenario                                 | Handling                                    |
+| ---------------------------------------- | ------------------------------------------- |
+| No Authorization header                  | 401 Unauthorized                            |
+| Expired JWT                              | 401 Unauthorized                            |
+| Valid JWT but plan belongs to other user | 403 Forbidden                               |
+| Checklist op on other user's plan        | 403 Forbidden (verify plan ownership first) |
+| Insights request for other user's plan   | 403 Forbidden                               |
+| Unauthenticated user visits `/`          | See splash/landing page                     |
+| Authenticated user visits `/`            | Redirect to dashboard                       |
 
 ### Concurrent Access
 

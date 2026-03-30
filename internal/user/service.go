@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -17,10 +18,10 @@ type service struct {
 
 type Repository interface {
 	Create(user models.User) error
-	GetById(id uuid.UUID) (*models.User, error)
+	GetById(ctx context.Context, id uuid.UUID) (*models.User, error)
 	GetAll() ([]*Response, error)
 	GetUserByEmail(email string) (*models.User, error)
-	UpdateProfile(id uuid.UUID, req UpdateProfileRequest) (*models.User, error)
+	UpdateProfile(ctx context.Context, id uuid.UUID, req UpdateProfileRequest) (*models.User, error)
 }
 
 func NewService(repo Repository) Service {
@@ -29,12 +30,12 @@ func NewService(repo Repository) Service {
 	}
 }
 
-func (s *service) GetById(id uuid.UUID) (*models.User, error) {
-	return s.Repo.GetById(id)
+func (s *service) GetById(ctx context.Context, id uuid.UUID) (*models.User, error) {
+	return s.Repo.GetById(ctx, id)
 }
 
-func (s *service) GetProfile(id uuid.UUID) (*models.User, error) {
-	user, err := s.Repo.GetById(id)
+func (s *service) GetProfile(ctx context.Context, id uuid.UUID) (*models.User, error) {
+	user, err := s.Repo.GetById(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -42,11 +43,11 @@ func (s *service) GetProfile(id uuid.UUID) (*models.User, error) {
 	return user, nil
 }
 
-func (s *service) UpdateProfile(id uuid.UUID, req UpdateProfileRequest) (*models.User, error) {
+func (s *service) UpdateProfile(ctx context.Context, id uuid.UUID, req UpdateProfileRequest) (*models.User, error) {
 	if req.Name != nil && *req.Name == "" {
 		return nil, errors.New("name cannot be empty")
 	}
-	return s.Repo.UpdateProfile(id, req)
+	return s.Repo.UpdateProfile(ctx, id, req)
 }
 
 func (s *service) Create(user models.User) error {

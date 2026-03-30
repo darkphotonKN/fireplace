@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/darkphotonKN/fireplace/internal/auth"
 	"github.com/darkphotonKN/fireplace/internal/models"
@@ -21,7 +22,9 @@ type Service interface {
 	Update(ctx context.Context, id uuid.UUID, req UpdatePlanReq, userID uuid.UUID) error
 	Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 	GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Plan, error)
+	GetAllShared(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.Plan, error)
 	ToggleDailyReset(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
+	SharePlan(ctx context.Context, planID uuid.UUID, userID uuid.UUID) error
 }
 
 func NewHandler(service Service) *Handler {
@@ -112,6 +115,36 @@ func (h *Handler) GetAll(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully retrieved all plans", "result": plans})
+}
+
+func (h *Handler) GetAllShared(c *gin.Context) {
+	userId, err := auth.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"statusCode": http.StatusUnauthorized, "message": "Unauthorized"})
+		return
+	}
+
+	limit := 20
+	offset := 0
+
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	if o := c.Query("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	plans, err := h.service.GetAllShared(c.Request.Context(), userId, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"statusCode": http.StatusInternalServerError, "message": "Failed to get shared plans", "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully retrieved all plans including shared", "result": plans})
 }
 
 func (h *Handler) Delete(c *gin.Context) {
