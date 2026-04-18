@@ -10,7 +10,7 @@
 | user_id | UUID | FK → users(id) ON DELETE CASCADE |
 | name | TEXT | NOT NULL |
 | description | TEXT | |
-| plan_type | TEXT | NOT NULL — **drives ratio selection** (development → 5/2/1, learning → 3/2/3) |
+| plan_type | TEXT | NOT NULL — **drives ratio selection** (project → 5/2/1, learning → 3/2/3) |
 | focus | TEXT | NOT NULL — **used as LLM context** for ranking longterm items by urgency |
 | daily_reset | BOOLEAN | NOT NULL, default `true` |
 | created_at | TIMESTAMPTZ | NOT NULL, default `NOW()` |
@@ -208,7 +208,7 @@ FUNCTION ScheduleMonth(
     longtermItems   []ChecklistItem,    // scope=longterm, not archived, LLM-ranked
     recommendations []Recommendation,   // from insights service
     pinnedEntries   []CalendarEntry,    // existing pinned entries to preserve
-    planType        string,             // "development" or "learning"
+    planType        string,             // "project" or "learning"
     monthRange      (startDate, endDate)
 ) -> []CalendarEntry
 
@@ -226,7 +226,7 @@ FUNCTION ScheduleMonth(
    For each day:
        capacity = remaining[day]
        ratios = getRatios(planType)
-           development: {daily: 5, longterm: 2, rec: 1}
+           project:     {daily: 5, longterm: 2, rec: 1}
            learning:    {daily: 3, longterm: 2, rec: 3}
        total_ratio = sum(ratios)
        budget[day] = {
@@ -276,7 +276,7 @@ FUNCTION ScheduleMonth(
 
 | Plan Type | Daily | Longterm | Recommendation | Total |
 |-----------|-------|----------|----------------|-------|
-| development | 5 | 2 | 1 | 8 |
+| project | 5 | 2 | 1 | 8 |
 | learning | 3 | 2 | 3 | 8 |
 
 ### Cascade Rule
@@ -288,7 +288,7 @@ When a higher-tier budget is unfilled (e.g., only 3 daily items exist but budget
 
 This ensures all 8 slots per day are utilized regardless of item availability in each tier.
 
-### Example (Development plan, day has 2 daily items available)
+### Example (Project plan, day has 2 daily items available)
 
 | Tier | Original Budget | Available Items | Placed | Cascade |
 |------|----------------|-----------------|--------|---------|

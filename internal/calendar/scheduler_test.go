@@ -46,7 +46,7 @@ func TestScheduleMonth_DevPlan_BasicRatio(t *testing.T) {
 
 	entries := ScheduleMonth(ScheduleInput{
 		PlanID:          planID,
-		PlanType:        "development",
+		PlanType:        "project",
 		DailyItems:      daily,
 		LongtermItems:   longterm,
 		Recommendations: recs,
@@ -130,7 +130,7 @@ func TestScheduleMonth_CascadeRule_DailySlotsOverflowToLongterm(t *testing.T) {
 
 	entries := ScheduleMonth(ScheduleInput{
 		PlanID:          planID,
-		PlanType:        "development",
+		PlanType:        "project",
 		DailyItems:      daily,
 		LongtermItems:   longterm,
 		Recommendations: recs,
@@ -172,7 +172,7 @@ func TestScheduleMonth_OverflowRule_ExcessPushToNextDay(t *testing.T) {
 
 	entries := ScheduleMonth(ScheduleInput{
 		PlanID:          planID,
-		PlanType:        "development",
+		PlanType:        "project",
 		DailyItems:      daily,
 		LongtermItems:   []models.ChecklistItem{},
 		Recommendations: []Recommendation{},
@@ -230,7 +230,7 @@ func TestScheduleMonth_PinnedEntries_PreservedAndReduceCapacity(t *testing.T) {
 
 	entries := ScheduleMonth(ScheduleInput{
 		PlanID:          planID,
-		PlanType:        "development",
+		PlanType:        "project",
 		DailyItems:      daily,
 		LongtermItems:   longterm,
 		Recommendations: recs,
@@ -289,7 +289,7 @@ func TestScheduleMonth_AllPinned_ReturnsOnlyPinned(t *testing.T) {
 
 	entries := ScheduleMonth(ScheduleInput{
 		PlanID:          planID,
-		PlanType:        "development",
+		PlanType:        "project",
 		DailyItems:      makeItems(5, "daily", planID),
 		LongtermItems:   makeItems(3, "longterm", planID),
 		Recommendations: makeRecs(2),
@@ -315,7 +315,7 @@ func TestScheduleMonth_NoItems_ReturnsEmpty(t *testing.T) {
 
 	entries := ScheduleMonth(ScheduleInput{
 		PlanID:          planID,
-		PlanType:        "development",
+		PlanType:        "project",
 		DailyItems:      []models.ChecklistItem{},
 		LongtermItems:   []models.ChecklistItem{},
 		Recommendations: []Recommendation{},
@@ -347,7 +347,7 @@ func TestScheduleMonth_ScheduledTime_PlacedOnTargetDate(t *testing.T) {
 	// Only 1 item with a scheduled time
 	entries := ScheduleMonth(ScheduleInput{
 		PlanID:          planID,
-		PlanType:        "development",
+		PlanType:        "project",
 		DailyItems:      []models.ChecklistItem{scheduledItem},
 		LongtermItems:   []models.ChecklistItem{},
 		Recommendations: []Recommendation{},
@@ -376,7 +376,7 @@ func TestScheduleMonth_LongtermSpreadEvenly(t *testing.T) {
 
 	entries := ScheduleMonth(ScheduleInput{
 		PlanID:          planID,
-		PlanType:        "development",
+		PlanType:        "project",
 		DailyItems:      []models.ChecklistItem{},
 		LongtermItems:   longterm,
 		Recommendations: []Recommendation{},

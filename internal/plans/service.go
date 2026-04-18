@@ -22,6 +22,7 @@ type Repository interface {
 	GetAll(ctx context.Context, userID uuid.UUID) ([]*models.Plan, error)
 	GetAllShared(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.Plan, error)
 	CreateSharedPlans(ctx context.Context, planID uuid.UUID, userID uuid.UUID) error
+	UpdateSharedPlans(ctx context.Context, planID uuid.UUID, userID uuid.UUID) error
 }
 
 type UserService interface {
@@ -40,11 +41,11 @@ func (s *service) GetById(ctx context.Context, id uuid.UUID) (*models.Plan, erro
 
 func (s *service) Create(ctx context.Context, req CreatePlanReq, userID uuid.UUID) (*models.Plan, error) {
 
-	// default to true if its learning based, but false if its development based
+	// default to true if its learning based, but false if its project based
 	dailyReset := true
 
-	logger.Debug("Comparing plan types", "requestType", constants.PlanType(req.PlanType), "developmentType", constants.TypeDevelopment)
-	if constants.PlanType(req.PlanType) == constants.TypeDevelopment {
+	logger.Debug("Comparing plan types", "requestType", constants.PlanType(req.PlanType), "projectType", constants.TypeProject)
+	if constants.PlanType(req.PlanType) == constants.TypeProject {
 		dailyReset = false
 	}
 

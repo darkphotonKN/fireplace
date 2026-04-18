@@ -19,12 +19,12 @@ type SlotRatio struct {
 	Rec      int
 }
 
-var RatioDevelopment = SlotRatio{Daily: 5, Longterm: 2, Rec: 1}
+var RatioProject = SlotRatio{Daily: 5, Longterm: 2, Rec: 1}
 var RatioLearning = SlotRatio{Daily: 3, Longterm: 2, Rec: 3}
 
 func GetRatioForPlanType(planType PlanType) SlotRatio {
 	if planType == TypeLearning {
 		return RatioLearning
 	}
-	return RatioDevelopment
+	return RatioProject
 }

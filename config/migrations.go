@@ -162,7 +162,7 @@ func seedTestPlan(db *sqlx.DB) error {
 		Name:        "Flow Project",
 		Focus:       "Making a nextjs project frontend and go gin backend app about productivity.",
 		Description: "A project for testing the Flow application",
-		PlanType:    "development",
+		PlanType:    "project",
 	}
 
 	// Insert test plan

@@ -4,6 +4,6 @@ package constants
 type PlanType string
 
 const (
-	TypeDevelopment PlanType = "development"
-	TypeLearning    PlanType = "learning"
+	TypeProject  PlanType = "project"
+	TypeLearning PlanType = "learning"
 )

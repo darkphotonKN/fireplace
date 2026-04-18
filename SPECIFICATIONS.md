@@ -10,7 +10,7 @@
 
 | Term              | Definition                                                                                                       |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Plan              | A project or learning goal container — type: `development` or `learning`                                         |
+| Plan              | A project or learning goal container — type: `project` or `learning`                                          |
 | Checklist Item    | A task within a plan, scoped as `daily` (recurring) or `longterm` (milestone)                                    |
 | Daily Reset       | Automatic nightly reset of completed daily-scoped items to `done=false`                                          |
 | Focus             | A plan's stated objective — fed to AI for context-aware suggestions                                              |
@@ -38,7 +38,7 @@
 ### Plans
 
 - [x] CRUD for plans (create, read, update, delete)
-- [x] Plan types: `development` or `learning`
+- [x] Plan types: `project` or `learning`
 - [x] Focus field — primary objective text fed to AI
 - [x] Daily reset toggle per plan — controls whether daily items auto-reset
 - [x] Toggle daily reset endpoint
@@ -82,7 +82,7 @@
 
 - [ ] Month-view calendar per plan with priority-ordered daily task lists
 - [ ] Three content tiers: daily items (highest), longterm items (medium), AI recommendations (lowest)
-- [ ] Flex ratios based on plan type: development (5/2/1), learning (3/2/3)
+- [ ] Flex ratios based on plan type: project (5/2/1), learning (3/2/3)
 - [ ] Hard cap of 8 items per day, overflow pushes to next available day
 - [ ] Cascade rule: unfilled higher-tier slots overflow to lower tiers
 - [ ] Hybrid optimization: deterministic Go algorithm distributes, LLM ranks longterm urgency
@@ -205,7 +205,7 @@ plans
 ├── name (TEXT, NOT NULL)
 ├── focus (TEXT, NOT NULL)
 ├── description (TEXT)
-├── plan_type (TEXT, NOT NULL — 'development' | 'learning')
+├── plan_type (TEXT, NOT NULL — 'project' | 'learning')
 ├── daily_reset (BOOLEAN, NOT NULL, DEFAULT true)
 ├── created_at (TIMESTAMPTZ)
 └── updated_at (TIMESTAMPTZ, trigger-updated)
@@ -354,7 +354,7 @@ Slot allocation ratios grounded in three established frameworks:
 
 | Plan Type     | Daily | Longterm | AI Recs | Rationale                                           |
 | ------------- | ----- | -------- | ------- | --------------------------------------------------- |
-| `development` | 5     | 2        | 1       | Execution-heavy — ship code, complete tasks         |
+| `project`     | 5     | 2        | 1       | Execution-heavy — ship code, complete tasks         |
 | `learning`    | 3     | 2        | 3       | Content-heavy — videos, articles alongside practice |
 
 Cascade: unfilled higher-tier slots overflow downward. Never upward.
