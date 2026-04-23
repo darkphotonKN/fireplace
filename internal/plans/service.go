@@ -23,13 +23,14 @@ type Repository interface {
 	GetAllShared(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.Plan, error)
 	CreateSharedPlans(ctx context.Context, planID uuid.UUID, userID uuid.UUID) error
 	UpdateSharedPlans(ctx context.Context, planID uuid.UUID, userID uuid.UUID) error
+	SearchPlan(ctx context.Context, userID uuid.UUID, params SearchParam) ([]*SearchPlanRes, error)
 }
 
 type UserService interface {
 	GetById(ctx context.Context, id uuid.UUID) (*models.User, error)
 }
 
-func NewService(repo Repository) Service {
+func NewService(repo Repository) *service {
 	return &service{
 		repo: repo,
 	}
@@ -109,4 +110,8 @@ func (s *service) ToggleDailyReset(ctx context.Context, id uuid.UUID, userID uui
 	return s.repo.Update(ctx, id, UpdatePlanReq{
 		DailyReset: &flippedResetState,
 	}, userID)
+}
+
+func (s *service) SearchPlan(ctx context.Context, userID uuid.UUID, params SearchParam) ([]*SearchPlanRes, error) {
+	return s.repo.SearchPlan(ctx, userID, params)
 }

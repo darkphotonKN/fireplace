@@ -3,6 +3,7 @@ package plans
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -25,6 +26,7 @@ type Service interface {
 	GetAllShared(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*models.Plan, error)
 	ToggleDailyReset(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 	SharePlan(ctx context.Context, planID uuid.UUID, userID uuid.UUID) error
+	SearchPlan(ctx context.Context, userID uuid.UUID, params SearchParam) ([]*SearchPlanRes, error)
 }
 
 func NewHandler(service Service) *Handler {
@@ -189,4 +191,37 @@ func (h *Handler) ToggleDailyReset(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully toggled daily reset"})
+}
+
+func (h *Handler) SearchPlans(c *gin.Context) {
+	var params SearchParam
+
+	err := c.ShouldBindQuery(&params)
+
+	if err != nil {
+		slog.Error("Error occured during query extraction",
+			"err", err,
+		)
+		c.JSON(http.StatusBadRequest, gin.H{"statusCode": http.StatusBadRequest, "message": "Error occured during query extraction", "error": err.Error()})
+		return
+	}
+
+	userId, err := auth.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"statusCode": http.StatusUnauthorized, "message": "Unauthorized"})
+		return
+	}
+
+	plans, err := h.service.SearchPlan(c.Request.Context(), userId, params)
+
+	if err != nil {
+		slog.Error("Error when attempting to run SearchPlan method from service",
+			"err", err,
+		)
+		c.JSON(http.StatusBadRequest, gin.H{"statusCode": http.StatusBadRequest, "message": "Error occured when searching for plans.", "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully retrived plans.", "result": plans})
+
 }

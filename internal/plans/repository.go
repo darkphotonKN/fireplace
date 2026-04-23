@@ -14,7 +14,7 @@ type repository struct {
 	db *sqlx.DB
 }
 
-func NewRepository(db *sqlx.DB) Repository {
+func NewRepository(db *sqlx.DB) *repository {
 	return &repository{db: db}
 }
 
@@ -256,4 +256,36 @@ func (r *repository) Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID)
 	}
 
 	return nil
+}
+
+func (r *repository) SearchPlan(ctx context.Context, userID uuid.UUID, params SearchParam) ([]*SearchPlanRes, error) {
+
+	var plans []*SearchPlanRes
+
+	wildCard := "%" + params.Term + "%"
+
+	query := `
+	SELECT
+		id,
+		name,
+		focus,
+		description,
+		plan_type,
+		daily_reset,
+		created_at,
+		updated_at
+	FROM plans
+	WHERE name ILIKE $1
+	AND user_id = $2
+	LIMIT $3
+	OFFSET $4
+	`
+
+	err := r.db.SelectContext(ctx, &plans, query, wildCard, userID, params.Limit, params.Offset)
+
+	if err != nil {
+		return nil, errorutils.AnalyzeDBErr(err)
+	}
+
+	return plans, nil
 }
