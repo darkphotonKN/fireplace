@@ -19,9 +19,9 @@
 | Resource          | A learning material (video, article, GitHub repo) linked to a plan                                               |
 | Discovery         | The system that crawls YouTube to find relevant tutorial videos based on plan focus                              |
 | Content Generator | Interface wrapping OpenAI GPT-4o for generating suggestions and search terms                                     |
-| Calendar Entry    | A scheduled slot on the Smart Calendar — links a checklist item or recommendation to a specific day and position |
-| Pinned Entry      | A calendar entry manually placed by the user — algorithm skips it during re-optimization                         |
-| Slot Allocation   | The weighted distribution of daily/longterm/recommendation items per day                                         |
+| Plan Calendar     | Per-plan Gantt-style calendar showing checklist items with dates — week or month view                            |
+| Gantt Bar         | A horizontal bar spanning a checklist item's `start_date` to `due_date` on the calendar                          |
+| Single-Day Chip   | A compact one-day marker shown when a checklist item has only `start_date` or `due_date` set (or both equal)     |
 
 ---
 
@@ -78,18 +78,24 @@
 
 ## Features (Current — In Progress)
 
-### Smart Calendar
+### Plan Calendar (Gantt)
 
-- [ ] Month-view calendar per plan with priority-ordered daily task lists
-- [ ] Three content tiers: daily items (highest), longterm items (medium), AI recommendations (lowest)
-- [ ] Flex ratios based on plan type: project (5/2/1), learning (3/2/3)
-- [ ] Hard cap of 8 items per day, overflow pushes to next available day
-- [ ] Cascade rule: unfilled higher-tier slots overflow to lower tiers
-- [ ] Hybrid optimization: deterministic Go algorithm distributes, LLM ranks longterm urgency
-- [ ] Triggers: page load, manual "Generate Schedule" button, reactive on task add/complete
-- [ ] Full drag-and-drop: reorder within day, move between days
-- [ ] Pinning: manually moved items marked `pinned=true`, skipped on re-optimization
-- [ ] Reset: unpin all entries and re-generate schedule
+- [ ] BE: Migration — add `start_date` (DATE, nullable) and `due_date` (DATE, nullable) columns to `checklist_items`
+- [ ] BE: Migration — backfill `start_date` from existing `scheduled_time` (date portion), then drop `scheduled_time`
+- [ ] BE: Migration — drop `calendar_entries` table (superseded; no slot/pin model)
+- [ ] BE: GET `/api/plans/:id/calendar?view=month&date=2026-03` — returns checklist items whose `[start_date, due_date]` range intersects the requested window (also supports `view=week`)
+- [ ] BE: PATCH `/api/plans/:id/checklists/:checklist_id/dates` — update `start_date` and/or `due_date`, validates `start_date <= due_date` when both set
+- [ ] BE: Remove `PATCH /api/plans/:id/checklists/:checklist_id/schedule` (replaced by `/dates`)
+- [ ] FE (`flow-client`): Per-plan calendar page with toggle between week view and month view
+- [ ] FE: Gantt-style horizontal bars span across day cells from `start_date` to `due_date` (inclusive)
+- [ ] FE: Single-day chip rendered when only one of `start_date` / `due_date` is set, or when they are equal
+- [ ] FE: Drag bar middle to move — both dates shift by the same delta, preserves duration
+- [ ] FE: Drag left edge to resize `start_date`; drag right edge to resize `due_date`
+- [ ] FE: Drag chip to move single date by delta
+- [ ] FE: All drag/resize interactions persist via PATCH `/dates`
+- [ ] FE: Only checklist items with at least one date set appear on the calendar
+
+> Not in scope: AI auto-scheduling, slot caps, backlog sidebar, cross-plan view, pinning
 
 ### Frontend Auth (`flow-client`)
 
@@ -172,11 +178,13 @@
 - [ ] Analytics dashboard — hybrid real-time/batch processing for task completion rates, streaks, active plans
 - [ ] Unified cross-plan calendar view
 - [ ] Time-blocking / hour-level scheduling
+- [ ] AI auto-scheduling (suggest dates for items based on plan focus and existing schedule)
 - [ ] AI-generated daily focus narrative and reflection prompts
-- [ ] User-configurable ratios and daily cap
+- [ ] Backlog sidebar — dateless items panel alongside the calendar
+- [ ] Pinning / locking items to specific dates
 - [ ] Google Calendar / external calendar sync
 - [ ] Workspace / music integration
-- [ ] Real-time notifications for scheduled items
+- [ ] Real-time notifications for date-due items
 
 ---
 
@@ -221,7 +229,8 @@ checklist_items
 ├── done (BOOLEAN, NOT NULL, DEFAULT false)
 ├── sequence (INTEGER, NOT NULL)
 ├── scope (TEXT, NOT NULL, DEFAULT 'longterm' — CHECK IN ('daily', 'longterm'))
-├── scheduled_time (TIMESTAMPTZ, nullable)
+├── start_date (DATE, nullable — Plan Calendar Gantt range start)
+├── due_date (DATE, nullable — Plan Calendar Gantt range end; CHECK start_date <= due_date when both set)
 ├── archived (BOOLEAN, DEFAULT false)
 ├── created_at (TIMESTAMPTZ)
 └── updated_at (TIMESTAMPTZ, trigger-updated)
@@ -240,28 +249,6 @@ resources
 ├── sequence (INTEGER, NOT NULL)
 ├── created_at (TIMESTAMPTZ)
 └── updated_at (TIMESTAMPTZ, trigger-updated)
-```
-
-### Calendar Entries (NEW — Smart Calendar)
-
-```
-calendar_entries
-├── id (PK, UUID, auto-generated)
-├── plan_id (FK → plans, ON DELETE CASCADE)
-├── entry_date (DATE, NOT NULL)
-├── position (INTEGER, NOT NULL — order within day, 1-8)
-├── entry_type (TEXT, NOT NULL — CHECK IN ('daily', 'longterm', 'recommendation'))
-├── checklist_item_id (FK → checklist_items, ON DELETE CASCADE, nullable)
-├── recommendation_text (TEXT, nullable — for AI-generated recommendations)
-├── recommendation_url (TEXT, nullable — optional link for video recs)
-├── pinned (BOOLEAN, NOT NULL, DEFAULT false)
-├── created_at (TIMESTAMPTZ)
-└── updated_at (TIMESTAMPTZ, trigger-updated)
-
-Indexes:
-  UNIQUE (plan_id, entry_date, position) — one entry per slot per day per plan
-  (plan_id, entry_date) — fast month-range lookups
-  (plan_id, pinned) WHERE pinned = true — partial index for optimizer
 ```
 
 ### Plan Shares
@@ -317,7 +304,7 @@ Indexes:
 | POST   | `/api/plans/:id/checklists`                        | JWT  | Create item                         |
 | PATCH  | `/api/plans/:id/checklists/:checklist_id`          | JWT  | Update item                         |
 | DELETE | `/api/plans/:id/checklists/:checklist_id`          | JWT  | Delete item                         |
-| PATCH  | `/api/plans/:id/checklists/:checklist_id/schedule` | JWT  | Set scheduled time                  |
+| PATCH  | `/api/plans/:id/checklists/:checklist_id/dates`    | JWT  | Update start_date / due_date (drag) |
 | PATCH  | `/api/plans/:id/checklists/:checklist_id/archive`  | JWT  | Archive item                        |
 
 ### Insights API
@@ -328,64 +315,66 @@ Indexes:
 | GET    | `/api/insights/checklist-suggestion-daily?plan_id=X` | JWT  | AI suggests 3 daily tasks        |
 | GET    | `/api/insights/suggest-videos?plan_id=X`             | JWT  | AI finds relevant YouTube videos |
 
-### Calendar API (NEW — Smart Calendar)
+### Calendar API (Plan Calendar — Gantt)
 
-| Method | Endpoint                                 | Auth | Description                                  |
-| ------ | ---------------------------------------- | ---- | -------------------------------------------- |
-| GET    | `/api/plans/:id/calendar?month=2026-03`  | JWT  | Get calendar entries for month               |
-| POST   | `/api/plans/:id/calendar/generate`       | JWT  | Trigger full schedule generation             |
-| PATCH  | `/api/plans/:id/calendar/:entry_id/move` | JWT  | Move entry to day/position, sets pinned=true |
-| PATCH  | `/api/plans/:id/calendar/:entry_id/pin`  | JWT  | Toggle pin status                            |
-| POST   | `/api/plans/:id/calendar/reset`          | JWT  | Unpin all + re-optimize                      |
+| Method | Endpoint                                                | Auth | Description                                                                  |
+| ------ | ------------------------------------------------------- | ---- | ---------------------------------------------------------------------------- |
+| GET    | `/api/plans/:id/calendar?view=month&date=2026-03`       | JWT  | Checklist items whose `[start_date, due_date]` intersects window (week/month) |
 
 ---
 
-## Smart Calendar — Detailed Design
+## Plan Calendar — Detailed Design
 
-### Research Foundation
+### Date Model
 
-Slot allocation ratios grounded in three established frameworks:
+`start_date` and `due_date` are independent, both nullable `DATE` columns on `checklist_items`. Together they define a checklist item's position on the Plan Calendar:
 
-- **70-20-10 Learning Model** (McCall, Lombardo, Eichinger): 70% learning from hands-on experience, 20% from relationships, 10% from formal education. Daily execution is the primary vehicle for progress.
-- **1-3-5 Rule**: 1 big, 3 medium, 5 small tasks/day (9 total). Validates 8-item cap as reasonable cognitive load.
-- **Eisenhower Matrix**: Urgent+Important first, then Important-Not-Urgent. Deliberate protection of Q2 time for sustained strategic growth.
+| State                                | Calendar Render                                  |
+| ------------------------------------ | ------------------------------------------------ |
+| Both null                            | Item does not appear on calendar                 |
+| Only `start_date` set                | Single-day chip on `start_date`                  |
+| Only `due_date` set                  | Single-day chip on `due_date`                    |
+| Both set, `start_date == due_date`   | Single-day chip on that date                     |
+| Both set, `start_date < due_date`    | Gantt bar spanning both dates inclusive          |
+| Both set, `start_date > due_date`    | Invalid — rejected at API (400)                  |
 
-### Slot Allocation (8 items/day hard cap)
+### Render
 
-| Plan Type     | Daily | Longterm | AI Recs | Rationale                                           |
-| ------------- | ----- | -------- | ------- | --------------------------------------------------- |
-| `project`     | 5     | 2        | 1       | Execution-heavy — ship code, complete tasks         |
-| `learning`    | 3     | 2        | 3       | Content-heavy — videos, articles alongside practice |
+- **Month view**: 7-column grid for the requested month; bars span horizontally across day cells
+- **Week view**: 7-column grid for the week containing `date` query param
+- Items appear only if at least one of `start_date` / `due_date` is set
+- Multiple items on the same day stack vertically within the cell
 
-Cascade: unfilled higher-tier slots overflow downward. Never upward.
+### GET `/api/plans/:id/calendar?view=<week|month>&date=<YYYY-MM-DD|YYYY-MM>`
 
-### Optimization Algorithm
+- Returns checklist items where `[start_date, due_date]` (treating null as the other date) intersects the window
+- Window is computed from `view` + `date`:
+  - `view=month`, `date=2026-03` → window is `2026-03-01..2026-03-31`
+  - `view=week`, `date=2026-03-09` → window is the Sun..Sat week containing that date
+- Excludes archived items
 
-**Hybrid approach:**
+### PATCH `/api/plans/:id/checklists/:checklist_id/dates`
 
-1. **Deterministic Go algorithm** — distributes items across days, respects caps, balances longterm workload, skips pinned items
-2. **LLM ranking** (OpenAI via existing ContentGenerator interface) — ranks longterm items by urgency/relevance before distribution
+Request body — both fields optional, either may be `null` to clear:
 
-**Pseudocode:**
-
-```
-func GenerateSchedule(plan, dailyItems, longtermItems, recommendations, pinnedEntries):
-  1. Determine (dailyCap, longtermCap, recCap) from plan.PlanType
-  2. Call LLM: rank longtermItems by urgency given plan.Focus
-  3. For each day in month:
-     a. Count pinned items → subtract from cap (8)
-     b. Fill daily slots from unscheduled daily items
-     c. Fill longterm slots from LLM-ranked items (spread evenly across days)
-     d. Fill recommendation slots from AI-generated suggestions
-     e. Cascade: unused higher-tier slots overflow to next tier
-  4. Batch INSERT non-pinned entries
+```json
+{ "startDate": "2026-03-10", "dueDate": "2026-03-14" }
 ```
 
-### Move/Pin Behavior
+- Persists `start_date` / `due_date`; absent fields leave existing values untouched
+- Validates `start_date <= due_date` when both are set (and when one is set in the body and the other already exists in the DB)
+- Returns the updated checklist item
 
-- PATCH move: updates entry_date + position, sets `pinned=true`
-- Pinned entries survive re-optimization (algorithm skips them)
-- POST reset: sets all entries for plan to `pinned=false`, then re-runs generate
+### Drag-and-Drop Semantics (Frontend)
+
+| Gesture                        | Effect                                                              |
+| ------------------------------ | ------------------------------------------------------------------- |
+| Drag bar middle by Δ days      | `start_date += Δ`, `due_date += Δ` (preserves duration)             |
+| Drag bar left edge by Δ days   | `start_date += Δ`; `due_date` unchanged                             |
+| Drag bar right edge by Δ days  | `due_date += Δ`; `start_date` unchanged                             |
+| Drag single-day chip by Δ days | Whichever date is set shifts by Δ; if both equal, both shift by Δ   |
+
+Each gesture commits via a single PATCH `/dates` call.
 
 ---
 
@@ -401,11 +390,12 @@ func GenerateSchedule(plan, dailyItems, longtermItems, recommendations, pinnedEn
 
 - Scope must be `daily` or `longterm` — enforced by DB CHECK constraint and service-layer validation
 
-### Calendar Slot Enforcement
+### Plan Calendar Date Validation
 
-- UNIQUE constraint `(plan_id, entry_date, position)` prevents double-booking
-- Move endpoint returns 409 if target slot is occupied
-- Hard cap of 8 positions per day enforced by algorithm (not DB constraint)
+- `start_date` and `due_date` are independent and both nullable
+- When both are set, `start_date <= due_date` is enforced at API (400 on violation) and at DB level via CHECK constraint
+- Setting one date does not require the other; clearing both removes the item from the calendar
+- Window intersection (GET): an item appears if its `[start_date ?? due_date, due_date ?? start_date]` overlaps the requested view window
 
 ### Frontend Auth Token Lifecycle
 
@@ -442,26 +432,24 @@ func GenerateSchedule(plan, dailyItems, longtermItems, recommendations, pinnedEn
 - Toasts auto-dismiss after 5 seconds unless manually closed
 - Multiple simultaneous toasts stack vertically
 
-### Calendar Overflow
-
-- If a day has 8 pinned items, no algorithm-generated items are placed there
-- Overflow items push to next available day with remaining capacity
-- If entire month is full, remaining items are not scheduled (frontend shows "unscheduled" bucket)
-
 ---
 
 ## Edge Cases
 
-### Calendar Optimization
+### Plan Calendar
 
-| Scenario                        | Handling                                                              |
-| ------------------------------- | --------------------------------------------------------------------- |
-| No checklist items exist        | Calendar is empty, only AI recommendations placed (if any)            |
-| All items are pinned            | Algorithm generates nothing, calendar stays as-is                     |
-| Task completed after scheduling | Entry remains on calendar (done status shown in UI), not auto-removed |
-| Task deleted after scheduling   | CASCADE delete removes the calendar_entry                             |
-| Plan type changed               | Next generate/reset recalculates with new ratios                      |
-| LLM ranking fails               | Fallback to sequence-order for longterm items, log error              |
+| Scenario                                          | Handling                                                                            |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| No checklist items have dates                     | Calendar renders empty grid                                                         |
+| Item has only `start_date` (or only `due_date`)   | Single-day chip on the set date                                                     |
+| `start_date == due_date`                          | Single-day chip                                                                     |
+| PATCH sets `start_date > due_date`                | 400 — neither field persisted                                                       |
+| Bar starts before window, ends inside             | Bar rendered clipped to left edge of window                                         |
+| Bar starts inside window, ends after              | Bar rendered clipped to right edge of window                                        |
+| Drag bar middle past month boundary (FE)          | Both dates still shift by Δ; calendar fetches next window if user navigates         |
+| Drag edge past the other date (e.g. start > due)  | FE clamps to other date OR commits — backend rejects (400), FE reverts on error     |
+| Item archived                                     | Excluded from calendar response regardless of dates                                 |
+| Item deleted                                      | Disappears from calendar (no separate calendar row)                                 |
 
 ### Frontend Auth
 
@@ -499,10 +487,10 @@ func GenerateSchedule(plan, dailyItems, longtermItems, recommendations, pinnedEn
 
 ### Concurrent Access
 
-| Scenario                             | Handling                                              |
-| ------------------------------------ | ----------------------------------------------------- |
-| Two generate requests simultaneously | Last write wins (acceptable for single-user per plan) |
-| Move during generate                 | Pinned entry survives; generate only touches unpinned |
+| Scenario                                            | Handling                                              |
+| --------------------------------------------------- | ----------------------------------------------------- |
+| Two PATCH /dates requests on the same item          | Last write wins (acceptable for single-user per plan) |
+| GET calendar while another tab moves an item        | Stale view; refresh fetches latest state              |
 
 ---
 
@@ -538,7 +526,7 @@ config/
 internal/
 ├── ai/                        — OpenAI generators (checklist, search terms, daily focus)
 ├── auth/                      — JWT generation + refresh
-├── calendar/                  — NEW: Smart Calendar (handler, service, repository, model, optimizer)
+├── calendar/                  — Plan Calendar (handler, service, repository, model — Gantt window queries)
 ├── checklistitems/            — Checklist CRUD + daily reset + scheduling
 ├── concepts/                  — Learning concept model
 ├── constants/                 — Shared constants, error types, enums

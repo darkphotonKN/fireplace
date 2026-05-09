@@ -30,13 +30,14 @@ type Plan struct {
 
 type ChecklistItem struct {
 	BaseDBDateModel
-	Description   string     `db:"description" json:"description"`
-	Done          bool       `db:"done" json:"done"`
-	Sequence      string     `db:"sequence" json:"sequence"`
-	ScheduledTime *time.Time `db:"scheduled_time" json:"scheduledTime,omitempty"`
-	Scope         string     `db:"scope" json:"scope"`
-	Archived      bool       `db:"archived" json:"archived"`
-	PlanID        uuid.UUID  `db:"plan_id" json:"planId"`
+	Description string     `db:"description" json:"description"`
+	Done        bool       `db:"done" json:"done"`
+	Sequence    string     `db:"sequence" json:"sequence"`
+	StartDate   *time.Time `db:"start_date" json:"startDate,omitempty"`
+	DueDate     *time.Time `db:"due_date" json:"dueDate,omitempty"`
+	Scope       string     `db:"scope" json:"scope"`
+	Archived    bool       `db:"archived" json:"archived"`
+	PlanID      uuid.UUID  `db:"plan_id" json:"planId"`
 }
 
 /**

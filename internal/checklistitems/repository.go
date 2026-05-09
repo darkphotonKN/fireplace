@@ -24,7 +24,7 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error) {
 	query := `
-	SELECT id, description, done, sequence, scope, scheduled_time, archived, created_at, updated_at, plan_id
+	SELECT id, description, done, sequence, scope, start_date, due_date, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
 	AND archived = false
@@ -39,12 +39,15 @@ func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope
 	}
 
 	if upcoming != nil {
+		// Filter on start_date — items "starting in the next week/month".
+		// scheduled_time was replaced by start_date/due_date; start_date is the
+		// closest semantic match for the original "upcoming" query.
 		interval := fmt.Sprintf("'1 %s'", *upcoming)
 
 		query += fmt.Sprintf(`
-			AND scheduled_time IS NOT NULL 
-	    AND scheduled_time >= CURRENT_TIMESTAMP
-			AND scheduled_time <= CURRENT_TIMESTAMP + INTERVAL %s
+			AND start_date IS NOT NULL
+			AND start_date >= CURRENT_DATE
+			AND start_date <= CURRENT_DATE + INTERVAL %s
 		`, interval)
 	}
 
@@ -64,7 +67,7 @@ func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope
 
 func (s *repository) GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
 	baseQuery := `
-	SELECT id, description, done, sequence, scope, scheduled_time, archived, created_at, updated_at, plan_id
+	SELECT id, description, done, sequence, scope, start_date, due_date, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
 	AND archived = true
@@ -94,13 +97,14 @@ func (s *repository) GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUI
 
 func (s *repository) GetAll(ctx context.Context, scope *string) ([]*models.ChecklistItem, error) {
 	query := `
-	SELECT 
-		id, 
+	SELECT
+		id,
 		description,
 		done,
 		sequence,
-		scope, 
-		scheduled_time,
+		scope,
+		start_date,
+		due_date,
 		created_at,
 		updated_at,
 		plan_id
@@ -205,33 +209,16 @@ func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) er
 		description = COALESCE(:description, description),
 		done = COALESCE(:done, done),
 		scope = COALESCE(:scope, scope),
-		archived = COALESCE(:archived, archived),`
-
-	// check if scheduled time exists, otherwise set it to nil to remove scheduled time
-	if req.ScheduledTime == nil {
-		query += `
-		scheduled_time = NULL`
-	} else {
-		query += `
-		scheduled_time = :scheduled_time`
-	}
-
-	// always add where clause
-	query += `
+		archived = COALESCE(:archived, archived)
 	WHERE id = :id`
 
 	item := map[string]interface{}{
-		"id":             id,
-		"description":    req.Description,
-		"done":           req.Done,
-		"scope":          req.Scope,
-		"scheduled_time": req.ScheduledTime,
-		"archived":       req.Archived,
+		"id":          id,
+		"description": req.Description,
+		"done":        req.Done,
+		"scope":       req.Scope,
+		"archived":    req.Archived,
 	}
-
-	fmt.Printf("Updating id: %+v\n")
-	fmt.Printf("Updating checklist_items with item: %+v\n", item)
-	fmt.Printf("constructed query: %s\n", query)
 
 	result, err := s.db.NamedExecContext(ctx, query, item)
 
@@ -253,7 +240,7 @@ func (s *repository) Delete(ctx context.Context, id uuid.UUID) error {
 
 func (s *repository) GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error) {
 	query := `
-	SELECT id, description, done, sequence, scope, scheduled_time, created_at, updated_at, plan_id
+	SELECT id, description, done, sequence, scope, start_date, due_date, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE id = $1
 	`
@@ -326,16 +313,17 @@ func (r *repository) BulkResetDailyItems(ctx context.Context) error {
 
 func (r *repository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*models.ChecklistItem, error) {
 	query := `
-	SELECT 
-		ci.id, 
-		ci.description, 
-		ci.done, 
-		ci.sequence, 
-		ci.scope, 
-		ci.scheduled_time, 
-		ci.archived, 
-		ci.created_at, 
-		ci.updated_at, 
+	SELECT
+		ci.id,
+		ci.description,
+		ci.done,
+		ci.sequence,
+		ci.scope,
+		ci.start_date,
+		ci.due_date,
+		ci.archived,
+		ci.created_at,
+		ci.updated_at,
 		ci.plan_id
 	FROM checklist_items ci
 	JOIN plans p ON ci.plan_id = p.id

@@ -22,7 +22,6 @@ type Service interface {
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 	Delete(ctx context.Context, id uuid.UUID) error
-	SetSchedule(ctx context.Context, id uuid.UUID, req SetScheduleReq) error
 	Archive(ctx context.Context, id uuid.UUID) error
 	GetUpcoming(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error)
 }
@@ -159,28 +158,6 @@ func (h *Handler) GetByID(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully retrieved checklist item.", "result": item})
-}
-
-func (h *Handler) SetSchedule(c *gin.Context) {
-	idStr := c.Param("checklist_id")
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format", "result": constants.UpdateStatusFailure})
-		return
-	}
-
-	var req SetScheduleReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body. Error was: " + err.Error()})
-		return
-	}
-
-	if err := h.service.SetSchedule(c.Request.Context(), id, req); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set schedule on checklist item. Error: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully set schedule on checklist item.", "result": constants.UpdateStatusSuccess})
 }
 
 func (h *Handler) Archive(c *gin.Context) {

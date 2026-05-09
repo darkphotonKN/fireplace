@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestUser_NullableProfileFields(t *testing.T) {
@@ -61,5 +62,67 @@ func TestUser_JSONSerialization_ProfileFields(t *testing.T) {
 	}
 	if m["bio"] != "Bio text" {
 		t.Errorf("expected bio 'Bio text', got '%v'", m["bio"])
+	}
+}
+
+func TestChecklistItem_DateFields_NilByDefault(t *testing.T) {
+	item := ChecklistItem{Description: "task"}
+
+	if item.StartDate != nil {
+		t.Error("expected StartDate to be nil by default")
+	}
+	if item.DueDate != nil {
+		t.Error("expected DueDate to be nil by default")
+	}
+}
+
+func TestChecklistItem_DateFields_JSONKeys(t *testing.T) {
+	start := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	due := time.Date(2026, 3, 14, 0, 0, 0, 0, time.UTC)
+	item := ChecklistItem{
+		Description: "task",
+		StartDate:   &start,
+		DueDate:     &due,
+	}
+
+	data, err := json.Marshal(item)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if _, ok := m["startDate"]; !ok {
+		t.Error("expected startDate key in JSON output")
+	}
+	if _, ok := m["dueDate"]; !ok {
+		t.Error("expected dueDate key in JSON output")
+	}
+	if _, ok := m["scheduledTime"]; ok {
+		t.Error("scheduledTime key should not exist after migration")
+	}
+}
+
+func TestChecklistItem_DateFields_OmittedWhenNil(t *testing.T) {
+	item := ChecklistItem{Description: "task"}
+
+	data, err := json.Marshal(item)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if _, ok := m["startDate"]; ok {
+		t.Error("expected startDate to be omitted when nil")
+	}
+	if _, ok := m["dueDate"]; ok {
+		t.Error("expected dueDate to be omitted when nil")
 	}
 }

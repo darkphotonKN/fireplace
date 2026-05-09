@@ -130,7 +130,6 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	checkListRoutes.POST("", checkListHandler.Create)
 	checkListRoutes.PATCH("/:checklist_id", checkListHandler.Update)
 	checkListRoutes.DELETE("/:checklist_id", checkListHandler.Delete)
-	checkListRoutes.PATCH("/:checklist_id/schedule", checkListHandler.SetSchedule)
 	checkListRoutes.PATCH("/:checklist_id/archive", checkListHandler.Archive)
 
 	// -- User Analytics Routes --
@@ -159,11 +158,9 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	// --- JOBS ---
 	// TODO: write a job manager for graceful shutdown
 	dailyJob := jobs.NewDailyResetJob(checkListService)
-	scheduledItemsJob := jobs.NewScheduledItemsJob(checkListService)
 
 	jobManager := jobs.NewManager()
 	jobManager.AddJob(dailyJob)
-	jobManager.AddJob(scheduledItemsJob)
 	jobManager.StartAll()
 
 	return router

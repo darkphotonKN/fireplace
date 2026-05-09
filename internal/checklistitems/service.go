@@ -3,10 +3,8 @@ package checklistitems
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
-	"github.com/darkphotonKN/fireplace/internal/logger"
 	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
 )
@@ -88,41 +86,11 @@ func (s *service) Create(ctx context.Context, req CreateReq, planID uuid.UUID) (
 }
 
 func (s *service) Update(ctx context.Context, id uuid.UUID, req UpdateReq) error {
-	// TODO: additional business logic for scheduled time
-	// if req.ScheduledTime
 	return s.repo.Update(ctx, id, req)
 }
 
 func (s *service) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
-}
-
-func (s *service) SetSchedule(ctx context.Context, id uuid.UUID, req SetScheduleReq) error {
-	var updateData UpdateReq
-
-	if req.ScheduledTime != nil {
-		t, err := time.Parse(time.RFC3339, *req.ScheduledTime)
-
-		if err != nil {
-			logger.Error("Error parsing scheduled time", "error", err)
-			return err
-		}
-
-		logger.Debug("Parsed scheduled time", "time", t)
-
-		// format struct for updating scheduled time in database
-		updateData = UpdateReq{
-			ScheduledTime: &t,
-		}
-
-		// 2. validate the time, ensure it's in the future
-		if t.Before(time.Now()) {
-			return fmt.Errorf("scheduled time must be a datetime in the future")
-		}
-	}
-
-	// 3. if time validation checks out, update the time
-	return s.repo.Update(ctx, id, updateData)
 }
 
 /**
@@ -174,14 +142,6 @@ func (s *service) GetUpcoming(ctx context.Context, planId uuid.UUID) ([]*models.
 	return items, nil
 }
 
-func (s *service) CheckAllScheduledItems(ctx context.Context) error {
-	return nil
-}
-
 func (s *service) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*models.ChecklistItem, error) {
 	return s.repo.GetByUserID(ctx, userID)
-}
-
-func (s *service) TriggerScheduledReminder(ctx context.Context) error {
-	return nil
 }

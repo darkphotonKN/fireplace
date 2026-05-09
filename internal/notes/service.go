@@ -168,7 +168,7 @@ func (s *Service) generateWarningNote(plan *models.Plan, items []*models.Checkli
 	for _, item := range items {
 		if !item.Done {
 			incompleteTasks = append(incompleteTasks, item)
-			if item.ScheduledTime != nil && item.ScheduledTime.Before(time.Now()) {
+			if item.DueDate != nil && item.DueDate.Before(time.Now()) {
 				overdueTasks = append(overdueTasks, item)
 			}
 		}
@@ -289,7 +289,7 @@ func (s *Service) generateSuggestionNote(plan *models.Plan, items []*models.Chec
 	// Fallback to rule-based suggestions
 	var unscheduledTasks []*models.ChecklistItem
 	for _, item := range items {
-		if !item.Done && item.ScheduledTime == nil {
+		if !item.Done && item.StartDate == nil && item.DueDate == nil {
 			unscheduledTasks = append(unscheduledTasks, item)
 		}
 	}
