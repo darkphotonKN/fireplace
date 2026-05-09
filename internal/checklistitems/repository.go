@@ -3,6 +3,7 @@ package checklistitems
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
 	"github.com/darkphotonKN/fireplace/internal/logger"
@@ -222,6 +223,18 @@ func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) er
 
 	result, err := s.db.NamedExecContext(ctx, query, item)
 
+	return errorutils.AnalyzeDBResults(err, result)
+}
+
+// UpdateDates persists final start_date / due_date values. Pass nil to clear a column.
+// The DB CHECK constraint enforces start_date <= due_date as a final guard.
+func (s *repository) UpdateDates(ctx context.Context, id uuid.UUID, startDate, dueDate *time.Time) error {
+	query := `
+	UPDATE checklist_items
+	SET start_date = $2, due_date = $3
+	WHERE id = $1`
+
+	result, err := s.db.ExecContext(ctx, query, id, startDate, dueDate)
 	return errorutils.AnalyzeDBResults(err, result)
 }
 

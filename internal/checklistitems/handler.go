@@ -2,6 +2,7 @@ package checklistitems
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
@@ -21,6 +22,7 @@ type Service interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error)
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
+	UpdateDates(ctx context.Context, id uuid.UUID, req UpdateDatesReq) (*models.ChecklistItem, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	Archive(ctx context.Context, id uuid.UUID) error
 	GetUpcoming(ctx context.Context, planId uuid.UUID) ([]*models.ChecklistItem, error)
@@ -158,6 +160,36 @@ func (h *Handler) GetByID(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully retrieved checklist item.", "result": item})
+}
+
+func (h *Handler) UpdateDates(c *gin.Context) {
+	idStr := c.Param("checklist_id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID format"})
+		return
+	}
+
+	var req UpdateDatesReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body. Error: " + err.Error()})
+		return
+	}
+
+	item, err := h.service.UpdateDates(c.Request.Context(), id, req)
+	if err != nil {
+		switch {
+		case errors.Is(err, constants.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case errors.Is(err, constants.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "Checklist item not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update dates. Error: " + err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully updated dates.", "result": item})
 }
 
 func (h *Handler) Archive(c *gin.Context) {

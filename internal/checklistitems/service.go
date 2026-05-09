@@ -3,6 +3,7 @@ package checklistitems
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
 	"github.com/darkphotonKN/fireplace/internal/models"
@@ -16,6 +17,7 @@ type service struct {
 type Repository interface {
 	Create(ctx context.Context, req CreateReq, planID uuid.UUID, sequenceNo int) (*models.ChecklistItem, error)
 	Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
+	UpdateDates(ctx context.Context, id uuid.UUID, startDate, dueDate *time.Time) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetAll(ctx context.Context, scope *string) ([]*models.ChecklistItem, error)
 	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error)
@@ -87,6 +89,54 @@ func (s *service) Create(ctx context.Context, req CreateReq, planID uuid.UUID) (
 
 func (s *service) Update(ctx context.Context, id uuid.UUID, req UpdateReq) error {
 	return s.repo.Update(ctx, id, req)
+}
+
+// UpdateDates merges the request with the current row, validates
+// start_date <= due_date when both resolve to non-null, and persists.
+// Returns the updated item.
+func (s *service) UpdateDates(ctx context.Context, id uuid.UUID, req UpdateDatesReq) (*models.ChecklistItem, error) {
+	if !req.StartDate.Present && !req.DueDate.Present {
+		// No-op — return current item as-is.
+		return s.repo.GetByID(ctx, id)
+	}
+
+	current, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resolve final values: present overrides current; absent preserves current.
+	var finalStart, finalDue *time.Time
+	switch {
+	case req.StartDate.Present && req.StartDate.Valid:
+		v := req.StartDate.Value
+		finalStart = &v
+	case req.StartDate.Present && !req.StartDate.Valid:
+		finalStart = nil
+	default:
+		finalStart = current.StartDate
+	}
+	switch {
+	case req.DueDate.Present && req.DueDate.Valid:
+		v := req.DueDate.Value
+		finalDue = &v
+	case req.DueDate.Present && !req.DueDate.Valid:
+		finalDue = nil
+	default:
+		finalDue = current.DueDate
+	}
+
+	if finalStart != nil && finalDue != nil && finalStart.After(*finalDue) {
+		return nil, fmt.Errorf("%w: start_date must be on or before due_date", constants.ErrInvalidInput)
+	}
+
+	if err := s.repo.UpdateDates(ctx, id, finalStart, finalDue); err != nil {
+		return nil, err
+	}
+
+	current.StartDate = finalStart
+	current.DueDate = finalDue
+	return current, nil
 }
 
 func (s *service) Delete(ctx context.Context, id uuid.UUID) error {

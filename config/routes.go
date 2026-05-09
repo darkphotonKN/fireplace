@@ -130,6 +130,7 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	checkListRoutes.POST("", checkListHandler.Create)
 	checkListRoutes.PATCH("/:checklist_id", checkListHandler.Update)
 	checkListRoutes.DELETE("/:checklist_id", checkListHandler.Delete)
+	checkListRoutes.PATCH("/:checklist_id/dates", checkListHandler.UpdateDates)
 	checkListRoutes.PATCH("/:checklist_id/archive", checkListHandler.Archive)
 
 	// -- User Analytics Routes --

@@ -1,5 +1,12 @@
 package checklistitems
 
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+)
+
 type CreateReq struct {
 	Description string  `json:"description"`
 	Scope       *string `json:"scope,omitempty"`
@@ -15,4 +22,45 @@ type UpdateReq struct {
 
 type BatchUpdateReq struct {
 	list []UpdateReq
+}
+
+// optDate distinguishes three JSON states for a date field:
+//
+//	{}                       → Present=false, Valid=false  (leave column alone)
+//	{"startDate": null}      → Present=true,  Valid=false  (clear column)
+//	{"startDate": "2026-..."} → Present=true,  Valid=true   (set column)
+type optDate struct {
+	Present bool
+	Valid   bool
+	Value   time.Time
+}
+
+func (o *optDate) UnmarshalJSON(data []byte) error {
+	o.Present = true
+	if string(data) == "null" {
+		o.Valid = false
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("date must be a string or null: %w", err)
+	}
+	// Accept YYYY-MM-DD; tolerate full RFC3339 by truncating to date.
+	if i := strings.Index(s, "T"); i > 0 {
+		s = s[:i]
+	}
+	t, err := time.ParseInLocation("2006-01-02", s, time.UTC)
+	if err != nil {
+		return fmt.Errorf("date must be YYYY-MM-DD: %w", err)
+	}
+	o.Valid = true
+	o.Value = t
+	return nil
+}
+
+// UpdateDatesReq is the body of PATCH /checklists/:id/dates.
+// Both fields are optional; either may be null to clear.
+type UpdateDatesReq struct {
+	StartDate optDate `json:"startDate"`
+	DueDate   optDate `json:"dueDate"`
 }
