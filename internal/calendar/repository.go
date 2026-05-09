@@ -1,19 +1,16 @@
 package calendar
 
 import (
+	"context"
 	"fmt"
 	"time"
 
+	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
-// CalendarRepository defines the data access interface for calendar entries.
-type CalendarRepository interface {
-	GetByMonth(planID uuid.UUID, startDate, endDate time.Time) ([]CalendarEntry, error)
-}
-
-// Repository implements CalendarRepository with a PostgreSQL backend.
+// Repository reads checklist items overlapping a date window.
 type Repository struct {
 	db *sqlx.DB
 }
@@ -22,36 +19,23 @@ func NewRepository(db *sqlx.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) GetByMonth(planID uuid.UUID, startDate, endDate time.Time) ([]CalendarEntry, error) {
+// GetItemsInWindow returns non-archived checklist items for the plan whose
+// [start_date, due_date] range (treating null on one side as the other side)
+// intersects [windowStart, windowEnd]. Items with both dates null are excluded.
+func (r *Repository) GetItemsInWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*models.ChecklistItem, error) {
 	query := `
-		SELECT
-			ce.id, ce.plan_id, ce.checklist_item_id, ce.entry_type,
-			ce.scheduled_date, ce.position, ce.pinned,
-			ce.rec_title, ce.rec_url, ce.rec_description,
-			ce.created_at, ce.updated_at,
-			ci.description, ci.done
-		FROM calendar_entries ce
-		LEFT JOIN checklist_items ci ON ce.checklist_item_id = ci.id
-		WHERE ce.plan_id = $1
-		  AND ce.scheduled_date >= $2
-		  AND ce.scheduled_date <= $3
-		ORDER BY ce.scheduled_date ASC, ce.position ASC
-	`
+	SELECT id, description, done, sequence, scope, start_date, due_date, archived, created_at, updated_at, plan_id
+	FROM checklist_items
+	WHERE plan_id = $1
+	  AND archived = false
+	  AND (start_date IS NOT NULL OR due_date IS NOT NULL)
+	  AND COALESCE(start_date, due_date) <= $3
+	  AND COALESCE(due_date,   start_date) >= $2
+	ORDER BY COALESCE(start_date, due_date) ASC, sequence ASC`
 
-	rows, err := r.db.Queryx(query, planID, startDate, endDate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get calendar entries: %w", err)
+	var items []*models.ChecklistItem
+	if err := r.db.SelectContext(ctx, &items, query, planID, windowStart, windowEnd); err != nil {
+		return nil, fmt.Errorf("failed to query calendar items: %w", err)
 	}
-	defer rows.Close()
-
-	var entries []CalendarEntry
-	for rows.Next() {
-		var entry CalendarEntry
-		if err := rows.StructScan(&entry); err != nil {
-			return nil, fmt.Errorf("failed to scan calendar entry: %w", err)
-		}
-		entries = append(entries, entry)
-	}
-
-	return entries, nil
+	return items, nil
 }

@@ -89,7 +89,7 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	notesHandler := notes.NewHandler(notesService)
 
 	calendarRepo := calendar.NewRepository(db)
-	calendarService := calendar.NewService(calendarRepo)
+	calendarService := calendar.NewService(calendarRepo, planService)
 	calendarHandler := calendar.NewHandler(calendarService)
 
 	// --- PUBLIC ROUTES (no auth) ---
@@ -154,7 +154,7 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 
 	// -- Calendar Routes --
 	calendarRoutes := protected.Group("/plans/:id/calendar")
-	calendarRoutes.GET("", calendarHandler.GetMonth)
+	calendarRoutes.GET("", calendarHandler.GetCalendar)
 
 	// --- JOBS ---
 	// TODO: write a job manager for graceful shutdown

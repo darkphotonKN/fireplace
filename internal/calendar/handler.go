@@ -1,9 +1,12 @@
 package calendar
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
+	"github.com/darkphotonKN/fireplace/internal/auth"
+	"github.com/darkphotonKN/fireplace/internal/constants"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -16,36 +19,47 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-// GetMonth handles GET /api/plans/:id/calendar?month=YYYY-MM
-func (h *Handler) GetMonth(c *gin.Context) {
-	planIDStr := c.Param("id")
-	planID, err := uuid.Parse(planIDStr)
+// GetCalendar handles GET /api/plans/:id/calendar?view=<week|month>&date=<...>
+func (h *Handler) GetCalendar(c *gin.Context) {
+	planID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid plan ID",
-			"statusCode": http.StatusBadRequest,
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid plan ID"})
 		return
 	}
 
-	month := c.Query("month")
-	if month == "" {
-		// Default to current month
-		month = time.Now().Format("2006-01")
+	userID, err := auth.GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
 	}
 
-	resp, err := h.service.GetMonth(planID, month)
+	view := c.Query("view")
+	date := c.Query("date")
+	if date == "" {
+		// Default: current month for month view, today's date for week view.
+		if view == "week" {
+			date = time.Now().UTC().Format("2006-01-02")
+		} else {
+			date = time.Now().UTC().Format("2006-01")
+		}
+	}
+
+	resp, err := h.service.GetCalendar(c.Request.Context(), planID, userID, view, date)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      err.Error(),
-			"statusCode": http.StatusBadRequest,
-		})
+		switch {
+		case errors.Is(err, constants.ErrForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		case errors.Is(err, constants.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
+		"statusCode": http.StatusOK,
 		"message":    "Calendar entries retrieved successfully",
 		"result":     resp,
-		"statusCode": http.StatusOK,
 	})
 }

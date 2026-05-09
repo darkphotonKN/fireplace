@@ -1,160 +1,163 @@
 package calendar
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/darkphotonKN/fireplace/internal/constants"
+	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
 )
 
-// mockRepository implements the repository interface for testing.
 type mockRepository struct {
-	entries []CalendarEntry
+	items   []*models.ChecklistItem
+	itemErr error
+
+	lastPlanID uuid.UUID
+	lastStart  time.Time
+	lastEnd    time.Time
+}
+
+func (m *mockRepository) GetItemsInWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*models.ChecklistItem, error) {
+	m.lastPlanID = planID
+	m.lastStart = windowStart
+	m.lastEnd = windowEnd
+	return m.items, m.itemErr
+}
+
+type mockOwnership struct {
+	ownedBy uuid.UUID
 	err     error
 }
 
-func (m *mockRepository) GetByMonth(planID uuid.UUID, startDate, endDate time.Time) ([]CalendarEntry, error) {
-	return m.entries, m.err
+func (m *mockOwnership) AssertPlanOwnership(ctx context.Context, planID, userID uuid.UUID) error {
+	if m.err != nil {
+		return m.err
+	}
+	if m.ownedBy != uuid.Nil && m.ownedBy != userID {
+		return constants.ErrForbidden
+	}
+	return nil
 }
 
-func TestGetMonth_EmptyMonth_ReturnsAllDays(t *testing.T) {
-	repo := &mockRepository{entries: []CalendarEntry{}, err: nil}
-	service := NewService(repo)
+func dateUTC(y int, mo time.Month, d int) time.Time {
+	return time.Date(y, mo, d, 0, 0, 0, 0, time.UTC)
+}
 
-	planID := uuid.New()
-	resp, err := service.GetMonth(planID, "2026-03")
+func TestGetCalendar_MonthView_ResolvesWindowAsFirstToLast(t *testing.T) {
+	repo := &mockRepository{}
+	svc := NewService(repo, &mockOwnership{})
 
+	resp, err := svc.GetCalendar(context.Background(), uuid.New(), uuid.New(), "month", "2026-03")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-
-	if resp.PlanID != planID.String() {
-		t.Errorf("expected planID %s, got %s", planID.String(), resp.PlanID)
+	if resp.View != "month" {
+		t.Errorf("expected view=month, got %s", resp.View)
 	}
-
-	if resp.Month != "2026-03" {
-		t.Errorf("expected month 2026-03, got %s", resp.Month)
+	if !repo.lastStart.Equal(dateUTC(2026, 3, 1)) {
+		t.Errorf("expected window start 2026-03-01, got %s", repo.lastStart)
 	}
-
-	// March 2026 has 31 days
-	if len(resp.Days) != 31 {
-		t.Errorf("expected 31 days for March, got %d", len(resp.Days))
+	if !repo.lastEnd.Equal(dateUTC(2026, 3, 31)) {
+		t.Errorf("expected window end 2026-03-31, got %s", repo.lastEnd)
 	}
-
-	// All days should have empty entries
-	for _, day := range resp.Days {
-		if len(day.Entries) != 0 {
-			t.Errorf("expected 0 entries for day %s, got %d", day.Date, len(day.Entries))
-		}
-	}
-
-	// First day should be 2026-03-01
-	if resp.Days[0].Date != "2026-03-01" {
-		t.Errorf("expected first day 2026-03-01, got %s", resp.Days[0].Date)
-	}
-
-	// Last day should be 2026-03-31
-	if resp.Days[30].Date != "2026-03-31" {
-		t.Errorf("expected last day 2026-03-31, got %s", resp.Days[30].Date)
+	if resp.WindowStart != "2026-03-01" || resp.WindowEnd != "2026-03-31" {
+		t.Errorf("unexpected window in response: %s..%s", resp.WindowStart, resp.WindowEnd)
 	}
 }
 
-func TestGetMonth_WithEntries_GroupsByDay(t *testing.T) {
-	planID := uuid.New()
-	entryID1 := uuid.New()
-	entryID2 := uuid.New()
-	checklistID := uuid.New()
-	desc := "Write tests"
-	done := false
+func TestGetCalendar_WeekView_ResolvesSundayToSaturday(t *testing.T) {
+	repo := &mockRepository{}
+	svc := NewService(repo, &mockOwnership{})
 
+	// 2026-03-09 is a Monday → week is 2026-03-08 (Sun) .. 2026-03-14 (Sat).
+	resp, err := svc.GetCalendar(context.Background(), uuid.New(), uuid.New(), "week", "2026-03-09")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !repo.lastStart.Equal(dateUTC(2026, 3, 8)) {
+		t.Errorf("expected week start 2026-03-08, got %s", repo.lastStart)
+	}
+	if !repo.lastEnd.Equal(dateUTC(2026, 3, 14)) {
+		t.Errorf("expected week end 2026-03-14, got %s", repo.lastEnd)
+	}
+	if resp.WindowStart != "2026-03-08" || resp.WindowEnd != "2026-03-14" {
+		t.Errorf("unexpected window in response: %s..%s", resp.WindowStart, resp.WindowEnd)
+	}
+}
+
+func TestGetCalendar_ReturnsItemsWithFormattedDates(t *testing.T) {
+	start := dateUTC(2026, 3, 4)
+	due := dateUTC(2026, 3, 12)
+	planID := uuid.New()
 	repo := &mockRepository{
-		entries: []CalendarEntry{
+		items: []*models.ChecklistItem{
 			{
-				ID:              entryID1,
+				BaseDBDateModel: models.BaseDBDateModel{ID: uuid.New()},
 				PlanID:          planID,
-				ChecklistItemID: &checklistID,
-				EntryType:       "daily",
-				ScheduledDate:   time.Date(2026, 3, 5, 0, 0, 0, 0, time.UTC),
-				Position:        1,
-				Pinned:          false,
-				Description:     &desc,
-				Done:            &done,
-			},
-			{
-				ID:            entryID2,
-				PlanID:        planID,
-				EntryType:     "recommendation",
-				ScheduledDate: time.Date(2026, 3, 5, 0, 0, 0, 0, time.UTC),
-				Position:      2,
-				Pinned:        false,
+				Description:     "Build auth middleware",
+				Scope:           "longterm",
+				StartDate:       &start,
+				DueDate:         &due,
 			},
 		},
-		err: nil,
 	}
-	service := NewService(repo)
+	svc := NewService(repo, &mockOwnership{})
 
-	resp, err := service.GetMonth(planID, "2026-03")
-
+	resp, err := svc.GetCalendar(context.Background(), planID, uuid.New(), "month", "2026-03")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-
-	// Day 5 (index 4) should have 2 entries
-	day5 := resp.Days[4]
-	if day5.Date != "2026-03-05" {
-		t.Errorf("expected date 2026-03-05, got %s", day5.Date)
+	if len(resp.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(resp.Items))
 	}
-	if len(day5.Entries) != 2 {
-		t.Fatalf("expected 2 entries on March 5, got %d", len(day5.Entries))
+	if resp.Items[0].StartDate != "2026-03-04" {
+		t.Errorf("expected startDate 2026-03-04, got %s", resp.Items[0].StartDate)
 	}
-
-	if day5.Entries[0].EntryType != "daily" {
-		t.Errorf("expected first entry type daily, got %s", day5.Entries[0].EntryType)
-	}
-	if day5.Entries[1].EntryType != "recommendation" {
-		t.Errorf("expected second entry type recommendation, got %s", day5.Entries[1].EntryType)
-	}
-
-	// Other days should be empty
-	if len(resp.Days[0].Entries) != 0 {
-		t.Errorf("expected 0 entries on March 1, got %d", len(resp.Days[0].Entries))
+	if resp.Items[0].DueDate != "2026-03-12" {
+		t.Errorf("expected dueDate 2026-03-12, got %s", resp.Items[0].DueDate)
 	}
 }
 
-func TestGetMonth_February_Returns28Or29Days(t *testing.T) {
-	repo := &mockRepository{entries: []CalendarEntry{}, err: nil}
-	service := NewService(repo)
+func TestGetCalendar_OwnershipFails_Returns403(t *testing.T) {
+	otherUser := uuid.New()
+	repo := &mockRepository{}
+	svc := NewService(repo, &mockOwnership{ownedBy: otherUser})
 
-	// 2026 is not a leap year
-	resp, err := service.GetMonth(uuid.New(), "2026-02")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	_, err := svc.GetCalendar(context.Background(), uuid.New(), uuid.New(), "month", "2026-03")
+	if err == nil {
+		t.Fatal("expected ownership error")
 	}
-	if len(resp.Days) != 28 {
-		t.Errorf("expected 28 days for Feb 2026, got %d", len(resp.Days))
-	}
-
-	// 2024 is a leap year
-	resp, err = service.GetMonth(uuid.New(), "2024-02")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(resp.Days) != 29 {
-		t.Errorf("expected 29 days for Feb 2024, got %d", len(resp.Days))
+	if err != constants.ErrForbidden {
+		t.Errorf("expected ErrForbidden, got %v", err)
 	}
 }
 
-func TestGetMonth_InvalidMonth_ReturnsError(t *testing.T) {
-	repo := &mockRepository{entries: []CalendarEntry{}, err: nil}
-	service := NewService(repo)
-
-	_, err := service.GetMonth(uuid.New(), "invalid")
-	if err == nil {
-		t.Error("expected error for invalid month, got nil")
+func TestGetCalendar_InvalidView_ReturnsError(t *testing.T) {
+	svc := NewService(&mockRepository{}, &mockOwnership{})
+	if _, err := svc.GetCalendar(context.Background(), uuid.New(), uuid.New(), "year", "2026-03"); err == nil {
+		t.Error("expected error for invalid view")
 	}
+}
 
-	_, err = service.GetMonth(uuid.New(), "")
-	if err == nil {
-		t.Error("expected error for empty month, got nil")
+func TestGetCalendar_InvalidDateFormat_ReturnsError(t *testing.T) {
+	svc := NewService(&mockRepository{}, &mockOwnership{})
+	if _, err := svc.GetCalendar(context.Background(), uuid.New(), uuid.New(), "month", "not-a-date"); err == nil {
+		t.Error("expected error for invalid date in month view")
+	}
+	if _, err := svc.GetCalendar(context.Background(), uuid.New(), uuid.New(), "week", "2026-03"); err == nil {
+		t.Error("expected error for month-format date in week view")
+	}
+}
+
+func TestGetCalendar_DefaultsToMonth_WhenViewEmpty(t *testing.T) {
+	svc := NewService(&mockRepository{}, &mockOwnership{})
+	resp, err := svc.GetCalendar(context.Background(), uuid.New(), uuid.New(), "", "2026-03")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.View != "month" {
+		t.Errorf("expected default view=month, got %s", resp.View)
 	}
 }

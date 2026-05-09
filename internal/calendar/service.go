@@ -1,88 +1,104 @@
 package calendar
 
 import (
+	"context"
 	"fmt"
-	"sort"
 	"time"
 
+	"github.com/darkphotonKN/fireplace/internal/models"
 	"github.com/google/uuid"
 )
 
+const dateLayout = "2006-01-02"
+
+type CalendarRepository interface {
+	GetItemsInWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*models.ChecklistItem, error)
+}
+
+// PlanOwnership verifies a plan belongs to a user. Implementations live in
+// the plans package; the calendar package depends only on this minimal interface.
+type PlanOwnership interface {
+	AssertPlanOwnership(ctx context.Context, planID, userID uuid.UUID) error
+}
+
 type Service struct {
-	repo CalendarRepository
+	repo      CalendarRepository
+	ownership PlanOwnership
 }
 
-func NewService(repo CalendarRepository) *Service {
-	return &Service{repo: repo}
+func NewService(repo CalendarRepository, ownership PlanOwnership) *Service {
+	return &Service{repo: repo, ownership: ownership}
 }
 
-// GetMonth returns a MonthResponse with all days in the given month,
-// each populated with their calendar entries.
-func (s *Service) GetMonth(planID uuid.UUID, month string) (*MonthResponse, error) {
-	startDate, endDate, err := parseMonthRange(month)
+// GetCalendar resolves the requested window, verifies plan ownership,
+// fetches checklist items overlapping the window, and formats the response.
+func (s *Service) GetCalendar(ctx context.Context, planID, userID uuid.UUID, view, date string) (*GetCalendarResp, error) {
+	if view == "" {
+		view = "month"
+	}
+	windowStart, windowEnd, err := resolveWindow(view, date)
 	if err != nil {
 		return nil, err
 	}
 
-	entries, err := s.repo.GetByMonth(planID, startDate, endDate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch calendar entries: %w", err)
+	if err := s.ownership.AssertPlanOwnership(ctx, planID, userID); err != nil {
+		return nil, err
 	}
 
-	days := buildDaySlots(startDate, endDate, entries)
+	items, err := s.repo.GetItemsInWindow(ctx, planID, windowStart, windowEnd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch calendar items: %w", err)
+	}
 
-	return &MonthResponse{
-		PlanID: planID.String(),
-		Month:  month,
-		Days:   days,
+	formatted := make([]CalendarItem, 0, len(items))
+	for _, item := range items {
+		formatted = append(formatted, CalendarItem{
+			ID:          item.ID,
+			Description: item.Description,
+			Scope:       item.Scope,
+			Done:        item.Done,
+			StartDate:   formatDate(item.StartDate),
+			DueDate:     formatDate(item.DueDate),
+		})
+	}
+
+	return &GetCalendarResp{
+		PlanID:      planID.String(),
+		View:        view,
+		WindowStart: windowStart.Format(dateLayout),
+		WindowEnd:   windowEnd.Format(dateLayout),
+		Items:       formatted,
 	}, nil
 }
 
-// parseMonthRange parses "YYYY-MM" into the first and last day of that month.
-func parseMonthRange(month string) (time.Time, time.Time, error) {
-	if month == "" {
-		return time.Time{}, time.Time{}, fmt.Errorf("month parameter is required")
+func resolveWindow(view, date string) (time.Time, time.Time, error) {
+	switch view {
+	case "month":
+		t, err := time.ParseInLocation("2006-01", date, time.UTC)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid date for month view, expected YYYY-MM: %w", err)
+		}
+		start := t
+		end := t.AddDate(0, 1, -1)
+		return start, end, nil
+	case "week":
+		t, err := time.ParseInLocation(dateLayout, date, time.UTC)
+		if err != nil {
+			return time.Time{}, time.Time{}, fmt.Errorf("invalid date for week view, expected YYYY-MM-DD: %w", err)
+		}
+		// Sunday-start week (Sun..Sat).
+		offset := int(t.Weekday()) // Sunday=0, Saturday=6
+		start := t.AddDate(0, 0, -offset)
+		end := start.AddDate(0, 0, 6)
+		return start, end, nil
+	default:
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid view: must be 'week' or 'month'")
 	}
-
-	t, err := time.Parse("2006-01", month)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("invalid month format, expected YYYY-MM: %w", err)
-	}
-
-	startDate := t
-	endDate := t.AddDate(0, 1, -1) // last day of month
-
-	return startDate, endDate, nil
 }
 
-// buildDaySlots creates a DaySlot for every day in the range and
-// populates each with matching entries.
-func buildDaySlots(startDate, endDate time.Time, entries []CalendarEntry) []DaySlot {
-	// Index entries by date string for fast lookup
-	entryMap := make(map[string][]CalendarEntry)
-	for _, entry := range entries {
-		dateKey := entry.ScheduledDate.Format("2006-01-02")
-		entryMap[dateKey] = append(entryMap[dateKey], entry)
+func formatDate(t *time.Time) string {
+	if t == nil {
+		return ""
 	}
-
-	var days []DaySlot
-	for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
-		dateKey := d.Format("2006-01-02")
-		dayEntries := entryMap[dateKey]
-		if dayEntries == nil {
-			dayEntries = []CalendarEntry{}
-		}
-
-		// Ensure entries are sorted by position
-		sort.Slice(dayEntries, func(i, j int) bool {
-			return dayEntries[i].Position < dayEntries[j].Position
-		})
-
-		days = append(days, DaySlot{
-			Date:    dateKey,
-			Entries: dayEntries,
-		})
-	}
-
-	return days
+	return t.Format(dateLayout)
 }

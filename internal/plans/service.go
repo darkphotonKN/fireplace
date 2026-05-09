@@ -2,6 +2,7 @@ package plans
 
 import (
 	"context"
+	"errors"
 
 	"github.com/darkphotonKN/fireplace/internal/constants"
 	"github.com/darkphotonKN/fireplace/internal/logger"
@@ -38,6 +39,23 @@ func NewService(repo Repository) *service {
 
 func (s *service) GetById(ctx context.Context, id uuid.UUID) (*models.Plan, error) {
 	return s.repo.GetById(ctx, id)
+}
+
+// AssertPlanOwnership returns ErrNotFound if the plan does not exist and
+// ErrForbidden if it belongs to another user. Used by sibling packages
+// (e.g. calendar) to gate access to plan-scoped resources.
+func (s *service) AssertPlanOwnership(ctx context.Context, planID, userID uuid.UUID) error {
+	plan, err := s.repo.GetById(ctx, planID)
+	if err != nil {
+		if errors.Is(err, constants.ErrNotFound) {
+			return constants.ErrNotFound
+		}
+		return err
+	}
+	if plan.UserID != userID {
+		return constants.ErrForbidden
+	}
+	return nil
 }
 
 func (s *service) Create(ctx context.Context, req CreatePlanReq, userID uuid.UUID) (*models.Plan, error) {
