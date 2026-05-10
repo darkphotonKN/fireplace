@@ -22,6 +22,11 @@
 | Plan Calendar     | Per-plan Gantt-style calendar showing checklist items with dates — week or month view                            |
 | Gantt Bar         | A horizontal bar spanning a checklist item's `start_date` to `due_date` on the calendar                          |
 | Single-Day Chip   | A compact one-day marker shown when a checklist item has only `start_date` or `due_date` set (or both equal)     |
+| Task              | A checklist item with `type='task'` (default) — supports the done checkbox                                       |
+| Note              | A checklist item with `type='note'` — text-only entry; no checkbox, `done` always false                          |
+| Parent Item       | A top-level checklist item (`parent_id IS NULL`) that may have children                                          |
+| Child Item        | A nested checklist item whose `parent_id` references its parent                                                  |
+| Two-Tier Nesting  | Parents may have children, but children may not — depth is capped at exactly two tiers                           |
 
 ---
 
@@ -96,6 +101,29 @@
 - [ ] FE: Only checklist items with at least one date set appear on the calendar
 
 > Not in scope: AI auto-scheduling, slot caps, backlog sidebar, cross-plan view, pinning
+
+### Nested Items + Notes
+
+- [ ] BE: Migration — add `type` (TEXT, NOT NULL, DEFAULT 'task' — CHECK IN ('task','note')) and `parent_id` (UUID, nullable, FK → `checklist_items(id)` ON DELETE CASCADE) to `checklist_items`
+- [ ] BE: Migration — add CHECK constraint `(type = 'task') OR (done = false)` so notes can never be done
+- [ ] BE: Migration — add trigger that rejects INSERT/UPDATE where `parent_id` references a row whose own `parent_id` is NOT NULL (enforces two-tier max)
+- [ ] BE: Existing `POST /api/plans/:id/checklists` accepts optional `type` and `parent_id`
+- [ ] BE: Existing `PATCH /api/plans/:id/checklists/:checklist_id` accepts optional `type` and `parent_id` — setting `parent_id` to a value indents, setting to null outdents
+- [ ] BE: Service-layer validation — `parent_id` (when set) must reference a row in the same plan; setting `parent_id` on a row that already has children is rejected (would create a third tier)
+- [ ] BE: `GET /api/plans/:id/checklists?type=task|note` filter
+- [ ] BE: Service-layer rule — daily-scoped tasks may only be created via the AI suggestion accept flow; manual creation of `scope='daily'` items is rejected
+- [ ] FE (`flow-client`): Layout — left side is the Checklist block with tabs `All | Notes | Checklist` (longterm items, both types); right side is the Daily block (replaces the previous Note block position)
+- [ ] FE: Daily block lists AI-suggested daily tasks only; no manual "add" affordance; existing daily reset logic unchanged
+- [ ] FE: Note block hidden for now (preserved for a future feature)
+- [ ] FE: Item row icons replace inline controls — type toggle (task ↔ note), indent (right arrow), schedule (calendar), stash (archive)
+- [ ] FE: Type toggle — switching to `note` hides the checkbox and forces `done=false`; switching to `task` shows the checkbox
+- [ ] FE: `Tab` while editing/highlighted → indent under the item above (PATCH `parent_id` = previous-sibling's id)
+- [ ] FE: `Shift+Tab` while editing/highlighted → outdent to top level (PATCH `parent_id` = null)
+- [ ] FE: Indent icon on the row triggers the same flow as `Tab`
+- [ ] FE: Children render visually indented under their parent
+- [ ] FE: Indent rejected if the row above is itself a child (max two tiers); UI no-ops or shows a brief message
+
+> Not in scope: drag-to-nest, more than two tiers, parent-delete UX (warning dialogs / undo — DB cascades unconditionally for now), restoring the dedicated Note block
 
 ### Frontend Auth (`flow-client`)
 
@@ -225,15 +253,25 @@ plans
 checklist_items
 ├── id (PK, UUID, auto-generated)
 ├── plan_id (FK → plans, ON DELETE CASCADE)
+├── parent_id (UUID, nullable, FK → checklist_items(id), ON DELETE CASCADE — two-tier max enforced by trigger)
 ├── description (TEXT, NOT NULL)
 ├── done (BOOLEAN, NOT NULL, DEFAULT false)
 ├── sequence (INTEGER, NOT NULL)
+├── type (TEXT, NOT NULL, DEFAULT 'task' — CHECK IN ('task', 'note'))
 ├── scope (TEXT, NOT NULL, DEFAULT 'longterm' — CHECK IN ('daily', 'longterm'))
 ├── start_date (DATE, nullable — Plan Calendar Gantt range start)
 ├── due_date (DATE, nullable — Plan Calendar Gantt range end; CHECK start_date <= due_date when both set)
 ├── archived (BOOLEAN, DEFAULT false)
 ├── created_at (TIMESTAMPTZ)
 └── updated_at (TIMESTAMPTZ, trigger-updated)
+
+Constraints:
+  CHECK (type = 'task' OR done = false)        — notes can never be done
+  CHECK (start_date IS NULL OR due_date IS NULL OR start_date <= due_date)
+  TRIGGER on INSERT/UPDATE: if parent_id IS NOT NULL, reject when the
+    referenced row's own parent_id IS NOT NULL (two-tier depth max)
+Indexes:
+  (plan_id, parent_id) — fast "children of X" / "top-level items in plan" queries
 ```
 
 ### Resources
@@ -295,17 +333,17 @@ Indexes:
 
 ### Checklist API
 
-| Method | Endpoint                                           | Auth | Description                         |
-| ------ | -------------------------------------------------- | ---- | ----------------------------------- |
-| GET    | `/api/plans/:id/checklists`                        | JWT  | List items (?scope=daily\|longterm) |
-| GET    | `/api/plans/:id/checklists/archived`               | JWT  | List archived items                 |
-| GET    | `/api/plans/:id/checklists/upcoming`               | JWT  | List upcoming scheduled items       |
-| GET    | `/api/plans/:id/checklists/:checklist_id`          | JWT  | Get single item                     |
-| POST   | `/api/plans/:id/checklists`                        | JWT  | Create item                         |
-| PATCH  | `/api/plans/:id/checklists/:checklist_id`          | JWT  | Update item                         |
-| DELETE | `/api/plans/:id/checklists/:checklist_id`          | JWT  | Delete item                         |
-| PATCH  | `/api/plans/:id/checklists/:checklist_id/dates`    | JWT  | Update start_date / due_date (drag) |
-| PATCH  | `/api/plans/:id/checklists/:checklist_id/archive`  | JWT  | Archive item                        |
+| Method | Endpoint                                           | Auth | Description                                                       |
+| ------ | -------------------------------------------------- | ---- | ----------------------------------------------------------------- |
+| GET    | `/api/plans/:id/checklists`                        | JWT  | List items (?scope=daily\|longterm, ?type=task\|note)             |
+| GET    | `/api/plans/:id/checklists/archived`               | JWT  | List archived items                                               |
+| GET    | `/api/plans/:id/checklists/upcoming`               | JWT  | List upcoming scheduled items                                     |
+| GET    | `/api/plans/:id/checklists/:checklist_id`          | JWT  | Get single item                                                   |
+| POST   | `/api/plans/:id/checklists`                        | JWT  | Create item — body may include `type`, `parent_id`                |
+| PATCH  | `/api/plans/:id/checklists/:checklist_id`          | JWT  | Update item — body may set `type`, `parent_id` (indent / outdent) |
+| DELETE | `/api/plans/:id/checklists/:checklist_id`          | JWT  | Delete item (cascades to children)                                |
+| PATCH  | `/api/plans/:id/checklists/:checklist_id/dates`    | JWT  | Update start_date / due_date (drag)                               |
+| PATCH  | `/api/plans/:id/checklists/:checklist_id/archive`  | JWT  | Archive item                                                      |
 
 ### Insights API
 
@@ -378,6 +416,61 @@ Each gesture commits via a single PATCH `/dates` call.
 
 ---
 
+## Nested Items + Notes — Detailed Design
+
+### Type
+
+`type` is a `TEXT` column with values `'task'` or `'note'`. Default `'task'`.
+
+| Type    | Checkbox rendered? | `done` allowed? | Use case                                |
+| ------- | ------------------ | --------------- | --------------------------------------- |
+| `task`  | yes                | true / false    | Actionable item (default for new rows)  |
+| `note`  | no                 | always false    | Inline plain-text annotation in a list  |
+
+The checkbox / `done` invariant is enforced by the DB CHECK
+`(type = 'task' OR done = false)` and by the service layer on update.
+Toggling a task with `done=true` to a note is rejected (or silently sets `done=false` first — implementation choice; service layer flips `done` to false on type=note transition for ergonomics).
+
+### Two-Tier Nesting
+
+`parent_id` is a self-referencing nullable FK on `checklist_items`. A row with `parent_id IS NULL` is a parent (top-level); a row with `parent_id` set is a child. Children may not have children.
+
+Enforcement:
+
+- **DB trigger** on INSERT/UPDATE: when `NEW.parent_id IS NOT NULL`, look up the referenced row; if its `parent_id IS NOT NULL`, raise an exception. Same trigger fires on UPDATE to a parent row's `parent_id` — a row with existing children cannot itself become a child (would push children to tier 3).
+- **Service layer**: rejects requests violating the rule with HTTP 400 before hitting the DB, so the trigger is a backstop rather than the primary error path.
+
+### Indent / Outdent
+
+- **Indent**: `PATCH /api/plans/:id/checklists/:checklist_id` with body `{ "parent_id": "<sibling-uuid>" }`. The frontend computes the parent as the previous-sibling top-level item in render order.
+- **Outdent**: same endpoint with body `{ "parent_id": null }`.
+- Setting `parent_id` to a row in a different plan is rejected by the service layer (cross-plan nesting forbidden).
+
+### Daily Items Source
+
+After this feature ships, `scope='daily'` items can only be created via the AI suggestion accept flow (existing `GET /api/insights/checklist-suggestion-daily` → POST). Manual `POST /checklists` with `scope='daily'` is rejected by the service layer. Existing daily items are unaffected.
+
+The Daily block on the FE has no manual "add" affordance; only a "Suggest" button that opens the existing AI suggestion list.
+
+### Frontend Layout
+
+| Region     | Content                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| Left side  | Checklist block — longterm items, both types. Tab filter `All \| Notes \| Checklist`    |
+| Right side | Daily block — AI-generated daily tasks; no manual create; existing daily reset preserved |
+| (hidden)   | Note block — preserved in the layout system but not surfaced in this iteration          |
+
+Item-row icons replace the previous inline controls:
+
+| Icon          | Effect                                                                              |
+| ------------- | ----------------------------------------------------------------------------------- |
+| Type toggle   | Flip between `task` (checkbox) and `note` (no checkbox)                             |
+| Indent arrow  | Same as `Tab` — nest under previous-sibling item                                    |
+| Schedule      | Open date picker for `start_date` / `due_date` (PATCH `/dates`)                     |
+| Stash         | Soft-delete via existing archive endpoint (PATCH `/archive`)                        |
+
+---
+
 ## Business Rules
 
 ### Daily Reset
@@ -396,6 +489,16 @@ Each gesture commits via a single PATCH `/dates` call.
 - When both are set, `start_date <= due_date` is enforced at API (400 on violation) and at DB level via CHECK constraint
 - Setting one date does not require the other; clearing both removes the item from the calendar
 - Window intersection (GET): an item appears if its `[start_date ?? due_date, due_date ?? start_date]` overlaps the requested view window
+
+### Nested Items + Notes
+
+- `type` defaults to `'task'`; `'note'` items render without a checkbox and have `done` permanently `false` (DB CHECK)
+- Switching an item from `task` (with `done=true`) to `note` clears `done` to `false` server-side
+- Two-tier nesting max — a child item cannot itself become a parent (DB trigger + service-layer guard)
+- `parent_id` cannot reference a row in a different plan (service-layer guard)
+- Deleting a parent cascades to its children via FK `ON DELETE CASCADE`; archiving a parent does NOT archive children
+- `scope='daily'` items cannot be created manually after this feature ships — only via the AI suggestion accept flow
+- Daily reset job (existing) is unchanged; it continues to operate on `scope='daily' AND type='task'` (notes are excluded by the DB CHECK above since they cannot be `done=true`)
 
 ### Frontend Auth Token Lifecycle
 
@@ -485,12 +588,28 @@ Each gesture commits via a single PATCH `/dates` call.
 | Unauthenticated user visits `/`          | See splash/landing page                     |
 | Authenticated user visits `/`            | Redirect to dashboard                       |
 
+### Nested Items + Notes
+
+| Scenario                                                   | Handling                                                                               |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Indent first item in list (no row above)                   | FE no-ops (nothing to nest under); backend never receives the request                  |
+| Indent under a row that is itself a child                  | FE rejects pre-flight; if the request reaches the API, returns 400 (would be tier 3)   |
+| Outdent a top-level item                                   | No-op (already at top); backend silently accepts `parent_id=null` on a null row        |
+| Toggle a `task` with `done=true` to `note`                 | Server forces `done=false` first, then sets `type=note`; one PATCH commits both        |
+| Toggle a `note` to `task`                                  | Type flips; `done` remains `false` until user checks the box                           |
+| Delete a parent with children                              | Children cascade-delete (DB FK); FE refetches list                                     |
+| Archive a parent                                           | Parent archived; children remain visible (archive does not cascade)                    |
+| Manually POST `scope='daily'`                              | 400 — daily items must come from AI suggestions                                        |
+| Filter `?type=note&scope=daily`                            | Returns empty (DB allows it but UX never creates such rows)                            |
+| Filter tab `Notes` selected, no notes exist                | Empty state                                                                            |
+
 ### Concurrent Access
 
 | Scenario                                            | Handling                                              |
 | --------------------------------------------------- | ----------------------------------------------------- |
 | Two PATCH /dates requests on the same item          | Last write wins (acceptable for single-user per plan) |
 | GET calendar while another tab moves an item        | Stale view; refresh fetches latest state              |
+| Two clients indent the same item simultaneously     | Last write wins; both end up with the same `parent_id` if targeting the same row |
 
 ---
 
