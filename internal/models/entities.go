@@ -33,6 +33,8 @@ type ChecklistItem struct {
 	Description string     `db:"description" json:"description"`
 	Done        bool       `db:"done" json:"done"`
 	Sequence    string     `db:"sequence" json:"sequence"`
+	Type        string     `db:"type" json:"type"`
+	ParentID    *uuid.UUID `db:"parent_id" json:"parentId,omitempty"`
 	StartDate   *time.Time `db:"start_date" json:"startDate,omitempty"`
 	DueDate     *time.Time `db:"due_date" json:"dueDate,omitempty"`
 	Scope       string     `db:"scope" json:"scope"`

@@ -25,7 +25,7 @@ func NewRepository(db *sqlx.DB) Repository {
 
 func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error) {
 	query := `
-	SELECT id, description, done, sequence, scope, start_date, due_date, archived, created_at, updated_at, plan_id
+	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
 	AND archived = false
@@ -68,7 +68,7 @@ func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope
 
 func (s *repository) GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
 	baseQuery := `
-	SELECT id, description, done, sequence, scope, start_date, due_date, archived, created_at, updated_at, plan_id
+	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
 	AND archived = true
@@ -104,6 +104,8 @@ func (s *repository) GetAll(ctx context.Context, scope *string) ([]*models.Check
 		done,
 		sequence,
 		scope,
+		type,
+		parent_id,
 		start_date,
 		due_date,
 		created_at,
@@ -158,7 +160,7 @@ func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID
 	query := `
 	INSERT INTO checklist_items (description, done, sequence, scope, plan_id)
 	VALUES(:description, :done, :sequence, :scope, :plan_id)
-	RETURNING id, description, done, sequence, plan_id, scope, created_at, updated_at
+	RETURNING id, description, done, sequence, plan_id, scope, type, parent_id, created_at, updated_at
 	`
 
 	scope := constants.ScopeLongterm
@@ -253,7 +255,7 @@ func (s *repository) Delete(ctx context.Context, id uuid.UUID) error {
 
 func (s *repository) GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error) {
 	query := `
-	SELECT id, description, done, sequence, scope, start_date, due_date, created_at, updated_at, plan_id
+	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE id = $1
 	`
@@ -332,6 +334,8 @@ func (r *repository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*mode
 		ci.done,
 		ci.sequence,
 		ci.scope,
+		ci.type,
+		ci.parent_id,
 		ci.start_date,
 		ci.due_date,
 		ci.archived,
