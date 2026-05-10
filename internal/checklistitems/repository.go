@@ -23,7 +23,7 @@ func NewRepository(db *sqlx.DB) Repository {
 	}
 }
 
-func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error) {
+func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, itemType *string, upcoming *string) ([]*models.ChecklistItem, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date, archived, created_at, updated_at, plan_id
 	FROM checklist_items
@@ -31,12 +31,14 @@ func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope
 	AND archived = false
 	`
 
-	// Add scope filtering if provided
 	args := []interface{}{planId}
 	if scope != nil {
-		query += `AND scope = $2
-	`
 		args = append(args, *scope)
+		query += fmt.Sprintf(" AND scope = $%d\n", len(args))
+	}
+	if itemType != nil {
+		args = append(args, *itemType)
+		query += fmt.Sprintf(" AND type = $%d\n", len(args))
 	}
 
 	if upcoming != nil {
@@ -64,6 +66,16 @@ func (s *repository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope
 	}
 
 	return items, nil
+}
+
+// HasChildren returns true if any non-archived row has parent_id = id.
+func (s *repository) HasChildren(ctx context.Context, id uuid.UUID) (bool, error) {
+	var exists bool
+	query := `SELECT EXISTS(SELECT 1 FROM checklist_items WHERE parent_id = $1)`
+	if err := s.db.GetContext(ctx, &exists, query, id); err != nil {
+		return false, errorutils.AnalyzeDBErr(err)
+	}
+	return exists, nil
 }
 
 func (s *repository) GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
@@ -158,8 +170,8 @@ func (s *repository) CountItems(ctx context.Context) (int, error) {
 
 func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID, sequenceNo int) (*models.ChecklistItem, error) {
 	query := `
-	INSERT INTO checklist_items (description, done, sequence, scope, plan_id)
-	VALUES(:description, :done, :sequence, :scope, :plan_id)
+	INSERT INTO checklist_items (description, done, sequence, scope, type, parent_id, plan_id)
+	VALUES(:description, :done, :sequence, :scope, :type, :parent_id, :plan_id)
 	RETURNING id, description, done, sequence, plan_id, scope, type, parent_id, created_at, updated_at
 	`
 
@@ -168,18 +180,27 @@ func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID
 		scope = constants.ChecklistItemScope(*req.Scope)
 	}
 
+	itemType := "task"
+	if req.Type != nil {
+		itemType = *req.Type
+	}
+
 	item := struct {
 		PlanID      uuid.UUID                    `db:"plan_id"`
 		Description string                       `db:"description"`
 		Done        bool                         `db:"done"`
 		Sequence    int                          `db:"sequence"`
 		Scope       constants.ChecklistItemScope `db:"scope"`
+		Type        string                       `db:"type"`
+		ParentID    *uuid.UUID                   `db:"parent_id"`
 	}{
 		PlanID:      planID,
 		Description: req.Description,
 		Done:        false,
 		Sequence:    sequenceNo,
 		Scope:       scope,
+		Type:        itemType,
+		ParentID:    req.ParentID,
 	}
 
 	newItem := &models.ChecklistItem{}
@@ -206,14 +227,14 @@ func (s *repository) Create(ctx context.Context, req CreateReq, planID uuid.UUID
 }
 
 func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) error {
-	query := `
-	UPDATE checklist_items
-	SET
+	// Build the SET clause: COALESCE for fields where nil means "leave alone";
+	// parent_id needs explicit handling because nil-valid means "clear".
+	setClause := `
 		description = COALESCE(:description, description),
 		done = COALESCE(:done, done),
 		scope = COALESCE(:scope, scope),
-		archived = COALESCE(:archived, archived)
-	WHERE id = :id`
+		archived = COALESCE(:archived, archived),
+		type = COALESCE(:type, type)`
 
 	item := map[string]interface{}{
 		"id":          id,
@@ -221,10 +242,22 @@ func (s *repository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) er
 		"done":        req.Done,
 		"scope":       req.Scope,
 		"archived":    req.Archived,
+		"type":        req.Type,
 	}
 
-	result, err := s.db.NamedExecContext(ctx, query, item)
+	if req.ParentID.Present {
+		setClause += `, parent_id = :parent_id`
+		if req.ParentID.Valid {
+			pid := req.ParentID.Value
+			item["parent_id"] = pid
+		} else {
+			item["parent_id"] = nil
+		}
+	}
 
+	query := `UPDATE checklist_items SET ` + setClause + ` WHERE id = :id`
+
+	result, err := s.db.NamedExecContext(ctx, query, item)
 	return errorutils.AnalyzeDBResults(err, result)
 }
 

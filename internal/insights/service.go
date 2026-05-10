@@ -25,7 +25,7 @@ type service struct {
 }
 
 type ChecklistInsightsService interface {
-	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error)
+	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, itemType *string, upcoming *string) ([]*models.ChecklistItem, error)
 }
 
 type InsightsYoutubeVideoFinder interface {
@@ -163,7 +163,7 @@ func (s *service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) 
 	}
 
 	// get entire checklist as context
-	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planId, nil, nil)
+	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planId, nil, nil, nil)
 
 	if err != nil {
 		logger.Error("Error retrieving checklist items for suggestion", "error", err, "planId", planId)

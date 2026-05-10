@@ -13,21 +13,55 @@ import (
 
 // mockRepository captures calls and returns canned values.
 type mockRepository struct {
+	// GetByID can return different items per id via getByIDByID; falls back to getByIDItem.
 	getByIDItem *models.ChecklistItem
 	getByIDErr  error
+	getByIDByID map[uuid.UUID]*models.ChecklistItem
 
 	lastUpdateDatesID    uuid.UUID
 	lastUpdateDatesStart *time.Time
 	lastUpdateDatesDue   *time.Time
 	updateDatesErr       error
 	updateDatesCalled    bool
+
+	// Create / Update capture
+	createCalled  bool
+	lastCreateReq CreateReq
+	createReturn  *models.ChecklistItem
+
+	updateCalled  bool
+	lastUpdateID  uuid.UUID
+	lastUpdateReq UpdateReq
+
+	// HasChildren: keyed by id; default false
+	hasChildrenForID map[uuid.UUID]bool
+
+	// GetAllByPlanId capture
+	lastGetAllPlanID uuid.UUID
+	lastGetAllScope  *string
+	lastGetAllType   *string
+	lastGetAllUpc    *string
 }
 
 func (m *mockRepository) Create(ctx context.Context, req CreateReq, planID uuid.UUID, sequenceNo int) (*models.ChecklistItem, error) {
-	return nil, nil
+	m.createCalled = true
+	m.lastCreateReq = req
+	if m.createReturn != nil {
+		return m.createReturn, nil
+	}
+	return &models.ChecklistItem{BaseDBDateModel: models.BaseDBDateModel{ID: uuid.New()}, PlanID: planID}, nil
 }
 func (m *mockRepository) Update(ctx context.Context, id uuid.UUID, req UpdateReq) error {
+	m.updateCalled = true
+	m.lastUpdateID = id
+	m.lastUpdateReq = req
 	return nil
+}
+func (m *mockRepository) HasChildren(ctx context.Context, id uuid.UUID) (bool, error) {
+	if m.hasChildrenForID == nil {
+		return false, nil
+	}
+	return m.hasChildrenForID[id], nil
 }
 func (m *mockRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
@@ -35,13 +69,22 @@ func (m *mockRepository) Delete(ctx context.Context, id uuid.UUID) error {
 func (m *mockRepository) GetAll(ctx context.Context, scope *string) ([]*models.ChecklistItem, error) {
 	return nil, nil
 }
-func (m *mockRepository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error) {
+func (m *mockRepository) GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, itemType *string, upcoming *string) ([]*models.ChecklistItem, error) {
+	m.lastGetAllPlanID = planId
+	m.lastGetAllScope = scope
+	m.lastGetAllType = itemType
+	m.lastGetAllUpc = upcoming
 	return nil, nil
 }
 func (m *mockRepository) GetAllArchivedByPlanId(ctx context.Context, planId uuid.UUID, scope *string) ([]*models.ChecklistItem, error) {
 	return nil, nil
 }
 func (m *mockRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.ChecklistItem, error) {
+	if m.getByIDByID != nil {
+		if item, ok := m.getByIDByID[id]; ok {
+			return item, nil
+		}
+	}
 	return m.getByIDItem, m.getByIDErr
 }
 func (m *mockRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*models.ChecklistItem, error) {
@@ -190,5 +233,275 @@ func TestUpdateDates_ItemNotFound_ReturnsError(t *testing.T) {
 	_, err := svc.UpdateDates(context.Background(), uuid.New(), UpdateDatesReq{StartDate: start})
 	if err == nil {
 		t.Fatal("expected error when item not found")
+	}
+}
+
+// ---------- #42: Create / Update / parent_id / type ----------
+
+func TestCreate_RejectsScopeDaily(t *testing.T) {
+	repo := &mockRepository{}
+	svc := NewService(repo)
+	daily := "daily"
+
+	_, err := svc.Create(context.Background(), CreateReq{Description: "x", Scope: &daily}, uuid.New())
+	if err == nil {
+		t.Fatal("expected error when creating with scope=daily")
+	}
+	if !errors.Is(err, constants.ErrInvalidInput) {
+		t.Errorf("expected ErrInvalidInput, got %v", err)
+	}
+	if repo.createCalled {
+		t.Error("expected repo.Create NOT to be called")
+	}
+}
+
+func TestCreate_LongtermStillWorks(t *testing.T) {
+	repo := &mockRepository{}
+	svc := NewService(repo)
+	longterm := "longterm"
+
+	if _, err := svc.Create(context.Background(), CreateReq{Description: "x", Scope: &longterm}, uuid.New()); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !repo.createCalled {
+		t.Error("expected repo.Create to be called")
+	}
+}
+
+func TestCreate_WithParentID_ValidParent_Succeeds(t *testing.T) {
+	planID := uuid.New()
+	parentID := uuid.New()
+	repo := &mockRepository{
+		getByIDByID: map[uuid.UUID]*models.ChecklistItem{
+			parentID: {BaseDBDateModel: models.BaseDBDateModel{ID: parentID}, PlanID: planID, ParentID: nil},
+		},
+	}
+	svc := NewService(repo)
+
+	if _, err := svc.Create(context.Background(), CreateReq{Description: "child", ParentID: &parentID}, planID); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !repo.createCalled {
+		t.Error("expected repo.Create called")
+	}
+	if repo.lastCreateReq.ParentID == nil || *repo.lastCreateReq.ParentID != parentID {
+		t.Errorf("expected parent_id forwarded to repo, got %v", repo.lastCreateReq.ParentID)
+	}
+}
+
+func TestCreate_WithParentID_ParentIsChild_Returns400(t *testing.T) {
+	planID := uuid.New()
+	grandparent := uuid.New()
+	parentID := uuid.New() // this row IS a child
+	repo := &mockRepository{
+		getByIDByID: map[uuid.UUID]*models.ChecklistItem{
+			parentID: {BaseDBDateModel: models.BaseDBDateModel{ID: parentID}, PlanID: planID, ParentID: &grandparent},
+		},
+	}
+	svc := NewService(repo)
+
+	_, err := svc.Create(context.Background(), CreateReq{Description: "x", ParentID: &parentID}, planID)
+	if err == nil || !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+	if repo.createCalled {
+		t.Error("expected repo.Create NOT to be called")
+	}
+}
+
+func TestCreate_WithParentID_DifferentPlan_Returns400(t *testing.T) {
+	planID := uuid.New()
+	otherPlan := uuid.New()
+	parentID := uuid.New()
+	repo := &mockRepository{
+		getByIDByID: map[uuid.UUID]*models.ChecklistItem{
+			parentID: {BaseDBDateModel: models.BaseDBDateModel{ID: parentID}, PlanID: otherPlan, ParentID: nil},
+		},
+	}
+	svc := NewService(repo)
+
+	_, err := svc.Create(context.Background(), CreateReq{Description: "x", ParentID: &parentID}, planID)
+	if err == nil || !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestUpdate_TypeNoteOnDoneTask_ClearsDone(t *testing.T) {
+	id := uuid.New()
+	tru := true
+	repo := &mockRepository{
+		getByIDByID: map[uuid.UUID]*models.ChecklistItem{
+			id: {BaseDBDateModel: models.BaseDBDateModel{ID: id}, Done: true, Type: "task"},
+		},
+	}
+	svc := NewService(repo)
+
+	noteType := "note"
+	if err := svc.Update(context.Background(), id, UpdateReq{Type: &noteType}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if !repo.updateCalled {
+		t.Fatal("expected repo.Update called")
+	}
+	if repo.lastUpdateReq.Type == nil || *repo.lastUpdateReq.Type != "note" {
+		t.Errorf("expected type='note' forwarded, got %v", repo.lastUpdateReq.Type)
+	}
+	if repo.lastUpdateReq.Done == nil || *repo.lastUpdateReq.Done != false {
+		t.Errorf("expected done=false forced on type=note transition, got %v", repo.lastUpdateReq.Done)
+	}
+	_ = tru
+}
+
+func TestUpdate_TypeNoteOnAlreadyNotDone_DoesNotForceDone(t *testing.T) {
+	id := uuid.New()
+	repo := &mockRepository{
+		getByIDByID: map[uuid.UUID]*models.ChecklistItem{
+			id: {BaseDBDateModel: models.BaseDBDateModel{ID: id}, Done: false, Type: "task"},
+		},
+	}
+	svc := NewService(repo)
+
+	noteType := "note"
+	if err := svc.Update(context.Background(), id, UpdateReq{Type: &noteType}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	// done is already false; service shouldn't bother setting it explicitly.
+	if repo.lastUpdateReq.Done != nil {
+		t.Errorf("expected service NOT to touch done when already false, got %v", repo.lastUpdateReq.Done)
+	}
+}
+
+func TestUpdate_ParentID_ValidIndent_Succeeds(t *testing.T) {
+	planID := uuid.New()
+	id := uuid.New()
+	parentID := uuid.New()
+	repo := &mockRepository{
+		getByIDByID: map[uuid.UUID]*models.ChecklistItem{
+			id:       {BaseDBDateModel: models.BaseDBDateModel{ID: id}, PlanID: planID, ParentID: nil},
+			parentID: {BaseDBDateModel: models.BaseDBDateModel{ID: parentID}, PlanID: planID, ParentID: nil},
+		},
+	}
+	svc := NewService(repo)
+
+	pid := optUUID{Present: true, Valid: true, Value: parentID}
+	if err := svc.Update(context.Background(), id, UpdateReq{ParentID: pid}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !repo.lastUpdateReq.ParentID.Present || !repo.lastUpdateReq.ParentID.Valid {
+		t.Error("expected parent_id forwarded as set")
+	}
+	if repo.lastUpdateReq.ParentID.Value != parentID {
+		t.Errorf("expected parent_id=%s, got %s", parentID, repo.lastUpdateReq.ParentID.Value)
+	}
+}
+
+func TestUpdate_ParentID_Outdent_Succeeds(t *testing.T) {
+	id := uuid.New()
+	parentID := uuid.New()
+	planID := uuid.New()
+	repo := &mockRepository{
+		getByIDByID: map[uuid.UUID]*models.ChecklistItem{
+			id: {BaseDBDateModel: models.BaseDBDateModel{ID: id}, PlanID: planID, ParentID: &parentID},
+		},
+	}
+	svc := NewService(repo)
+
+	pid := optUUID{Present: true, Valid: false}
+	if err := svc.Update(context.Background(), id, UpdateReq{ParentID: pid}); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !repo.lastUpdateReq.ParentID.Present || repo.lastUpdateReq.ParentID.Valid {
+		t.Error("expected parent_id forwarded as cleared (Present, !Valid)")
+	}
+}
+
+func TestUpdate_ParentID_DifferentPlan_Returns400(t *testing.T) {
+	planA := uuid.New()
+	planB := uuid.New()
+	id := uuid.New()
+	parentID := uuid.New()
+	repo := &mockRepository{
+		getByIDByID: map[uuid.UUID]*models.ChecklistItem{
+			id:       {BaseDBDateModel: models.BaseDBDateModel{ID: id}, PlanID: planA, ParentID: nil},
+			parentID: {BaseDBDateModel: models.BaseDBDateModel{ID: parentID}, PlanID: planB, ParentID: nil},
+		},
+	}
+	svc := NewService(repo)
+
+	pid := optUUID{Present: true, Valid: true, Value: parentID}
+	err := svc.Update(context.Background(), id, UpdateReq{ParentID: pid})
+	if err == nil || !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+	if repo.updateCalled {
+		t.Error("expected repo NOT called on validation error")
+	}
+}
+
+func TestUpdate_ParentID_TargetIsChild_Returns400(t *testing.T) {
+	planID := uuid.New()
+	id := uuid.New()
+	grandparent := uuid.New()
+	parentID := uuid.New() // is a child
+	repo := &mockRepository{
+		getByIDByID: map[uuid.UUID]*models.ChecklistItem{
+			id:       {BaseDBDateModel: models.BaseDBDateModel{ID: id}, PlanID: planID, ParentID: nil},
+			parentID: {BaseDBDateModel: models.BaseDBDateModel{ID: parentID}, PlanID: planID, ParentID: &grandparent},
+		},
+	}
+	svc := NewService(repo)
+
+	pid := optUUID{Present: true, Valid: true, Value: parentID}
+	err := svc.Update(context.Background(), id, UpdateReq{ParentID: pid})
+	if err == nil || !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestUpdate_ParentID_RowHasChildren_Returns400(t *testing.T) {
+	planID := uuid.New()
+	id := uuid.New()
+	parentID := uuid.New()
+	repo := &mockRepository{
+		getByIDByID: map[uuid.UUID]*models.ChecklistItem{
+			id:       {BaseDBDateModel: models.BaseDBDateModel{ID: id}, PlanID: planID, ParentID: nil},
+			parentID: {BaseDBDateModel: models.BaseDBDateModel{ID: parentID}, PlanID: planID, ParentID: nil},
+		},
+		hasChildrenForID: map[uuid.UUID]bool{id: true},
+	}
+	svc := NewService(repo)
+
+	pid := optUUID{Present: true, Valid: true, Value: parentID}
+	err := svc.Update(context.Background(), id, UpdateReq{ParentID: pid})
+	if err == nil || !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput when re-parenting a row with children, got %v", err)
+	}
+	if repo.updateCalled {
+		t.Error("expected repo NOT called")
+	}
+}
+
+func TestGetAllByPlanId_TypeFilter_ForwardedToRepo(t *testing.T) {
+	repo := &mockRepository{}
+	svc := NewService(repo)
+	noteType := "note"
+
+	if _, err := svc.GetAllByPlanId(context.Background(), uuid.New(), nil, &noteType, nil); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastGetAllType == nil || *repo.lastGetAllType != "note" {
+		t.Errorf("expected type='note' forwarded, got %v", repo.lastGetAllType)
+	}
+}
+
+func TestGetAllByPlanId_InvalidType_Returns400(t *testing.T) {
+	repo := &mockRepository{}
+	svc := NewService(repo)
+	bogus := "bogus"
+
+	_, err := svc.GetAllByPlanId(context.Background(), uuid.New(), nil, &bogus, nil)
+	if err == nil || !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
 	}
 }

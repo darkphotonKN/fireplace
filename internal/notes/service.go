@@ -16,7 +16,7 @@ type AIGenerator interface {
 
 // ChecklistService interface for checklist operations
 type ChecklistService interface {
-	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, upcoming *string) ([]*models.ChecklistItem, error)
+	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, itemType *string, upcoming *string) ([]*models.ChecklistItem, error)
 }
 
 // PlanService interface for plan operations
@@ -118,7 +118,7 @@ func (s *Service) GenerateAINotes(planID uuid.UUID, requestType string) ([]Note,
 
 	// Get checklist items for context
 	scope := "daily"
-	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planID, &scope, nil)
+	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planID, &scope, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get checklist items: %w", err)
 	}

@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type CreateReq struct {
-	Description string  `json:"description"`
-	Scope       *string `json:"scope,omitempty"`
+	Description string     `json:"description"`
+	Scope       *string    `json:"scope,omitempty"`
+	Type        *string    `json:"type,omitempty"`
+	ParentID    *uuid.UUID `json:"parentId,omitempty"`
 }
 
 type UpdateReq struct {
@@ -18,6 +22,36 @@ type UpdateReq struct {
 	Sequence    *bool   `json:"sequence,omitempty"`
 	Scope       *string `json:"scope,omitempty"`
 	Archived    *bool   `json:"archived,omitempty"`
+	Type        *string `json:"type,omitempty"`
+	// ParentID is three-state: absent leaves the column alone, explicit
+	// null clears it (outdent), a UUID sets it (indent).
+	ParentID optUUID `json:"parentId"`
+}
+
+// optUUID mirrors optDate: distinguishes absent / null / value in JSON.
+type optUUID struct {
+	Present bool
+	Valid   bool
+	Value   uuid.UUID
+}
+
+func (o *optUUID) UnmarshalJSON(data []byte) error {
+	o.Present = true
+	if string(data) == "null" {
+		o.Valid = false
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("parentId must be a UUID string or null: %w", err)
+	}
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return fmt.Errorf("parentId is not a valid UUID: %w", err)
+	}
+	o.Valid = true
+	o.Value = id
+	return nil
 }
 
 type BatchUpdateReq struct {
