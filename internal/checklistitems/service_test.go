@@ -238,20 +238,33 @@ func TestUpdateDates_ItemNotFound_ReturnsError(t *testing.T) {
 
 // ---------- #42: Create / Update / parent_id / type ----------
 
-func TestCreate_RejectsScopeDaily(t *testing.T) {
+func TestCreate_AllowsScopeDaily(t *testing.T) {
+	// The PRD's "no manual daily POST" rule was dropped — the AI accept flow
+	// also POSTs here and we cannot distinguish it. UX gating now lives on
+	// the FE (dailyAIOnly prop). See service.Create comment.
 	repo := &mockRepository{}
 	svc := NewService(repo)
 	daily := "daily"
 
-	_, err := svc.Create(context.Background(), CreateReq{Description: "x", Scope: &daily}, uuid.New())
-	if err == nil {
-		t.Fatal("expected error when creating with scope=daily")
+	if _, err := svc.Create(context.Background(), CreateReq{Description: "x", Scope: &daily}, uuid.New()); err != nil {
+		t.Fatalf("expected no error for scope=daily, got %v", err)
 	}
-	if !errors.Is(err, constants.ErrInvalidInput) {
-		t.Errorf("expected ErrInvalidInput, got %v", err)
+	if !repo.createCalled {
+		t.Error("expected repo.Create to be called")
+	}
+}
+
+func TestCreate_RejectsBogusScope(t *testing.T) {
+	repo := &mockRepository{}
+	svc := NewService(repo)
+	bogus := "weekly"
+
+	_, err := svc.Create(context.Background(), CreateReq{Description: "x", Scope: &bogus}, uuid.New())
+	if err == nil || !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
 	}
 	if repo.createCalled {
-		t.Error("expected repo.Create NOT to be called")
+		t.Error("expected repo.Create NOT to be called for bogus scope")
 	}
 }
 

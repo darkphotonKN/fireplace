@@ -80,11 +80,13 @@ func (s *service) Create(ctx context.Context, req CreateReq, planID uuid.UUID) (
 		if *req.Scope != string(constants.ScopeLongterm) && *req.Scope != string(constants.ScopeDaily) {
 			return nil, fmt.Errorf("%w: scope must be 'daily' or 'longterm'", constants.ErrInvalidInput)
 		}
-		// Daily items can only enter via the AI suggestion accept flow after
-		// Nested Items + Notes (PRD #40) ships. Manual creation is rejected.
-		if *req.Scope == string(constants.ScopeDaily) {
-			return nil, fmt.Errorf("%w: daily items must come from AI suggestion accept flow", constants.ErrInvalidInput)
-		}
+		// NOTE: the PRD called for rejecting manual POST scope='daily' so dailies
+		// could only enter via the AI suggestion accept flow. That rule is
+		// unenforceable at this layer — the AI accept flow also POSTs here,
+		// and there is no signal on the request to distinguish it from a
+		// manual call. The FE's dailyAIOnly prop hides the manual add form;
+		// that is the real UX gate. Re-add a guard here only if/when the AI
+		// accept flow moves to a dedicated endpoint.
 	}
 
 	if req.Type != nil && *req.Type != "task" && *req.Type != "note" {
