@@ -505,3 +505,23 @@ func TestGetAllByPlanId_InvalidType_Returns400(t *testing.T) {
 		t.Fatalf("expected ErrInvalidInput, got %v", err)
 	}
 }
+
+func TestUpdate_TypeNoteOnParentWithChildren_Returns400(t *testing.T) {
+	id := uuid.New()
+	repo := &mockRepository{
+		getByIDByID: map[uuid.UUID]*models.ChecklistItem{
+			id: {BaseDBDateModel: models.BaseDBDateModel{ID: id}, Type: "task", Done: false},
+		},
+		hasChildrenForID: map[uuid.UUID]bool{id: true},
+	}
+	svc := NewService(repo)
+
+	noteType := "note"
+	err := svc.Update(context.Background(), id, UpdateReq{Type: &noteType})
+	if err == nil || !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput when flipping a parent to note, got %v", err)
+	}
+	if repo.updateCalled {
+		t.Error("expected repo.Update NOT to be called")
+	}
+}

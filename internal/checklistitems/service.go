@@ -130,6 +130,18 @@ func (s *service) Update(ctx context.Context, id uuid.UUID, req UpdateReq) error
 		return fmt.Errorf("%w: type must be 'task' or 'note'", constants.ErrInvalidInput)
 	}
 
+	// A parent with children can't become a note — notes don't structurally
+	// contain subtasks. Reject the transition before mutating anything.
+	if req.Type != nil && *req.Type == "note" {
+		hasKids, err := s.repo.HasChildren(ctx, id)
+		if err != nil {
+			return err
+		}
+		if hasKids {
+			return fmt.Errorf("%w: cannot convert a parent with children into a note", constants.ErrInvalidInput)
+		}
+	}
+
 	// On task→note transition, force done=false in the same UPDATE so the
 	// chk_note_not_done CHECK isn't tripped. Only fetches the current row when
 	// we actually need to know its done state.
