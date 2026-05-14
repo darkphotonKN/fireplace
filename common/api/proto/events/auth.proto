@@ -1,0 +1,22 @@
+syntax = "proto3";
+package events;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/darkphotonKN/fireplace/common/api/proto/events";
+
+// Auth domain events — emitted by auth-service onto the "auth.events" exchange.
+// Other services consume by binding their queue with the appropriate routing key
+// (see common/constants/events.go for the canonical key names).
+
+message UserCreatedEvent {
+  string id = 1;
+  string email = 2;
+  string name = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message UserDeletedEvent {
+  string id = 1;
+  google.protobuf.Timestamp deleted_at = 2;
+}

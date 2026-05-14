@@ -4,11 +4,11 @@
 *.so
 *.dylib
 
-# Go build artifacts
-/bin/
-/build/
-/dist/
-/*.out
+# Go build artifacts (match per-service paths after the strangler restructure)
+bin/
+build/
+dist/
+*.out
 
 # Temporary files
 *.log
@@ -28,7 +28,7 @@ Thumbs.db
 .env
 
 # Dependencies
-/vendor/
+vendor/
 
 # Go module files (if not using vendoring)
 go.sum
@@ -40,6 +40,14 @@ go.sum
 *.test
 coverage.out
 
+# Claude / MCP scaffolding — never push these at any depth
 CLAUDE.md
+CLAUDE_PROJECT_TEMPLATE.md
+PROMPT_TEMPLATE.md
+GO_MCP_CODE_TEMPLATES.md
+GO_MCP_PROJECT_TEMPLATE.md
+GO_MCP_TEMPLATE_SUMMARY.md
+setup-go-mcp-project.sh
+.claude/
 
 tmp/*

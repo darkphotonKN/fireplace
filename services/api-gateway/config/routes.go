@@ -1,34 +1,35 @@
 package config
 
 import (
-	// "context"
 	"log"
 	"time"
 
+	commondiscovery "github.com/darkphotonKN/fireplace/common/discovery"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/ai"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/calendar"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/checklistitems"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/discovery"
+	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/discovery" // legacy AI search discovery (not service registry)
+	authgw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/auth"
+	plangw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/plan"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/insights"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/jobs"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/logger"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/notes"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/plans"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/user"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/useranalytics"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )
 
-/**
-* Sets up API prefix route and all routers.
-**/
-func SetupRouter(db *sqlx.DB) *gin.Engine {
+// SetupRouter wires every domain handler, mounts public + protected route
+// groups, and starts background jobs. The registry is used by `gateway/*`
+// clients to discover downstream services (auth-service, plan-service).
+//
+// After Phase 4c, no plan/checklist data lives in this DB — plan-service owns
+// it, reached via the planGw client + adapter.
+func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	router := gin.Default()
 
-	// NOTE: debugging middleware
 	router.Use(func(c *gin.Context) {
 		logger.Debug("Incoming request", "method", c.Request.Method, "path", c.Request.URL.Path, "host", c.Request.Host)
 		c.Next()
@@ -44,35 +45,30 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// base route
 	api := router.Group("/api")
-
-	// TODO: testing crawler
-	// finder, _ := discovery.NewYoutubeVideoFinder()
-	//
-	// go finder.FindResources(context.Background(), []concepts.Concept{})
 
 	// --- SERVICE SETUP ---
 
-	userRepo := user.NewRepository(db)
-	userService := user.NewService(userRepo)
-	userHandler := user.NewHandler(userService)
+	// auth-service is remote — the gateway calls it via gRPC. Tokens are still
+	// validated locally by auth.AuthMiddleware using the shared JWT_SECRET.
+	authClient := authgw.NewClient(registry)
+	authHandler := authgw.NewHandler(authClient)
 
-	planRepo := plans.NewRepository(db)
-	planService := plans.NewService(planRepo)
-	planHandler := plans.NewHandler(planService)
-
-	checkListRepo := checklistitems.NewRepository(db)
-	checkListService := checklistitems.NewService(checkListRepo)
-	checkListHandler := checklistitems.NewHandler(checkListService)
+	// plan-service is remote — HTTP routes for /plans and /plans/:id/checklists
+	// proxy through plangw via gRPC. The adapter satisfies the in-process
+	// interfaces that cross-domain consumers (insights, notes, calendar,
+	// useranalytics, jobs) depend on.
+	planGwClient := plangw.NewClient(registry)
+	planGwHandler := plangw.NewHandler(planGwClient)
+	planAdapter := plangw.NewAdapter(planGwClient)
 
 	userAnalyticsRepo := useranalytics.NewRepository(db)
-	userAnalyticsService := useranalytics.NewService(userAnalyticsRepo, checkListService)
+	userAnalyticsService := useranalytics.NewService(userAnalyticsRepo, planAdapter)
 	userAnalyticsHandler := useranalytics.NewHandler(userAnalyticsService)
 
 	checklistGen := ai.NewChecklistGen()
 	insightsRepo := insights.NewRepository(db)
-	insightsService := insights.NewService(insightsRepo, checklistGen, checkListService, planService, nil)
+	insightsService := insights.NewService(insightsRepo, checklistGen, planAdapter, planAdapter, nil)
 	insightsHandler := insights.NewHandler(insightsService)
 
 	searchTermGen := ai.NewSearchTermGenerator()
@@ -80,58 +76,58 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	if err != nil {
 		log.Fatalf("Error when attempting to initialize youtubeVideoFinder, error: %+v\n", err)
 	}
-	videoInsightsRepoService := insights.NewService(insightsRepo, searchTermGen, checkListService, planService, youtubeVideoFinder)
-	videoInsightsHandler := insights.NewHandler(videoInsightsRepoService)
+	videoInsightsService := insights.NewService(insightsRepo, searchTermGen, planAdapter, planAdapter, youtubeVideoFinder)
+	videoInsightsHandler := insights.NewHandler(videoInsightsService)
 
 	notesRepo := notes.NewRepository(db)
 	notesGen := ai.NewNotesGenerator()
-	notesService := notes.NewService(notesRepo, notesGen, checkListService, planService)
+	notesService := notes.NewService(notesRepo, notesGen, planAdapter, planAdapter)
 	notesHandler := notes.NewHandler(notesService)
 
 	calendarRepo := calendar.NewRepository(db)
-	calendarService := calendar.NewService(calendarRepo, planService)
+	calendarService := calendar.NewService(calendarRepo, planAdapter)
 	calendarHandler := calendar.NewHandler(calendarService)
 
 	// --- PUBLIC ROUTES (no auth) ---
 
 	publicUsers := api.Group("/users")
-	publicUsers.POST("/signup", userHandler.Create)
-	publicUsers.POST("/signin", userHandler.Login)
+	publicUsers.POST("/signup", authHandler.Create)
+	publicUsers.POST("/signin", authHandler.Login)
 
 	// --- PROTECTED ROUTES (auth middleware) ---
 
 	protected := api.Group("")
 	protected.Use(auth.AuthMiddleware())
 
-	// -- User Routes --
+	// -- User Routes (proxied to auth-service via gRPC) --
 	protectedUsers := protected.Group("/users")
-	protectedUsers.GET("/profile", userHandler.GetProfile)
-	protectedUsers.PATCH("/profile", userHandler.UpdateProfile)
-	protectedUsers.GET("/:id", userHandler.GetById)
-	protectedUsers.GET("", userHandler.GetAll)
+	protectedUsers.GET("/profile", authHandler.GetProfile)
+	protectedUsers.PATCH("/profile", authHandler.UpdateProfile)
+	protectedUsers.GET("/:id", authHandler.GetById)
+	protectedUsers.GET("", authHandler.GetAll)
 
-	// -- Plan Routes --
+	// -- Plan Routes (proxied to plan-service via gRPC) --
 	planRoutes := protected.Group("/plans")
-	planRoutes.GET("/:id", planHandler.GetById)
-	planRoutes.GET("", planHandler.GetAll)
-	planRoutes.GET("/search", planHandler.SearchPlans)
-	planRoutes.GET("/shared", planHandler.GetAllShared)
-	planRoutes.POST("", planHandler.Create)
-	planRoutes.PATCH("/:id", planHandler.Update)
-	planRoutes.PATCH("/:id/toggle-daily-reset", planHandler.ToggleDailyReset)
-	planRoutes.DELETE("/:id", planHandler.Delete)
+	planRoutes.GET("/:id", planGwHandler.GetPlanByID)
+	planRoutes.GET("", planGwHandler.ListPlans)
+	planRoutes.GET("/search", planGwHandler.SearchPlans)
+	planRoutes.GET("/shared", planGwHandler.ListSharedPlans)
+	planRoutes.POST("", planGwHandler.CreatePlan)
+	planRoutes.PATCH("/:id", planGwHandler.UpdatePlan)
+	planRoutes.PATCH("/:id/toggle-daily-reset", planGwHandler.ToggleDailyReset)
+	planRoutes.DELETE("/:id", planGwHandler.DeletePlan)
 
-	// -- Checklist Routes --
+	// -- Checklist Routes (proxied to plan-service via gRPC) --
 	checkListRoutes := protected.Group("/plans/:id/checklists")
-	checkListRoutes.GET("", checkListHandler.GetAll)
-	checkListRoutes.GET("/archived", checkListHandler.GetAllArchived)
-	checkListRoutes.GET("/upcoming", checkListHandler.GetUpcoming)
-	checkListRoutes.GET("/:checklist_id", checkListHandler.GetByID)
-	checkListRoutes.POST("", checkListHandler.Create)
-	checkListRoutes.PATCH("/:checklist_id", checkListHandler.Update)
-	checkListRoutes.DELETE("/:checklist_id", checkListHandler.Delete)
-	checkListRoutes.PATCH("/:checklist_id/dates", checkListHandler.UpdateDates)
-	checkListRoutes.PATCH("/:checklist_id/archive", checkListHandler.Archive)
+	checkListRoutes.GET("", planGwHandler.ListChecklists)
+	checkListRoutes.GET("/archived", planGwHandler.ListArchivedChecklists)
+	checkListRoutes.GET("/upcoming", planGwHandler.ListUpcomingChecklists)
+	checkListRoutes.GET("/:checklist_id", planGwHandler.GetChecklist)
+	checkListRoutes.POST("", planGwHandler.CreateChecklist)
+	checkListRoutes.PATCH("/:checklist_id", planGwHandler.UpdateChecklist)
+	checkListRoutes.DELETE("/:checklist_id", planGwHandler.DeleteChecklist)
+	checkListRoutes.PATCH("/:checklist_id/dates", planGwHandler.UpdateChecklistDates)
+	checkListRoutes.PATCH("/:checklist_id/archive", planGwHandler.ArchiveChecklist)
 
 	// -- User Analytics Routes --
 	userAnalyticsRoutes := protected.Group("/analytics")
@@ -157,8 +153,8 @@ func SetupRouter(db *sqlx.DB) *gin.Engine {
 	calendarRoutes.GET("", calendarHandler.GetCalendar)
 
 	// --- JOBS ---
-	// TODO: write a job manager for graceful shutdown
-	dailyJob := jobs.NewDailyResetJob(checkListService)
+	// Daily reset is now a gRPC call to plan-service.DailyReset (via the adapter).
+	dailyJob := jobs.NewDailyResetJob(planAdapter)
 
 	jobManager := jobs.NewManager()
 	jobManager.AddJob(dailyJob)

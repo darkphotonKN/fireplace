@@ -6,26 +6,43 @@ import (
 	"github.com/google/uuid"
 )
 
-// User mirrors the auth-service's users table. HashedPassword stays out of
-// JSON output so handlers can return User directly without leaking credentials.
+// User mirrors the auth-service users table. The column is named "password"
+// (not "hashed_password") to match the existing schema inherited from the
+// monolith; Go field name HashedPassword keeps the intent visible. JSON tag
+// "-" keeps the hash out of any responses.
 type User struct {
 	ID             uuid.UUID `db:"id" json:"id"`
 	Email          string    `db:"email" json:"email"`
 	Name           string    `db:"name" json:"name"`
-	HashedPassword string    `db:"hashed_password" json:"-"`
+	HashedPassword string    `db:"password" json:"-"`
+	DisplayName    *string   `db:"display_name" json:"displayName,omitempty"`
+	Bio            *string   `db:"bio" json:"bio,omitempty"`
 	CreatedAt      time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt      time.Time `db:"updated_at" json:"updated_at"`
 }
 
-// SignUpRequest is the service-layer input for creating a user.
-type SignUpRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Name     string `json:"name"`
+type SignUpInput struct {
+	Email    string
+	Password string
+	Name     string
 }
 
-// SignInRequest is the service-layer input for authenticating a user.
-type SignInRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+type SignInInput struct {
+	Email    string
+	Password string
+}
+
+type UpdateProfileInput struct {
+	ID          uuid.UUID
+	Name        *string
+	DisplayName *string
+	Bio         *string
+}
+
+type AuthTokens struct {
+	User             *User
+	AccessToken      string
+	RefreshToken     string
+	AccessExpiresIn  time.Duration
+	RefreshExpiresIn time.Duration
 }

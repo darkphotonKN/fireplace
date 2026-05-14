@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/models"
+	commonauth "github.com/darkphotonKN/fireplace/common/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -52,10 +52,8 @@ func TestAuthMiddleware_InvalidToken_Returns401(t *testing.T) {
 
 func TestAuthMiddleware_ValidToken_SetsUserId(t *testing.T) {
 	userID := uuid.New()
-	user := models.User{}
-	user.ID = userID
 
-	token, err := GenerateJWT(user, Access, 15*time.Minute)
+	token, err := commonauth.GenerateJWT(userID, commonauth.TokenTypeAccess, "test-secret", 15*time.Minute)
 	if err != nil {
 		t.Fatalf("failed to generate token: %v", err)
 	}

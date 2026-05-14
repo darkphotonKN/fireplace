@@ -12,20 +12,26 @@ import (
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/interfaces"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/logger"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/models"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/plans"
 )
 
 type service struct {
 	repo               Repository
 	contentGen         interfaces.ContentGenerator
 	checklistService   ChecklistInsightsService
-	planService        plans.Service
+	planService        PlanInsightsService
 	basePrompt         string
 	youtubeVideoFinder InsightsYoutubeVideoFinder
 }
 
 type ChecklistInsightsService interface {
 	GetAllByPlanId(ctx context.Context, planId uuid.UUID, scope *string, itemType *string, upcoming *string) ([]*models.ChecklistItem, error)
+}
+
+// PlanInsightsService is the narrow plan-side surface insights depends on.
+// Local interface (no import of internal/plans) so this package is agnostic
+// to whether plans are served in-process or via gRPC.
+type PlanInsightsService interface {
+	GetById(ctx context.Context, id uuid.UUID) (*models.Plan, error)
 }
 
 type InsightsYoutubeVideoFinder interface {
@@ -35,7 +41,7 @@ type InsightsYoutubeVideoFinder interface {
 type Repository interface {
 }
 
-func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService ChecklistInsightsService, planService plans.Service, youtubeVideoFinder InsightsYoutubeVideoFinder) Service {
+func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService ChecklistInsightsService, planService PlanInsightsService, youtubeVideoFinder InsightsYoutubeVideoFinder) Service {
 	return &service{
 		repo:               repo,
 		contentGen:         contentGen,

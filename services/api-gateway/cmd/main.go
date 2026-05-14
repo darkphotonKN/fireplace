@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/darkphotonKN/fireplace/common/discovery/consul"
+	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/config"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/logger"
 	"github.com/joho/godotenv"
@@ -24,8 +26,18 @@ func main() {
 	db := config.InitDB()
 	defer db.Close()
 
+	// consul registry — used by gateway/* clients to discover downstream
+	// services (auth-service, plan-service, etc.). The gateway itself does
+	// not register, since it's only invoked externally over HTTP.
+	consulAddr := commonhelpers.GetEnvString("CONSUL_ADDR", "localhost:8520")
+	registry, err := consul.NewRegistry(consulAddr, "api-gateway")
+	if err != nil {
+		logger.Error("Failed to connect to Consul", "error", err)
+		os.Exit(1)
+	}
+
 	// router setup
-	router := config.SetupRouter(db)
+	router := config.SetupRouter(db, registry)
 
 	defaultDevPort := ":8080"
 

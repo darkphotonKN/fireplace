@@ -1,0 +1,77 @@
+syntax = "proto3";
+package auth;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/darkphotonKN/fireplace/common/api/proto/auth";
+
+// AuthService — owns users + authentication. Token issuance happens here;
+// JWT validation stays in the api-gateway middleware with a shared secret,
+// so per-request auth doesn't pay a remote-hop cost.
+service AuthService {
+  rpc SignUp(SignUpRequest) returns (AuthResponse);
+  rpc SignIn(SignInRequest) returns (AuthResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (AuthResponse);
+
+  rpc GetUser(GetUserRequest) returns (User);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc UpdateProfile(UpdateProfileRequest) returns (User);
+  rpc DeleteUser(DeleteUserRequest) returns (google.protobuf.Empty);
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  string name = 3;
+  optional string display_name = 4;
+  optional string bio = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message SignUpRequest {
+  string email = 1;
+  string password = 2;
+  string name = 3;
+}
+
+message SignInRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+// AuthResponse mirrors the monolith's LoginResponse so the gateway HTTP
+// layer can map it 1:1 to the existing JSON shape.
+message AuthResponse {
+  User user = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  int64 access_expires_in = 4;   // nanoseconds, matches monolith's int(time.Duration)
+  int64 refresh_expires_in = 5;
+}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message ListUsersRequest {}
+
+message ListUsersResponse {
+  repeated User users = 1;
+}
+
+message UpdateProfileRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string display_name = 3;
+  optional string bio = 4;
+}
+
+message DeleteUserRequest {
+  string id = 1;
+}

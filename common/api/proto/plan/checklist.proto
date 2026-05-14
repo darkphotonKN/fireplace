@@ -1,0 +1,126 @@
+syntax = "proto3";
+package plan;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/darkphotonKN/fireplace/common/api/proto/plan";
+
+// ChecklistService — manages checklist items scoped to plans. Same package
+// as PlanService because both belong to plan-service; one binary, two server
+// registrations.
+service ChecklistService {
+  rpc CreateItem(CreateItemRequest) returns (ChecklistItem);
+  rpc GetItem(GetItemRequest) returns (ChecklistItem);
+  rpc ListItems(ListItemsRequest) returns (ListItemsResponse);
+  rpc ListArchivedItems(ListArchivedItemsRequest) returns (ListItemsResponse);
+  rpc ListUpcomingItems(ListUpcomingItemsRequest) returns (ListItemsResponse);
+  rpc ListItemsByUser(ListItemsByUserRequest) returns (ListItemsResponse);
+  rpc UpdateItem(UpdateItemRequest) returns (ChecklistItem);
+  rpc UpdateItemDates(UpdateItemDatesRequest) returns (ChecklistItem);
+  rpc ArchiveItem(ArchiveItemRequest) returns (ChecklistItem);
+  rpc DeleteItem(DeleteItemRequest) returns (google.protobuf.Empty);
+
+  // DailyReset un-completes all daily-scope items across all plans (job-scheduled,
+  // called from the gateway's nightly job in 4c).
+  rpc DailyReset(DailyResetRequest) returns (DailyResetResponse);
+}
+
+message ChecklistItem {
+  string id = 1;
+  string plan_id = 2;
+  string description = 3;
+  bool done = 4;
+  string sequence = 5;
+  string type = 6;
+  optional string parent_id = 7;
+  optional google.protobuf.Timestamp start_date = 8;
+  optional google.protobuf.Timestamp due_date = 9;
+  string scope = 10;
+  bool archived = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+}
+
+message CreateItemRequest {
+  string plan_id = 1;
+  string user_id = 2;
+  string description = 3;
+  string scope = 4;
+  optional string type = 5;
+  optional string parent_id = 6;
+  optional google.protobuf.Timestamp start_date = 7;
+  optional google.protobuf.Timestamp due_date = 8;
+  optional string sequence = 9;
+}
+
+message GetItemRequest {
+  string id = 1;
+  string user_id = 2;
+}
+
+message ListItemsRequest {
+  string plan_id = 1;
+  string user_id = 2;
+  optional string scope = 3;
+  optional string type = 4;
+  optional string parent_id = 5;
+}
+
+message ListItemsResponse {
+  repeated ChecklistItem items = 1;
+}
+
+message ListArchivedItemsRequest {
+  string plan_id = 1;
+  string user_id = 2;
+}
+
+message ListUpcomingItemsRequest {
+  string plan_id = 1;
+  string user_id = 2;
+}
+
+message ListItemsByUserRequest {
+  string user_id = 1;
+}
+
+message UpdateItemRequest {
+  string id = 1;
+  string user_id = 2;
+  optional string description = 3;
+  optional bool done = 4;
+  optional string sequence = 5;
+  optional string type = 6;
+  optional string scope = 7;
+  // parent_id three-state for indent/outdent:
+  //   clear_parent_id=true                 → clear column (outdent)
+  //   clear_parent_id=false, parent_id set → re-parent to new id (indent)
+  //   clear_parent_id=false, parent_id unset → leave column alone
+  bool clear_parent_id = 8;
+  optional string parent_id = 9;
+}
+
+message UpdateItemDatesRequest {
+  string id = 1;
+  string user_id = 2;
+  optional google.protobuf.Timestamp start_date = 3;
+  optional google.protobuf.Timestamp due_date = 4;
+}
+
+message ArchiveItemRequest {
+  string id = 1;
+  string user_id = 2;
+  bool archived = 3;
+}
+
+message DeleteItemRequest {
+  string id = 1;
+  string user_id = 2;
+}
+
+message DailyResetRequest {}
+
+message DailyResetResponse {
+  int32 reset_count = 1;
+}

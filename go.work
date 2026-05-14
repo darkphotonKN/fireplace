@@ -1,0 +1,9 @@
+go 1.24.2
+
+use (
+	./common
+	./services/api-gateway
+	./services/auth-service
+	./services/example-service
+	./services/plan-service
+)

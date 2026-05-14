@@ -1,0 +1,110 @@
+syntax = "proto3";
+package plan;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/darkphotonKN/fireplace/common/api/proto/plan";
+
+// PlanService — owns plans (high-level projects/goals). All RPCs take the
+// authenticated user_id explicitly; the gateway extracts it from the JWT and
+// passes it in the request payload. plan-service trusts that input.
+service PlanService {
+  rpc CreatePlan(CreatePlanRequest) returns (Plan);
+  rpc GetPlan(GetPlanRequest) returns (Plan);
+  rpc ListPlans(ListPlansRequest) returns (ListPlansResponse);
+  rpc ListSharedPlans(ListSharedPlansRequest) returns (ListPlansResponse);
+  rpc SearchPlans(SearchPlansRequest) returns (SearchPlansResponse);
+  rpc UpdatePlan(UpdatePlanRequest) returns (Plan);
+  rpc ToggleDailyReset(ToggleDailyResetRequest) returns (Plan);
+  rpc DeletePlan(DeletePlanRequest) returns (google.protobuf.Empty);
+
+  // AssertPlanOwnership returns OK if the plan exists and is owned by user_id;
+  // returns NotFound or PermissionDenied otherwise. Cheap ownership check for
+  // sibling services (calendar, notes, etc.) before they touch plan-scoped
+  // resources they own.
+  rpc AssertPlanOwnership(AssertPlanOwnershipRequest) returns (google.protobuf.Empty);
+}
+
+message Plan {
+  string id = 1;
+  string user_id = 2;
+  string name = 3;
+  string focus = 4;
+  string description = 5;
+  string plan_type = 6;
+  bool daily_reset = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message CreatePlanRequest {
+  string user_id = 1;
+  string name = 2;
+  string focus = 3;
+  string description = 4;
+  string plan_type = 5;
+  bool daily_reset = 6;
+}
+
+message GetPlanRequest {
+  string id = 1;
+  string user_id = 2;
+}
+
+message ListPlansRequest {
+  string user_id = 1;
+}
+
+message ListPlansResponse {
+  repeated Plan plans = 1;
+}
+
+message ListSharedPlansRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message SearchPlansRequest {
+  string user_id = 1;
+  string query = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message SearchPlanResult {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  float similarity = 4;
+}
+
+message SearchPlansResponse {
+  repeated SearchPlanResult results = 1;
+}
+
+message UpdatePlanRequest {
+  string id = 1;
+  string user_id = 2;
+  optional string name = 3;
+  optional string focus = 4;
+  optional string description = 5;
+  optional string plan_type = 6;
+  optional bool daily_reset = 7;
+}
+
+message ToggleDailyResetRequest {
+  string id = 1;
+  string user_id = 2;
+}
+
+message DeletePlanRequest {
+  string id = 1;
+  string user_id = 2;
+}
+
+message AssertPlanOwnershipRequest {
+  string plan_id = 1;
+  string user_id = 2;
+}
