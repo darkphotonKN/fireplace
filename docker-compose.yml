@@ -1,6 +1,59 @@
 version: "3.9"
 
+# Root infra for the fireplace strangler migration.
+#
+# This file declares the cross-service infrastructure (service discovery,
+# message broker, cache) plus the monolith's database. As domains are
+# peeled off into their own services under services/, each gets its own
+# postgres entry here.
+#
+# Ports are intentionally offset from cosmic-void's defaults so both can
+# run side-by-side on the same machine.
+
 services:
+  fireplace-consul:
+    image: hashicorp/consul
+    container_name: fireplace-consul
+    command: agent -server -ui -node=server-1 -bootstrap-expect=1 -client=0.0.0.0
+    ports:
+      - "8520:8500"
+      - "8620:8600/udp"
+    volumes:
+      - fireplace-consul-data:/consul/data
+    networks:
+      - fireplace-network
+
+  fireplace-rabbitmq:
+    image: "rabbitmq:3-management"
+    container_name: fireplace-rabbitmq
+    ports:
+      - "5683:5672"
+      - "15683:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=fireplace
+      - RABBITMQ_DEFAULT_PASS=fireplace
+    volumes:
+      - fireplace-rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - fireplace-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: fireplace-redis
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - fireplace-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fireplace-network
+
+  # Monolith DB. Becomes api-gateway-db once Phase 2 lands.
   db:
     image: postgres:17
     container_name: flow_db
@@ -12,6 +65,111 @@ services:
       - "5556:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - fireplace-network
+
+  # Auth Service Database (ordinal 1)
+  auth-service-db:
+    image: postgres:17
+    container_name: fireplace_auth_service_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fireplace_auth_service_db
+    ports:
+      - "5301:5432"
+    volumes:
+      - fireplace_auth_service_pgdata:/var/lib/postgresql/data
+    networks:
+      - fireplace-network
+
+  auth-service-test-db:
+    image: postgres:17
+    container_name: fireplace_auth_service_test_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fireplace_auth_service_test_db
+    ports:
+      - "6301:5432"
+    volumes:
+      - fireplace_auth_service_test_pgdata:/var/lib/postgresql/data
+    restart: "no"
+    networks:
+      - fireplace-network
+
+  # Example Service Database (ordinal 2)
+  example-service-db:
+    image: postgres:17
+    container_name: fireplace_example_service_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fireplace_example_service_db
+    ports:
+      - "5302:5432"
+    volumes:
+      - fireplace_example_service_pgdata:/var/lib/postgresql/data
+    networks:
+      - fireplace-network
+
+  example-service-test-db:
+    image: postgres:17
+    container_name: fireplace_example_service_test_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fireplace_example_service_test_db
+    ports:
+      - "6302:5432"
+    volumes:
+      - fireplace_example_service_test_pgdata:/var/lib/postgresql/data
+    restart: "no"
+    networks:
+      - fireplace-network
+
+  # Plan Service Database (ordinal 3)
+  plan-service-db:
+    image: postgres:17
+    container_name: fireplace_plan_service_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fireplace_plan_service_db
+    ports:
+      - "5303:5432"
+    volumes:
+      - fireplace_plan_service_pgdata:/var/lib/postgresql/data
+    networks:
+      - fireplace-network
+
+  plan-service-test-db:
+    image: postgres:17
+    container_name: fireplace_plan_service_test_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fireplace_plan_service_test_db
+    ports:
+      - "6303:5432"
+    volumes:
+      - fireplace_plan_service_test_pgdata:/var/lib/postgresql/data
+    restart: "no"
+    networks:
+      - fireplace-network
+
+networks:
+  fireplace-network:
+    name: fireplace-network
 
 volumes:
+  fireplace-consul-data:
+  fireplace-rabbitmq-data:
+  fireplace-redis-data:
   pgdata:
+  fireplace_auth_service_pgdata:
+  fireplace_auth_service_test_pgdata:
+  fireplace_example_service_pgdata:
+  fireplace_example_service_test_pgdata:
+  fireplace_plan_service_pgdata:
+  fireplace_plan_service_test_pgdata:

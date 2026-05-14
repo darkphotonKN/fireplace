@@ -1,0 +1,243 @@
+"use client";
+
+import { Card } from "@/components/ui/card";
+import Todo from "@/components/Todo";
+import { NotesContainer } from "@/components/notes/NotesContainer";
+import { CalendarCard } from "@/components/calendar/CalendarCard";
+import { useEffect, useState, use } from "react";
+import { fetchPlan, PlanDetailData, fetchChecklist, ChecklistItem } from "@/services/api";
+
+interface VideoSuggestion {
+  title: string;
+  url: string;
+  source: string;
+  type: string;
+  description: string;
+}
+
+// Extract video ID from YouTube URL
+const getYouTubeThumbnail = (url: string) => {
+  const videoId = url.match(
+    /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/,
+  )?.[1];
+  return videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : null;
+};
+
+export default function PlanDetail({
+  params,
+}: {
+  params: Promise<{ planId: string }>;
+}) {
+  const { planId } = use(params);
+  const [plan, setPlan] = useState<PlanDetailData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [loadingVideos, setLoadingVideos] = useState(false);
+  const [videoSuggestions, setVideoSuggestions] = useState<VideoSuggestion[]>(
+    [],
+  );
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+
+  useEffect(() => {
+    async function loadPlanData() {
+      if (!planId) return;
+
+      setIsLoading(true);
+      setError("");
+
+      try {
+        const [planResponse, dailyTasks, longtermTasks] = await Promise.all([
+          fetchPlan(planId),
+          fetchChecklist(planId, 'daily'),
+          fetchChecklist(planId, 'longterm')
+        ]);
+
+        if (planResponse.result) {
+          setPlan(planResponse.result);
+        } else {
+          setError(planResponse.message || "Failed to load plan");
+        }
+
+        // Combine daily and longterm tasks for the notes container
+        const allTasks = [...dailyTasks.result || [], ...longtermTasks.result || []];
+        setChecklistItems(allTasks);
+      } catch (error) {
+        console.error("Error loading plan:", error);
+        setError("Failed to load plan data");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadPlanData();
+  }, [planId]);
+
+  useEffect(() => {
+    async function loadVideoSuggestions() {
+      if (!planId) return;
+
+      setLoadingVideos(true);
+      setVideoSuggestions([]);
+
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/insights/suggest-videos?plan_id=${planId}`,
+          {
+            credentials: "include",
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch video suggestions");
+        }
+
+        const data = await response.json();
+        setVideoSuggestions(data.result || []);
+      } catch (error) {
+        console.error("Error fetching video suggestions:", error);
+        setError("Failed to load video suggestions");
+      } finally {
+        setLoadingVideos(false);
+      }
+    }
+
+    loadVideoSuggestions();
+  }, [planId]);
+
+  return (
+    <main className="min-h-screen p-8">
+      <div className="relative max-w-7xl mx-auto space-y-8">
+        {/* Title Section */}
+        <div className="backdrop-blur-sm rounded-2xl p-8 shadow-lg bg-white/5 dark:bg-gray-900/10">
+          <h1 className="text-4xl font-bold mb-2">
+            {isLoading ? "Loading..." : plan?.name || "Plan Details"}
+          </h1>
+          <p className="text-lg opacity-80">
+            {isLoading
+              ? "..."
+              : plan?.description || "Let's continue your development journey."}
+          </p>
+
+          <div className="absolute bottom-[20px] right-[20px] z-10">
+            <div className="relative group">
+              <button
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                aria-label="Information about daily suggestions"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="w-4 h-4"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+              <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-[9999]">
+                <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 shadow-xl">
+                  <p className="text-sm text-white mb-1">{plan?.focus}</p>
+                  <p className="text-xs text-gray-400">
+                    Your focus is one of the primary components that drive the
+                    insights and suggestions provided for your plan.
+                  </p>
+                </div>
+                <div className="absolute left-1/2 -translate-x-1/2 -top-1 w-2 h-2 bg-gray-900 border-l border-t border-gray-700 transform -rotate-45"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Grid - Flexible Layout */}
+        <div className="grid grid-cols-1 gap-6">
+          {/* Top Row — Checklist (longterm) on the left, Daily (AI-only) on the right.
+              The dedicated Note block is hidden in this iteration; NotesContainer
+              import is preserved for a future feature. */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <Card className="backdrop-blur-sm shadow-sm border-0">
+              <div className="p-6">
+                <Todo fixedTaskType="longterm" enableTypeFilter />
+              </div>
+            </Card>
+
+            <Card className="backdrop-blur-sm shadow-sm border-0">
+              <div className="p-6">
+                <Todo fixedTaskType="daily" dailyAIOnly />
+              </div>
+            </Card>
+          </div>
+
+          {/* Second Row - Calendar (full width) */}
+          <CalendarCard planId={planId} />
+
+          {/* Fourth Row - Recent Videos only */}
+          <Card className="backdrop-blur-sm shadow-sm border-0">
+            <h2 className="text-xl font-semibold p-6 pb-4">
+              Recommended Videos
+            </h2>
+            <div className="space-y-4 p-6 pt-0">
+              {loadingVideos ? (
+                <div className="py-4 text-center">
+                  <p className="text-gray-500 text-sm">
+                    Loading video suggestions...
+                  </p>
+                </div>
+              ) : videoSuggestions.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {videoSuggestions.map((video, index) => (
+                    <a
+                      key={index}
+                      href={video.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg overflow-hidden hover:bg-white/10 transition-all duration-200"
+                    >
+                      <div className="relative aspect-video">
+                        <img
+                          src={getYouTubeThumbnail(video.url) || ""}
+                          alt={video.title}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            className="w-8 h-8 text-white opacity-80 group-hover:opacity-100 transition-opacity"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <h4 className="text-sm font-medium mb-1 line-clamp-2">
+                          {video.title}
+                        </h4>
+                        <p className="text-xs text-gray-400 line-clamp-2">
+                          {video.description}
+                        </p>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-4 text-center">
+                  <p className="text-gray-500 text-sm">
+                    No video suggestions available.
+                  </p>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </main>
+  );
+}
