@@ -257,3 +257,25 @@ func (r *repository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item
 	}
 	return items, nil
 }
+
+// ListInDateWindow returns non-archived items for a plan whose
+// [start_date, due_date] range intersects [windowStart, windowEnd].
+// Items with both dates null are excluded. Used by calendar-service.
+func (r *repository) ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error) {
+	query := `
+	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
+	       archived, created_at, updated_at, plan_id
+	FROM checklist_items
+	WHERE plan_id = $1
+	  AND archived = false
+	  AND (start_date IS NOT NULL OR due_date IS NOT NULL)
+	  AND COALESCE(start_date, due_date) <= $3
+	  AND COALESCE(due_date,   start_date) >= $2
+	ORDER BY COALESCE(start_date, due_date) ASC, sequence ASC`
+
+	var items []*Item
+	if err := r.db.SelectContext(ctx, &items, query, planID, windowStart, windowEnd); err != nil {
+		return nil, commonhelpers.AnalyzeDBErr(err)
+	}
+	return items, nil
+}

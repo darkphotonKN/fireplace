@@ -6,5 +6,6 @@ gen:
 		api/proto/example/example.proto \
 		api/proto/plan/plan.proto \
 		api/proto/plan/checklist.proto \
+		api/proto/calendar/calendar.proto \
 		api/proto/events/auth.proto \
 		api/proto/events/plan.proto

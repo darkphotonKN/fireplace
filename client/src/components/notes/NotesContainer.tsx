@@ -291,7 +291,7 @@ export function NotesContainer({
               placeholder="Write your note..."
               value={newNoteContent}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewNoteContent(e.target.value)}
-              className="min-h-[100px]"
+              className="min-h-[100px] text-base"
             />
             <div className="flex items-center justify-between">
               <div className="flex gap-2">
@@ -372,7 +372,7 @@ export function NotesContainer({
 
       {/* Notes List */}
       <ScrollArea className="flex-1">
-        <div className="p-4 space-y-3">
+        <div className="p-4 space-y-6">
           {filteredNotes().length > 0 ? (
             filteredNotes().map(note => (
               <NoteCard

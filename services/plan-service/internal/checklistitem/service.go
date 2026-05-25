@@ -17,6 +17,7 @@ type Repository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByPlanID(ctx context.Context, in ListItemsInput) ([]*Item, error)
 	ListArchivedByPlanID(ctx context.Context, planID uuid.UUID, scope *string) ([]*Item, error)
+	ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Item, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item, error)
 	HasChildren(ctx context.Context, id uuid.UUID) (bool, error)
@@ -217,4 +218,10 @@ func (s *service) DailyReset(ctx context.Context) (int64, error) {
 // Used by useranalytics in 4c via gRPC.
 func (s *service) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item, error) {
 	return s.repo.GetByUserID(ctx, userID)
+}
+
+// ListInDateWindow returns items whose date range overlaps the given window.
+// Used by calendar-service over gRPC.
+func (s *service) ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error) {
+	return s.repo.ListInDateWindow(ctx, planID, windowStart, windowEnd)
 }

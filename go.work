@@ -4,6 +4,7 @@ use (
 	./common
 	./services/api-gateway
 	./services/auth-service
+	./services/calendar-service
 	./services/example-service
 	./services/plan-service
 )

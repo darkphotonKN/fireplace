@@ -1,0 +1,35 @@
+syntax = "proto3";
+package calendar;
+
+option go_package = "github.com/darkphotonKN/fireplace/common/api/proto/calendar";
+
+// CalendarService — renders a Plan Calendar window. Owns the future
+// calendar_entries table (slot pinning, recommendations). Reads checklist
+// data via plan-service over gRPC.
+service CalendarService {
+  rpc GetCalendar(GetCalendarRequest) returns (GetCalendarResponse);
+}
+
+message GetCalendarRequest {
+  string plan_id = 1;
+  string user_id = 2;
+  string view = 3; // "week" or "month"; empty → "month"
+  string date = 4; // "YYYY-MM-DD" for week, "YYYY-MM" for month
+}
+
+message CalendarItem {
+  string id = 1;
+  string description = 2;
+  string scope = 3;
+  bool done = 4;
+  string start_date = 5; // "YYYY-MM-DD" or "" if null
+  string due_date = 6;   // "YYYY-MM-DD" or "" if null
+}
+
+message GetCalendarResponse {
+  string plan_id = 1;
+  string view = 2;
+  string window_start = 3; // "YYYY-MM-DD"
+  string window_end = 4;   // "YYYY-MM-DD"
+  repeated CalendarItem items = 5;
+}

@@ -158,6 +158,36 @@ services:
     networks:
       - fireplace-network
 
+  # Calendar Service Database (ordinal 4)
+  calendar-service-db:
+    image: postgres:17
+    container_name: fireplace_calendar_service_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fireplace_calendar_service_db
+    ports:
+      - "5304:5432"
+    volumes:
+      - fireplace_calendar_service_pgdata:/var/lib/postgresql/data
+    networks:
+      - fireplace-network
+
+  calendar-service-test-db:
+    image: postgres:17
+    container_name: fireplace_calendar_service_test_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fireplace_calendar_service_test_db
+    ports:
+      - "6304:5432"
+    volumes:
+      - fireplace_calendar_service_test_pgdata:/var/lib/postgresql/data
+    restart: "no"
+    networks:
+      - fireplace-network
+
 networks:
   fireplace-network:
     name: fireplace-network
@@ -173,3 +203,5 @@ volumes:
   fireplace_example_service_test_pgdata:
   fireplace_plan_service_pgdata:
   fireplace_plan_service_test_pgdata:
+  fireplace_calendar_service_pgdata:
+  fireplace_calendar_service_test_pgdata:

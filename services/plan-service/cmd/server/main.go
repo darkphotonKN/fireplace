@@ -26,6 +26,7 @@ var (
 	grpcAddr       = commonhelpers.GetEnvString("GRPC_PLAN_ADDR", "7103")
 	consulAddr     = commonhelpers.GetEnvString("CONSUL_ADDR", "localhost:8520")
 	serviceVersion = commonhelpers.GetEnvString("SERVICE_VERSION", "1.0.0")
+	otelEnabled    = commonhelpers.GetEnvString("OTEL_ENABLED", "true") == "true"
 
 	amqpUser     = commonhelpers.GetEnvString("RABBITMQ_USER", "fireplace")
 	amqpPassword = commonhelpers.GetEnvString("RABBITMQ_PASS", "fireplace")
@@ -51,6 +52,7 @@ func main() {
 		ServiceVersion:    serviceVersion,
 		Environment:       environment,
 		CollectorEndpoint: collectorEndpoint,
+		Enabled:           otelEnabled,
 	})
 	if err != nil {
 		log.Fatal(err)

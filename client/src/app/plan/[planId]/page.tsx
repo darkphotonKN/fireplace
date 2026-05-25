@@ -5,7 +5,7 @@ import Todo from "@/components/Todo";
 import { NotesContainer } from "@/components/notes/NotesContainer";
 import { CalendarCard } from "@/components/calendar/CalendarCard";
 import { useEffect, useState, use } from "react";
-import { fetchPlan, PlanDetailData, fetchChecklist, ChecklistItem } from "@/services/api";
+import { fetchPlan, PlanDetailData } from "@/services/api";
 
 interface VideoSuggestion {
   title: string;
@@ -36,8 +36,12 @@ export default function PlanDetail({
   const [videoSuggestions, setVideoSuggestions] = useState<VideoSuggestion[]>(
     [],
   );
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
-
+  // The plan page used to also fetch daily + longterm checklists here in
+  // parallel and stash the merged result in a `checklistItems` state — but
+  // that state was never read, and the two extra fetches piled onto the
+  // gateway alongside the per-Todo fetches, causing the request storm seen
+  // in the network panel. Stripped: each <Todo> owns its own data, the page
+  // just owns the plan metadata.
   useEffect(() => {
     async function loadPlanData() {
       if (!planId) return;
@@ -46,21 +50,12 @@ export default function PlanDetail({
       setError("");
 
       try {
-        const [planResponse, dailyTasks, longtermTasks] = await Promise.all([
-          fetchPlan(planId),
-          fetchChecklist(planId, 'daily'),
-          fetchChecklist(planId, 'longterm')
-        ]);
-
+        const planResponse = await fetchPlan(planId);
         if (planResponse.result) {
           setPlan(planResponse.result);
         } else {
           setError(planResponse.message || "Failed to load plan");
         }
-
-        // Combine daily and longterm tasks for the notes container
-        const allTasks = [...dailyTasks.result || [], ...longtermTasks.result || []];
-        setChecklistItems(allTasks);
       } catch (error) {
         console.error("Error loading plan:", error);
         setError("Failed to load plan data");
@@ -112,7 +107,7 @@ export default function PlanDetail({
           <h1 className="text-4xl font-bold mb-2">
             {isLoading ? "Loading..." : plan?.name || "Plan Details"}
           </h1>
-          <p className="text-lg opacity-80">
+          <p className="text-base opacity-80">
             {isLoading
               ? "..."
               : plan?.description || "Let's continue your development journey."}
@@ -139,7 +134,7 @@ export default function PlanDetail({
               </button>
               <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-[9999]">
                 <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 shadow-xl">
-                  <p className="text-sm text-white mb-1">{plan?.focus}</p>
+                  <p className="text-xs text-white mb-1">{plan?.focus}</p>
                   <p className="text-xs text-gray-400">
                     Your focus is one of the primary components that drive the
                     insights and suggestions provided for your plan.

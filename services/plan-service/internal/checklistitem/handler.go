@@ -3,6 +3,7 @@ package checklistitem
 import (
 	"context"
 	"errors"
+	"time"
 
 	pb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
@@ -20,6 +21,7 @@ type Service interface {
 	ListArchivedByPlanID(ctx context.Context, planID uuid.UUID, scope *string) ([]*Item, error)
 	ListUpcoming(ctx context.Context, planID uuid.UUID) ([]*Item, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item, error)
+	ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error)
 	Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 	UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, error)
 	Archive(ctx context.Context, id uuid.UUID, archived bool) (*Item, error)
@@ -128,6 +130,21 @@ func (h *Handler) ListItemsByUser(ctx context.Context, req *pb.ListItemsByUserRe
 		return nil, status.Errorf(codes.InvalidArgument, "invalid user_id: %v", err)
 	}
 	items, err := h.service.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return itemListToProto(items), nil
+}
+
+func (h *Handler) ListItemsInDateWindow(ctx context.Context, req *pb.ListItemsInDateWindowRequest) (*pb.ListItemsResponse, error) {
+	planID, err := uuid.Parse(req.PlanId)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid plan_id: %v", err)
+	}
+	if req.WindowStart == nil || req.WindowEnd == nil {
+		return nil, status.Error(codes.InvalidArgument, "window_start and window_end are required")
+	}
+	items, err := h.service.ListInDateWindow(ctx, planID, req.WindowStart.AsTime(), req.WindowEnd.AsTime())
 	if err != nil {
 		return nil, mapError(err)
 	}

@@ -16,6 +16,27 @@ module.exports = {
       },
     },
     extend: {
+      // Every Tailwind text-* utility is bumped +2px from its default size
+      // (lineHeight bumped proportionally). This applies globally: card titles,
+      // inputs, placeholders, body text, badges, etc. — every text element
+      // inside a card or anywhere else picks up the new scale automatically.
+      // Defaults were: xs 12/16, sm 14/20, base 16/24, lg 18/28, xl 20/28,
+      //                2xl 24/32, 3xl 30/36, 4xl 36/40, 5xl 48, 6xl 60.
+      fontSize: {
+        xs: ['14px', { lineHeight: '18px' }],
+        sm: ['16px', { lineHeight: '22px' }],
+        base: ['18px', { lineHeight: '26px' }],
+        lg: ['20px', { lineHeight: '30px' }],
+        xl: ['22px', { lineHeight: '30px' }],
+        '2xl': ['26px', { lineHeight: '34px' }],
+        '3xl': ['32px', { lineHeight: '38px' }],
+        '4xl': ['38px', { lineHeight: '42px' }],
+        '5xl': ['50px', { lineHeight: '1' }],
+        '6xl': ['62px', { lineHeight: '1' }],
+        '7xl': ['74px', { lineHeight: '1' }],
+        '8xl': ['98px', { lineHeight: '1' }],
+        '9xl': ['130px', { lineHeight: '1' }],
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',

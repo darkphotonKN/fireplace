@@ -20,17 +20,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ChecklistService_CreateItem_FullMethodName        = "/plan.ChecklistService/CreateItem"
-	ChecklistService_GetItem_FullMethodName           = "/plan.ChecklistService/GetItem"
-	ChecklistService_ListItems_FullMethodName         = "/plan.ChecklistService/ListItems"
-	ChecklistService_ListArchivedItems_FullMethodName = "/plan.ChecklistService/ListArchivedItems"
-	ChecklistService_ListUpcomingItems_FullMethodName = "/plan.ChecklistService/ListUpcomingItems"
-	ChecklistService_ListItemsByUser_FullMethodName   = "/plan.ChecklistService/ListItemsByUser"
-	ChecklistService_UpdateItem_FullMethodName        = "/plan.ChecklistService/UpdateItem"
-	ChecklistService_UpdateItemDates_FullMethodName   = "/plan.ChecklistService/UpdateItemDates"
-	ChecklistService_ArchiveItem_FullMethodName       = "/plan.ChecklistService/ArchiveItem"
-	ChecklistService_DeleteItem_FullMethodName        = "/plan.ChecklistService/DeleteItem"
-	ChecklistService_DailyReset_FullMethodName        = "/plan.ChecklistService/DailyReset"
+	ChecklistService_CreateItem_FullMethodName            = "/plan.ChecklistService/CreateItem"
+	ChecklistService_GetItem_FullMethodName               = "/plan.ChecklistService/GetItem"
+	ChecklistService_ListItems_FullMethodName             = "/plan.ChecklistService/ListItems"
+	ChecklistService_ListArchivedItems_FullMethodName     = "/plan.ChecklistService/ListArchivedItems"
+	ChecklistService_ListUpcomingItems_FullMethodName     = "/plan.ChecklistService/ListUpcomingItems"
+	ChecklistService_ListItemsByUser_FullMethodName       = "/plan.ChecklistService/ListItemsByUser"
+	ChecklistService_ListItemsInDateWindow_FullMethodName = "/plan.ChecklistService/ListItemsInDateWindow"
+	ChecklistService_UpdateItem_FullMethodName            = "/plan.ChecklistService/UpdateItem"
+	ChecklistService_UpdateItemDates_FullMethodName       = "/plan.ChecklistService/UpdateItemDates"
+	ChecklistService_ArchiveItem_FullMethodName           = "/plan.ChecklistService/ArchiveItem"
+	ChecklistService_DeleteItem_FullMethodName            = "/plan.ChecklistService/DeleteItem"
+	ChecklistService_DailyReset_FullMethodName            = "/plan.ChecklistService/DailyReset"
 )
 
 // ChecklistServiceClient is the client API for ChecklistService service.
@@ -47,6 +48,9 @@ type ChecklistServiceClient interface {
 	ListArchivedItems(ctx context.Context, in *ListArchivedItemsRequest, opts ...grpc.CallOption) (*ListItemsResponse, error)
 	ListUpcomingItems(ctx context.Context, in *ListUpcomingItemsRequest, opts ...grpc.CallOption) (*ListItemsResponse, error)
 	ListItemsByUser(ctx context.Context, in *ListItemsByUserRequest, opts ...grpc.CallOption) (*ListItemsResponse, error)
+	// ListItemsInDateWindow returns non-archived items whose [start_date,due_date]
+	// range intersects [window_start,window_end]. Used by calendar-service.
+	ListItemsInDateWindow(ctx context.Context, in *ListItemsInDateWindowRequest, opts ...grpc.CallOption) (*ListItemsResponse, error)
 	UpdateItem(ctx context.Context, in *UpdateItemRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
 	UpdateItemDates(ctx context.Context, in *UpdateItemDatesRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
 	ArchiveItem(ctx context.Context, in *ArchiveItemRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
@@ -124,6 +128,16 @@ func (c *checklistServiceClient) ListItemsByUser(ctx context.Context, in *ListIt
 	return out, nil
 }
 
+func (c *checklistServiceClient) ListItemsInDateWindow(ctx context.Context, in *ListItemsInDateWindowRequest, opts ...grpc.CallOption) (*ListItemsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListItemsResponse)
+	err := c.cc.Invoke(ctx, ChecklistService_ListItemsInDateWindow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *checklistServiceClient) UpdateItem(ctx context.Context, in *UpdateItemRequest, opts ...grpc.CallOption) (*ChecklistItem, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ChecklistItem)
@@ -188,6 +202,9 @@ type ChecklistServiceServer interface {
 	ListArchivedItems(context.Context, *ListArchivedItemsRequest) (*ListItemsResponse, error)
 	ListUpcomingItems(context.Context, *ListUpcomingItemsRequest) (*ListItemsResponse, error)
 	ListItemsByUser(context.Context, *ListItemsByUserRequest) (*ListItemsResponse, error)
+	// ListItemsInDateWindow returns non-archived items whose [start_date,due_date]
+	// range intersects [window_start,window_end]. Used by calendar-service.
+	ListItemsInDateWindow(context.Context, *ListItemsInDateWindowRequest) (*ListItemsResponse, error)
 	UpdateItem(context.Context, *UpdateItemRequest) (*ChecklistItem, error)
 	UpdateItemDates(context.Context, *UpdateItemDatesRequest) (*ChecklistItem, error)
 	ArchiveItem(context.Context, *ArchiveItemRequest) (*ChecklistItem, error)
@@ -222,6 +239,9 @@ func (UnimplementedChecklistServiceServer) ListUpcomingItems(context.Context, *L
 }
 func (UnimplementedChecklistServiceServer) ListItemsByUser(context.Context, *ListItemsByUserRequest) (*ListItemsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListItemsByUser not implemented")
+}
+func (UnimplementedChecklistServiceServer) ListItemsInDateWindow(context.Context, *ListItemsInDateWindowRequest) (*ListItemsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListItemsInDateWindow not implemented")
 }
 func (UnimplementedChecklistServiceServer) UpdateItem(context.Context, *UpdateItemRequest) (*ChecklistItem, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateItem not implemented")
@@ -367,6 +387,24 @@ func _ChecklistService_ListItemsByUser_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChecklistService_ListItemsInDateWindow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListItemsInDateWindowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChecklistServiceServer).ListItemsInDateWindow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChecklistService_ListItemsInDateWindow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChecklistServiceServer).ListItemsInDateWindow(ctx, req.(*ListItemsInDateWindowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ChecklistService_UpdateItem_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateItemRequest)
 	if err := dec(in); err != nil {
@@ -487,6 +525,10 @@ var ChecklistService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListItemsByUser",
 			Handler:    _ChecklistService_ListItemsByUser_Handler,
+		},
+		{
+			MethodName: "ListItemsInDateWindow",
+			Handler:    _ChecklistService_ListItemsInDateWindow_Handler,
 		},
 		{
 			MethodName: "UpdateItem",

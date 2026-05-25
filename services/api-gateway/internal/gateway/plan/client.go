@@ -3,40 +3,86 @@ package plangw
 import (
 	"context"
 	"strconv"
+	"sync"
 	"time"
 
 	pb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
 	"github.com/darkphotonKN/fireplace/common/discovery"
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const targetService = "plan"
 
+// Client wraps a long-lived gRPC connection to plan-service. The connection is
+// established lazily on first use and reused across all calls — gRPC's HTTP/2
+// layer multiplexes streams over a single conn, so concurrent RPCs are cheap.
+// Opening a new conn per RPC (the previous shape) serialized badly under
+// concurrent load.
 type Client struct {
 	registry discovery.Registry
+	mu       sync.Mutex
+	conn     *grpc.ClientConn
 }
 
 func NewClient(registry discovery.Registry) *Client {
 	return &Client{registry: registry}
 }
 
-func (c *Client) dial(ctx context.Context) (pb.PlanServiceClient, pb.ChecklistServiceClient, func() error, error) {
+// ensureConn returns the cached ClientConn, redialing if it's missing or
+// shut down. All RPC entry points go through here.
+func (c *Client) ensureConn(ctx context.Context) (*grpc.ClientConn, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn != nil && c.conn.GetState() != connectivity.Shutdown {
+		return c.conn, nil
+	}
 	conn, err := discovery.ServiceConnection(ctx, targetService, c.registry)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
-	return pb.NewPlanServiceClient(conn), pb.NewChecklistServiceClient(conn), conn.Close, nil
+	c.conn = conn
+	return conn, nil
+}
+
+func (c *Client) planClient(ctx context.Context) (pb.PlanServiceClient, error) {
+	conn, err := c.ensureConn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return pb.NewPlanServiceClient(conn), nil
+}
+
+func (c *Client) checklistClient(ctx context.Context) (pb.ChecklistServiceClient, error) {
+	conn, err := c.ensureConn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return pb.NewChecklistServiceClient(conn), nil
+}
+
+// Close releases the underlying gRPC connection. Wire from gateway shutdown.
+func (c *Client) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return nil
+	}
+	err := c.conn.Close()
+	c.conn = nil
+	return err
 }
 
 // --- Plan methods ---
 
 func (c *Client) CreatePlan(ctx context.Context, userID uuid.UUID, req CreatePlanReq) (*PlanResp, error) {
-	plans, _, closer, err := c.dial(ctx)
+	plans, err := c.planClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := plans.CreatePlan(ctx, &pb.CreatePlanRequest{
 		UserId:      userID.String(),
 		Name:        req.Name,
@@ -51,11 +97,10 @@ func (c *Client) CreatePlan(ctx context.Context, userID uuid.UUID, req CreatePla
 }
 
 func (c *Client) GetPlan(ctx context.Context, id, userID uuid.UUID) (*PlanResp, error) {
-	plans, _, closer, err := c.dial(ctx)
+	plans, err := c.planClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := plans.GetPlan(ctx, &pb.GetPlanRequest{Id: id.String(), UserId: userID.String()})
 	if err != nil {
 		return nil, err
@@ -64,11 +109,10 @@ func (c *Client) GetPlan(ctx context.Context, id, userID uuid.UUID) (*PlanResp, 
 }
 
 func (c *Client) ListPlans(ctx context.Context, userID uuid.UUID) ([]*PlanResp, error) {
-	plans, _, closer, err := c.dial(ctx)
+	plans, err := c.planClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := plans.ListPlans(ctx, &pb.ListPlansRequest{UserId: userID.String()})
 	if err != nil {
 		return nil, err
@@ -77,11 +121,10 @@ func (c *Client) ListPlans(ctx context.Context, userID uuid.UUID) ([]*PlanResp, 
 }
 
 func (c *Client) ListSharedPlans(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*PlanResp, error) {
-	plans, _, closer, err := c.dial(ctx)
+	plans, err := c.planClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := plans.ListSharedPlans(ctx, &pb.ListSharedPlansRequest{
 		UserId: userID.String(),
 		Limit:  int32(limit),
@@ -94,11 +137,10 @@ func (c *Client) ListSharedPlans(ctx context.Context, userID uuid.UUID, limit, o
 }
 
 func (c *Client) SearchPlans(ctx context.Context, userID uuid.UUID, params SearchParam) ([]*pb.SearchPlanResult, error) {
-	plans, _, closer, err := c.dial(ctx)
+	plans, err := c.planClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	limit, _ := strconv.Atoi(params.Limit)
 	if limit <= 0 {
 		limit = 20
@@ -117,11 +159,10 @@ func (c *Client) SearchPlans(ctx context.Context, userID uuid.UUID, params Searc
 }
 
 func (c *Client) UpdatePlan(ctx context.Context, id, userID uuid.UUID, req UpdatePlanReq) (*PlanResp, error) {
-	plans, _, closer, err := c.dial(ctx)
+	plans, err := c.planClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := plans.UpdatePlan(ctx, &pb.UpdatePlanRequest{
 		Id:          id.String(),
 		UserId:      userID.String(),
@@ -137,11 +178,10 @@ func (c *Client) UpdatePlan(ctx context.Context, id, userID uuid.UUID, req Updat
 }
 
 func (c *Client) ToggleDailyReset(ctx context.Context, id, userID uuid.UUID) (*PlanResp, error) {
-	plans, _, closer, err := c.dial(ctx)
+	plans, err := c.planClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := plans.ToggleDailyReset(ctx, &pb.ToggleDailyResetRequest{Id: id.String(), UserId: userID.String()})
 	if err != nil {
 		return nil, err
@@ -150,21 +190,19 @@ func (c *Client) ToggleDailyReset(ctx context.Context, id, userID uuid.UUID) (*P
 }
 
 func (c *Client) DeletePlan(ctx context.Context, id, userID uuid.UUID) error {
-	plans, _, closer, err := c.dial(ctx)
+	plans, err := c.planClient(ctx)
 	if err != nil {
 		return err
 	}
-	defer closer()
 	_, err = plans.DeletePlan(ctx, &pb.DeletePlanRequest{Id: id.String(), UserId: userID.String()})
 	return err
 }
 
 func (c *Client) AssertPlanOwnership(ctx context.Context, planID, userID uuid.UUID) error {
-	plans, _, closer, err := c.dial(ctx)
+	plans, err := c.planClient(ctx)
 	if err != nil {
 		return err
 	}
-	defer closer()
 	_, err = plans.AssertPlanOwnership(ctx, &pb.AssertPlanOwnershipRequest{
 		PlanId: planID.String(),
 		UserId: userID.String(),
@@ -175,11 +213,10 @@ func (c *Client) AssertPlanOwnership(ctx context.Context, planID, userID uuid.UU
 // --- Checklist methods ---
 
 func (c *Client) CreateChecklist(ctx context.Context, planID, userID uuid.UUID, req CreateChecklistReq) (*ChecklistResp, error) {
-	_, items, closer, err := c.dial(ctx)
+	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 
 	scopeStr := ""
 	if req.Scope != nil {
@@ -206,11 +243,10 @@ func (c *Client) CreateChecklist(ctx context.Context, planID, userID uuid.UUID, 
 }
 
 func (c *Client) GetChecklist(ctx context.Context, id, userID uuid.UUID) (*ChecklistResp, error) {
-	_, items, closer, err := c.dial(ctx)
+	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := items.GetItem(ctx, &pb.GetItemRequest{Id: id.String(), UserId: userID.String()})
 	if err != nil {
 		return nil, err
@@ -219,11 +255,10 @@ func (c *Client) GetChecklist(ctx context.Context, id, userID uuid.UUID) (*Check
 }
 
 func (c *Client) ListChecklists(ctx context.Context, planID, userID uuid.UUID, scope, itemType *string) ([]*ChecklistResp, error) {
-	_, items, closer, err := c.dial(ctx)
+	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := items.ListItems(ctx, &pb.ListItemsRequest{
 		PlanId: planID.String(),
 		UserId: userID.String(),
@@ -237,11 +272,10 @@ func (c *Client) ListChecklists(ctx context.Context, planID, userID uuid.UUID, s
 }
 
 func (c *Client) ListArchivedChecklists(ctx context.Context, planID, userID uuid.UUID) ([]*ChecklistResp, error) {
-	_, items, closer, err := c.dial(ctx)
+	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := items.ListArchivedItems(ctx, &pb.ListArchivedItemsRequest{
 		PlanId: planID.String(),
 		UserId: userID.String(),
@@ -253,11 +287,10 @@ func (c *Client) ListArchivedChecklists(ctx context.Context, planID, userID uuid
 }
 
 func (c *Client) ListUpcomingChecklists(ctx context.Context, planID, userID uuid.UUID) ([]*ChecklistResp, error) {
-	_, items, closer, err := c.dial(ctx)
+	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := items.ListUpcomingItems(ctx, &pb.ListUpcomingItemsRequest{
 		PlanId: planID.String(),
 		UserId: userID.String(),
@@ -271,11 +304,10 @@ func (c *Client) ListUpcomingChecklists(ctx context.Context, planID, userID uuid
 // ListChecklistsByUser returns all non-archived items across the user's
 // plans. Used by the useranalytics consumer adapter.
 func (c *Client) ListChecklistsByUser(ctx context.Context, userID uuid.UUID) ([]*ChecklistResp, error) {
-	_, items, closer, err := c.dial(ctx)
+	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := items.ListItemsByUser(ctx, &pb.ListItemsByUserRequest{UserId: userID.String()})
 	if err != nil {
 		return nil, err
@@ -284,11 +316,10 @@ func (c *Client) ListChecklistsByUser(ctx context.Context, userID uuid.UUID) ([]
 }
 
 func (c *Client) UpdateChecklist(ctx context.Context, id, userID uuid.UUID, req UpdateChecklistReq) (*ChecklistResp, error) {
-	_, items, closer, err := c.dial(ctx)
+	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 
 	pbReq := &pb.UpdateItemRequest{
 		Id:          id.String(),
@@ -315,11 +346,10 @@ func (c *Client) UpdateChecklist(ctx context.Context, id, userID uuid.UUID, req 
 }
 
 func (c *Client) UpdateChecklistDates(ctx context.Context, id, userID uuid.UUID, req UpdateDatesReq) (*ChecklistResp, error) {
-	_, items, closer, err := c.dial(ctx)
+	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 
 	pbReq := &pb.UpdateItemDatesRequest{
 		Id:     id.String(),
@@ -339,11 +369,10 @@ func (c *Client) UpdateChecklistDates(ctx context.Context, id, userID uuid.UUID,
 }
 
 func (c *Client) ArchiveChecklist(ctx context.Context, id, userID uuid.UUID, archived bool) (*ChecklistResp, error) {
-	_, items, closer, err := c.dial(ctx)
+	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer closer()
 	resp, err := items.ArchiveItem(ctx, &pb.ArchiveItemRequest{
 		Id: id.String(), UserId: userID.String(), Archived: archived,
 	})
@@ -354,11 +383,10 @@ func (c *Client) ArchiveChecklist(ctx context.Context, id, userID uuid.UUID, arc
 }
 
 func (c *Client) DeleteChecklist(ctx context.Context, id, userID uuid.UUID) error {
-	_, items, closer, err := c.dial(ctx)
+	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return err
 	}
-	defer closer()
 	_, err = items.DeleteItem(ctx, &pb.DeleteItemRequest{Id: id.String(), UserId: userID.String()})
 	return err
 }
@@ -366,11 +394,10 @@ func (c *Client) DeleteChecklist(ctx context.Context, id, userID uuid.UUID) erro
 // DailyReset triggers the cross-plan daily uncomplete sweep on plan-service.
 // Called from the gateway's nightly job in 4c.
 func (c *Client) DailyReset(ctx context.Context) (int, error) {
-	_, items, closer, err := c.dial(ctx)
+	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return 0, err
 	}
-	defer closer()
 	resp, err := items.DailyReset(ctx, &pb.DailyResetRequest{})
 	if err != nil {
 		return 0, err

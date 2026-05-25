@@ -103,27 +103,16 @@ func (r *Registry) HealthCheck(instanceID, serviceName string) error {
 // Returns a list of host:port strings for all healthy instances
 // This is how services find other services they need to communicate with
 func (r *Registry) Discover(ctx context.Context, serviceName string) ([]string, error) {
-	// Query Consul for healthy instances of the specified service
-	// The empty string parameter is for tags (unused here)
-	// The 'true' parameter means "only return passing services"
+	// Query Consul for healthy instances of the specified service.
+	// Empty tag filter, "passing only" = true.
 	entries, _, err := r.client.Health().Service(serviceName, "", true, nil)
-
-	// TODO: REMOVE AFTER DEBUG
-	fmt.Printf("\ncurrent entries: \n\n%+v\n\n", entries)
-
 	if err != nil {
 		return nil, err
 	}
 
-	// Build a list of host:port strings from the results
-	var instances []string
+	instances := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		instances = append(instances, fmt.Sprintf("%s:%d", entry.Service.Address, entry.Service.Port))
 	}
-
-	// TODO: REMOVE AFTER DEBUG
-	fmt.Printf("\ncurrent instances: \n\n%+v\n\n", instances)
-
-	// Return the list of discovered service instances
 	return instances, nil
 }

@@ -241,8 +241,19 @@ export default function Todo({
     localStorage.setItem('refreshDailyTasks', String(refreshDailyTasks));
   }, [refreshDailyTasks]);
 
-  // Fetch todos on component mount and when planId or taskType changes
+  // Fetch todos on component mount and when planId or taskType changes.
+  //
+  // Race-condition guard: under React StrictMode (dev double-invoke) and any
+  // parent re-render that causes this effect to re-fire mid-flight, multiple
+  // fetches can be in-flight at once. Without a guard, whichever resolves
+  // LAST wins — including the catch-block's setTodos([]) from a transient
+  // error, which silently wipes data a sibling fetch had just loaded.
+  //
+  // `cancelled` short-circuits any state writes from a stale effect. The
+  // cleanup function flips it on next-effect-run / unmount.
   useEffect(() => {
+    let cancelled = false;
+
     const loadTodos = async () => {
       try {
         setLoading(true);
@@ -257,14 +268,18 @@ export default function Todo({
           );
         }
 
+        if (cancelled) return;
         setTodos(response.result || []);
         setError(null);
       } catch (error) {
+        if (cancelled) return;
         console.error('Failed to fetch checklist items:', error);
         setError('Failed to load tasks. Please try again later.');
-        setTodos([]);
+        // Intentionally do NOT setTodos([]) here. A transient gateway/gRPC
+        // error shouldn't wipe data that a successful concurrent fetch may
+        // already have loaded. Stale-but-correct beats empty-and-wrong.
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
@@ -277,6 +292,10 @@ export default function Todo({
       // Clear insights when not in daily mode
       setDailyInsights([]);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [planId, taskType]);
 
   // Handle typing animation for input
@@ -1246,11 +1265,11 @@ export default function Todo({
               <p className="text-gray-500 text-base">No archived tasks found.</p>
             </div>
           ) : (
-            <ul className="space-y-3">
+            <ul className="space-y-6 divide-y divide-gray-200 dark:divide-gray-800/50">
               {archivedTodos.map((todo, index) => (
                 <li
                   key={todo.id}
-                  className="relative flex items-center justify-between group transition-all duration-200 opacity-60"
+                  className="relative flex items-center justify-between group transition-all duration-200 opacity-60 pt-6 first:pt-0"
                 >
                   <div className="flex items-center space-x-3 flex-1">
                     <div className="flex flex-col flex-1">
@@ -1379,13 +1398,19 @@ export default function Todo({
               </p>
             </div>
           ) : (
-            <ul className="space-y-3 mt-4">
+            // space-y-6 = 24px gap so the hover-menu has room above each row;
+            // divide-y adds a subtle 1px line between rows for visual structure.
+            <ul className="space-y-6 divide-y divide-gray-200 dark:divide-gray-800/50 mt-4">
               {orderedRows.map((todo, index) => (
                 <li
                   key={todo.id}
                   tabIndex={0}
                   onKeyDown={(e) => handleRowKeyDown(e, todo.id)}
-                  className={`relative flex items-center justify-between group transition-all duration-200 outline-none focus:ring-1 focus:ring-orange-500/30 rounded ${
+                  // pt-6 + first:pt-0 → content sits 24px below the divider
+                  // line above it, mirroring the 24px gap below (space-y-6),
+                  // so each row's content is centred between consecutive
+                  // divider lines. First row has no line above → no top padding.
+                  className={`relative flex items-center justify-between group transition-all duration-200 outline-none focus:ring-1 focus:ring-orange-500/30 rounded pt-6 first:pt-0 ${
                     todo.parentId && renderedParents.has(todo.parentId)
                       ? 'ml-8 border-l-2 border-white/10 pl-3'
                       : ''
@@ -1488,7 +1513,7 @@ export default function Todo({
                             (todo.type ?? 'task') === 'task' ? 'pointer' : 'default',
                         }}
                       >
-                        <div className="flex flex-1 space-x-2">
+                        <div className="flex flex-1 items-center space-x-2">
                           {(todo.type ?? 'task') === 'task' && (
                             <input
                               type="checkbox"
@@ -1547,7 +1572,12 @@ export default function Todo({
                         </div>
                       </div>
 
-                      <div className="absolute right-[0] flex space-x-1">
+                      {/* Hover menu floats in the gap ABOVE the row. -top-6
+                          (-24px) lines its top edge up with the bottom of the
+                          previous row's content, so it sits entirely in the
+                          gap region (24px space + 4px of this row's pt-6
+                          empty area). No overlap with previous content. */}
+                      <div className="absolute -top-6 right-0 flex space-x-1 z-10">
                         {taskType === 'archived' ? (
                           // Delete button for archived items
                           <button

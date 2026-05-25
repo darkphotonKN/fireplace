@@ -7,9 +7,9 @@ import (
 	commondiscovery "github.com/darkphotonKN/fireplace/common/discovery"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/ai"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/calendar"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/discovery" // legacy AI search discovery (not service registry)
 	authgw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/auth"
+	calendargw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/calendar"
 	plangw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/plan"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/insights"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/jobs"
@@ -84,9 +84,11 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	notesService := notes.NewService(notesRepo, notesGen, planAdapter, planAdapter)
 	notesHandler := notes.NewHandler(notesService)
 
-	calendarRepo := calendar.NewRepository(db)
-	calendarService := calendar.NewService(calendarRepo, planAdapter)
-	calendarHandler := calendar.NewHandler(calendarService)
+	// calendar-service is remote — gateway proxies /api/plans/:id/calendar
+	// through calendargw via gRPC. Calendar-service calls plan-service on
+	// its own for ownership checks + item reads.
+	calendarGwClient := calendargw.NewClient(registry)
+	calendarGwHandler := calendargw.NewHandler(calendarGwClient)
 
 	// --- PUBLIC ROUTES (no auth) ---
 
@@ -148,9 +150,9 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	notesRoutes.DELETE("/:noteId", notesHandler.Delete)
 	notesRoutes.POST("/generate-ai", notesHandler.GenerateAINotes)
 
-	// -- Calendar Routes --
+	// -- Calendar Routes (proxied to calendar-service via gRPC) --
 	calendarRoutes := protected.Group("/plans/:id/calendar")
-	calendarRoutes.GET("", calendarHandler.GetCalendar)
+	calendarRoutes.GET("", calendarGwHandler.GetCalendar)
 
 	// --- JOBS ---
 	// Daily reset is now a gRPC call to plan-service.DailyReset (via the adapter).

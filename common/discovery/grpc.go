@@ -3,7 +3,6 @@ package discovery
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/rand"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -11,23 +10,26 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// ServiceConnection looks up a healthy instance of serviceName in the registry
+// and returns a fresh gRPC client connection to it.
+//
+// IMPORTANT: callers should NOT call this per RPC. The ClientConn returned is
+// long-lived; gRPC handles reconnection internally. Open once in your gateway
+// client constructor, keep it for the lifetime of the gateway. Opening a new
+// conn per request serializes badly under concurrent load — measured 1 success
+// + 4×15s timeouts on a burst of 5 sign-ins before this rule was followed.
 func ServiceConnection(ctx context.Context, serviceName string, registry Registry) (*grpc.ClientConn, error) {
-
-	fmt.Println("serviceName: ", serviceName)
-	// discover the other services
 	addrs, err := registry.Discover(ctx, serviceName)
-
-	fmt.Println("addrs: ", addrs)
 	if err != nil {
 		return nil, err
 	}
-
-	length := len(addrs)
-
-	if length == 0 {
-		return nil, errors.New("There are no services to discover now.")
+	if len(addrs) == 0 {
+		return nil, errors.New("no healthy instances of service: " + serviceName)
 	}
-	// credentials := insecure.NewCredentials()
 
-	return grpc.NewClient(addrs[rand.Intn(length)], grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	return grpc.NewClient(
+		addrs[rand.Intn(len(addrs))],
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+	)
 }
