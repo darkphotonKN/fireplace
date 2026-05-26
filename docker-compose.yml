@@ -188,6 +188,48 @@ services:
     networks:
       - fireplace-network
 
+  # --- Temporal (workflow orchestration) ---
+  temporal-postgres:
+    image: postgres:16
+    container_name: fireplace-temporal-postgres
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    ports:
+      - "5440:5432" # off to the side so it can't clash with your service DBs
+    volumes:
+      - temporal-pgdata:/var/lib/postgresql/data
+
+  temporal:
+    image: temporalio/auto-setup:1.27.2
+    container_name: fireplace-temporal
+    depends_on:
+      - temporal-postgres
+    environment:
+      - DB=postgres12 # driver name; works for pg12+ incl. 16
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-postgres # hostname of the pg container
+    ports:
+      - "7233:7233" # frontend gRPC — your worker dials this
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    container_name: fireplace-temporal-ui
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    ports:
+      - "8233:8080" # Web UI at http://localhost:8233
+
 networks:
   fireplace-network:
     name: fireplace-network
@@ -205,3 +247,4 @@ volumes:
   fireplace_plan_service_test_pgdata:
   fireplace_calendar_service_pgdata:
   fireplace_calendar_service_test_pgdata:
+  temporal-pgdata:

@@ -4,11 +4,14 @@
 *.so
 *.dylib
 
-# Go build artifacts (match per-service paths after the strangler restructure)
+# Go build artifacts (match per-service paths anywhere in the tree)
 bin/
 build/
 dist/
 *.out
+*.prof
+*.coverprofile
+__debug_bin*
 
 # Temporary files
 *.log
@@ -50,4 +53,7 @@ GO_MCP_TEMPLATE_SUMMARY.md
 setup-go-mcp-project.sh
 .claude/
 
+# Air hot-reload tmp dirs — match the directory and everything inside,
+# at any depth (e.g. services/auth-service/tmp/main).
+tmp/
 tmp/*
