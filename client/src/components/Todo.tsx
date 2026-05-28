@@ -1265,11 +1265,11 @@ export default function Todo({
               <p className="text-gray-500 text-base">No archived tasks found.</p>
             </div>
           ) : (
-            <ul className="space-y-6 divide-y divide-gray-200 dark:divide-gray-800/50">
+            <ul className="space-y-4 divide-y divide-gray-200 dark:divide-gray-800/50">
               {archivedTodos.map((todo, index) => (
                 <li
                   key={todo.id}
-                  className="relative flex items-center justify-between group transition-all duration-200 opacity-60 pt-6 first:pt-0"
+                  className="relative flex items-center justify-between group transition-all duration-200 opacity-60 pt-4 first:pt-0"
                 >
                   <div className="flex items-center space-x-3 flex-1">
                     <div className="flex flex-col flex-1">
@@ -1398,19 +1398,19 @@ export default function Todo({
               </p>
             </div>
           ) : (
-            // space-y-6 = 24px gap so the hover-menu has room above each row;
+            // space-y-4 = 16px gap so the hover-menu has room above each row;
             // divide-y adds a subtle 1px line between rows for visual structure.
-            <ul className="space-y-6 divide-y divide-gray-200 dark:divide-gray-800/50 mt-4">
+            <ul className="space-y-4 divide-y divide-gray-200 dark:divide-gray-800/50 mt-4">
               {orderedRows.map((todo, index) => (
                 <li
                   key={todo.id}
                   tabIndex={0}
                   onKeyDown={(e) => handleRowKeyDown(e, todo.id)}
-                  // pt-6 + first:pt-0 → content sits 24px below the divider
-                  // line above it, mirroring the 24px gap below (space-y-6),
+                  // pt-4 + first:pt-0 → content sits 16px below the divider
+                  // line above it, mirroring the 16px gap below (space-y-4),
                   // so each row's content is centred between consecutive
                   // divider lines. First row has no line above → no top padding.
-                  className={`relative flex items-center justify-between group transition-all duration-200 outline-none focus:ring-1 focus:ring-orange-500/30 rounded pt-6 first:pt-0 ${
+                  className={`relative flex items-center justify-between group transition-all duration-200 outline-none focus:ring-1 focus:ring-orange-500/30 rounded pt-4 first:pt-0 ${
                     todo.parentId && renderedParents.has(todo.parentId)
                       ? 'ml-8 border-l-2 border-white/10 pl-3'
                       : ''
@@ -1572,12 +1572,12 @@ export default function Todo({
                         </div>
                       </div>
 
-                      {/* Hover menu floats in the gap ABOVE the row. -top-6
-                          (-24px) lines its top edge up with the bottom of the
-                          previous row's content, so it sits entirely in the
-                          gap region (24px space + 4px of this row's pt-6
-                          empty area). No overlap with previous content. */}
-                      <div className="absolute -top-6 right-0 flex space-x-1 z-10">
+                      {/* Hover menu floats in the gap ABOVE the row. -top-4
+                          (-16px) lines its top edge up with the bottom of the
+                          previous row's content, so it sits in the 16px gap
+                          plus 12px into this row's pt-4 empty area. No
+                          overlap with previous content. */}
+                      <div className="absolute -top-4 right-0 flex space-x-1 z-10">
                         {taskType === 'archived' ? (
                           // Delete button for archived items
                           <button

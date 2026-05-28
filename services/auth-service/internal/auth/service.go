@@ -12,9 +12,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// TTL defaults applied when env vars are unset or unparseable.
+// 1h / 7d matches the original monolith — kept here as a safety net.
 const (
-	accessTTL  = time.Hour
-	refreshTTL = 24 * 7 * time.Hour
+	defaultAccessTTL  = time.Hour
+	defaultRefreshTTL = 24 * 7 * time.Hour
 )
 
 type Repository interface {
@@ -27,14 +29,33 @@ type Repository interface {
 }
 
 type service struct {
-	repo      Repository
-	publishCh commonbroker.Publisher
-	jwtSecret string
+	repo       Repository
+	publishCh  commonbroker.Publisher
+	jwtSecret  string
+	accessTTL  time.Duration
+	refreshTTL time.Duration
 }
 
-func NewService(repo Repository, publishCh commonbroker.Publisher, jwtSecret string) *service {
-	return &service{repo: repo, publishCh: publishCh, jwtSecret: jwtSecret}
+// NewService constructs the auth service. accessTTL / refreshTTL come from
+// the env (ACCESS_TOKEN_TTL / REFRESH_TOKEN_TTL) — caller parses them with
+// time.ParseDuration. Pass 0 to fall back to the const defaults above.
+func NewService(repo Repository, publishCh commonbroker.Publisher, jwtSecret string, accessTTL, refreshTTL time.Duration) *service {
+	if accessTTL <= 0 {
+		accessTTL = defaultAccessTTL
+	}
+	if refreshTTL <= 0 {
+		refreshTTL = defaultRefreshTTL
+	}
+	return &service{
+		repo:       repo,
+		publishCh:  publishCh,
+		jwtSecret:  jwtSecret,
+		accessTTL:  accessTTL,
+		refreshTTL: refreshTTL,
+	}
 }
+
+// (issueTokens defined below; keeps the field references compact)
 
 func (s *service) SignUp(ctx context.Context, in *SignUpInput) (*AuthTokens, error) {
 	if in.Email == "" || in.Password == "" || in.Name == "" {
@@ -114,11 +135,11 @@ func (s *service) DeleteUser(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *service) issueTokens(u *User) (*AuthTokens, error) {
-	access, err := commonauth.GenerateJWT(u.ID, commonauth.TokenTypeAccess, s.jwtSecret, accessTTL)
+	access, err := commonauth.GenerateJWT(u.ID, commonauth.TokenTypeAccess, s.jwtSecret, s.accessTTL)
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := commonauth.GenerateJWT(u.ID, commonauth.TokenTypeRefresh, s.jwtSecret, refreshTTL)
+	refresh, err := commonauth.GenerateJWT(u.ID, commonauth.TokenTypeRefresh, s.jwtSecret, s.refreshTTL)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +147,7 @@ func (s *service) issueTokens(u *User) (*AuthTokens, error) {
 		User:             u,
 		AccessToken:      access,
 		RefreshToken:     refresh,
-		AccessExpiresIn:  accessTTL,
-		RefreshExpiresIn: refreshTTL,
+		AccessExpiresIn:  s.accessTTL,
+		RefreshExpiresIn: s.refreshTTL,
 	}, nil
 }

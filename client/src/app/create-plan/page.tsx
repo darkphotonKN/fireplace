@@ -110,6 +110,31 @@ export default function CreatePlan() {
       <div className="max-w-7xl mx-auto flex items-center justify-center h-[calc(100vh-8rem)]">
         <Card className="w-full max-w-md backdrop-blur-sm shadow-lg border-0 bg-white/5 dark:bg-gray-900/10">
           <div className="p-8">
+            {/* Back button — uses router.back() so it returns to wherever the
+                user came from (My Plans, dashboard, etc.). Ghost styling so it
+                doesn't compete with the form; brand-colour on hover. */}
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="group inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-[rgb(247,111,83)] transition-colors mb-4 -ml-1 px-1 py-1 rounded-md focus:outline-none focus-visible:ring-1 focus-visible:ring-[rgb(247,111,83)]/50"
+              aria-label="Go back"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="w-4 h-4 transition-transform group-hover:-translate-x-0.5"
+                aria-hidden="true"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Back
+            </button>
+
             <h1 className="text-2xl font-bold mb-6 text-center">
               Create New Plan
             </h1>
