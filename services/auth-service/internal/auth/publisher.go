@@ -20,7 +20,7 @@ func (s *service) PublishUserCreated(ctx context.Context, u *User) {
 		CreatedAt: timestamppb.New(u.CreatedAt),
 	})
 	if err != nil {
-		slog.Error("failed to marshal user.created event", "error", err, "user_id", u.ID)
+		slog.ErrorContext(ctx, "failed to marshal user.created event", "err", err, "user_id", u.ID)
 		return
 	}
 	if err := s.publishCh.PublishWithContext(ctx,
@@ -32,13 +32,13 @@ func (s *service) PublishUserCreated(ctx context.Context, u *User) {
 			DeliveryMode: commonbroker.Persistent,
 		},
 	); err != nil {
-		slog.Error("failed to publish user.created", "error", err, "user_id", u.ID)
+		slog.ErrorContext(ctx, "failed to publish user.created", "err", err, "user_id", u.ID)
 	}
 }
 
-func (s *service) PublishUserUpdated(_ context.Context, u *User) {
+func (s *service) PublishUserUpdated(ctx context.Context, u *User) {
 	// No proto event defined yet; placeholder until consumers actually need it.
-	slog.Debug("publish user.updated (no consumers wired)", "user_id", u.ID)
+	slog.DebugContext(ctx, "publish user.updated (no consumers wired)", "user_id", u.ID)
 }
 
 func (s *service) PublishUserDeleted(ctx context.Context, id uuid.UUID) {
@@ -47,7 +47,7 @@ func (s *service) PublishUserDeleted(ctx context.Context, id uuid.UUID) {
 		DeletedAt: timestamppb.Now(),
 	})
 	if err != nil {
-		slog.Error("failed to marshal user.deleted event", "error", err, "user_id", id)
+		slog.ErrorContext(ctx, "failed to marshal user.deleted event", "err", err, "user_id", id)
 		return
 	}
 	if err := s.publishCh.PublishWithContext(ctx,
@@ -59,6 +59,6 @@ func (s *service) PublishUserDeleted(ctx context.Context, id uuid.UUID) {
 			DeliveryMode: commonbroker.Persistent,
 		},
 	); err != nil {
-		slog.Error("failed to publish user.deleted", "error", err, "user_id", id)
+		slog.ErrorContext(ctx, "failed to publish user.deleted", "err", err, "user_id", id)
 	}
 }

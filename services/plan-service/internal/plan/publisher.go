@@ -20,7 +20,7 @@ func (s *service) PublishPlanCreated(ctx context.Context, p *Plan) {
 		CreatedAt: timestamppb.New(p.CreatedAt),
 	})
 	if err != nil {
-		slog.Error("failed to marshal plan.created event", "error", err, "plan_id", p.ID)
+		slog.ErrorContext(ctx, "failed to marshal plan.created event", "err", err, "plan_id", p.ID)
 		return
 	}
 	if err := s.publishCh.PublishWithContext(ctx,
@@ -32,7 +32,7 @@ func (s *service) PublishPlanCreated(ctx context.Context, p *Plan) {
 			DeliveryMode: commonbroker.Persistent,
 		},
 	); err != nil {
-		slog.Error("failed to publish plan.created", "error", err, "plan_id", p.ID)
+		slog.ErrorContext(ctx, "failed to publish plan.created", "err", err, "plan_id", p.ID)
 	}
 }
 
@@ -43,7 +43,7 @@ func (s *service) PublishPlanDeleted(ctx context.Context, planID, userID uuid.UU
 		DeletedAt: timestamppb.Now(),
 	})
 	if err != nil {
-		slog.Error("failed to marshal plan.deleted event", "error", err, "plan_id", planID)
+		slog.ErrorContext(ctx, "failed to marshal plan.deleted event", "err", err, "plan_id", planID)
 		return
 	}
 	if err := s.publishCh.PublishWithContext(ctx,
@@ -55,6 +55,6 @@ func (s *service) PublishPlanDeleted(ctx context.Context, planID, userID uuid.UU
 			DeliveryMode: commonbroker.Persistent,
 		},
 	); err != nil {
-		slog.Error("failed to publish plan.deleted", "error", err, "plan_id", planID)
+		slog.ErrorContext(ctx, "failed to publish plan.deleted", "err", err, "plan_id", planID)
 	}
 }

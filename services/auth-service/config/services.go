@@ -43,11 +43,11 @@ func SetupServices(db *sqlx.DB, amqpChannel *amqp.Channel, _ discovery.Registry)
 		slog.Warn("JWT_SECRET is empty — tokens will fail validation in the api-gateway")
 	}
 
-	// Token lifetimes — env-driven so dev can run with long TTLs and prod can
-	// tighten them without code changes. Defaults are dev-friendly (30d / 90d)
-	// to stop the "kicked out every hour" problem. Override in prod .env.
-	accessTTL := parseDurationOr("ACCESS_TOKEN_TTL", 720*time.Hour)   // 30 days
-	refreshTTL := parseDurationOr("REFRESH_TOKEN_TTL", 2160*time.Hour) // 90 days
+	// Token lifetimes — env-driven so each env can tune without code changes.
+	// Defaults match the .env (1d access / 7d refresh) — a standard short-lived
+	// access + medium-lived refresh split. Override in prod .env.
+	accessTTL := parseDurationOr("ACCESS_TOKEN_TTL", 24*time.Hour)    // 1 day
+	refreshTTL := parseDurationOr("REFRESH_TOKEN_TTL", 168*time.Hour) // 7 days
 	slog.Info("token lifetimes configured", "access", accessTTL, "refresh", refreshTTL)
 
 	service := auth.NewService(repo, publisher, jwtSecret, accessTTL, refreshTTL)

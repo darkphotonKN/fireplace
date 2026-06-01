@@ -2,8 +2,7 @@ package plan
 
 import (
 	"context"
-	"database/sql"
-	"errors"
+	"fmt"
 
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
@@ -19,6 +18,21 @@ func NewRepository(db *sqlx.DB) *repository {
 	return &repository{db: db}
 }
 
+// wrapDBErr is the repo boundary translation point: it converts infrastructure
+// errors (sql.ErrNoRows, duplicate keys, constraint violations, transient
+// failures) into domain sentinels via AnalyzeDBErr, and wraps anything else
+// with the repo name + operation for context. It never logs and never decides
+// transport status.
+func wrapDBErr(op string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if mapped := commonhelpers.AnalyzeDBErr(err); mapped != err {
+		return mapped
+	}
+	return fmt.Errorf("plan repo: %s: %w", op, err)
+}
+
 func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Plan, error) {
 	query := `
 	SELECT id, user_id, name, description, focus, plan_type, daily_reset, created_at, updated_at
@@ -26,10 +40,7 @@ func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Plan, error) {
 	WHERE id = $1`
 	var p Plan
 	if err := r.db.GetContext(ctx, &p, query, id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, commonconstants.ErrNotFound
-		}
-		return nil, commonhelpers.AnalyzeDBErr(err)
+		return nil, wrapDBErr("get plan by id "+id.String(), err)
 	}
 	return &p, nil
 }
@@ -42,14 +53,14 @@ func (r *repository) Create(ctx context.Context, p *Plan) (*Plan, error) {
 
 	rows, err := r.db.NamedQueryContext(ctx, query, p)
 	if err != nil {
-		return nil, commonhelpers.AnalyzeDBErr(err)
+		return nil, wrapDBErr("create plan", err)
 	}
 	defer rows.Close()
 
 	var created Plan
 	if rows.Next() {
 		if err := rows.StructScan(&created); err != nil {
-			return nil, commonhelpers.AnalyzeDBErr(err)
+			return nil, wrapDBErr("create plan: scan", err)
 		}
 	}
 	return &created, nil
@@ -74,7 +85,7 @@ func (r *repository) Update(ctx context.Context, in *UpdatePlanInput) error {
 		"daily_reset": in.DailyReset,
 	}
 	if _, err := r.db.NamedExecContext(ctx, query, params); err != nil {
-		return commonhelpers.AnalyzeDBErr(err)
+		return wrapDBErr("update plan "+in.ID.String(), err)
 	}
 	return nil
 }
@@ -82,11 +93,11 @@ func (r *repository) Update(ctx context.Context, in *UpdatePlanInput) error {
 func (r *repository) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM plans WHERE id = $1 AND user_id = $2`, id, userID)
 	if err != nil {
-		return commonhelpers.AnalyzeDBErr(err)
+		return wrapDBErr("delete plan "+id.String(), err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil {
-		return commonhelpers.AnalyzeDBErr(err)
+		return wrapDBErr("delete plan "+id.String()+": rows affected", err)
 	}
 	if rows == 0 {
 		return commonconstants.ErrNotFound
@@ -103,7 +114,7 @@ func (r *repository) ListByUser(ctx context.Context, userID uuid.UUID) ([]*Plan,
 
 	plans := []*Plan{}
 	if err := r.db.SelectContext(ctx, &plans, query, userID); err != nil {
-		return nil, commonhelpers.AnalyzeDBErr(err)
+		return nil, wrapDBErr("list plans by user "+userID.String(), err)
 	}
 	return plans, nil
 }
@@ -127,7 +138,7 @@ func (r *repository) ListShared(ctx context.Context, userID uuid.UUID, limit, of
 
 	plans := []*Plan{}
 	if err := r.db.SelectContext(ctx, &plans, query, userID, limit, offset); err != nil {
-		return nil, commonhelpers.AnalyzeDBErr(err)
+		return nil, wrapDBErr("list shared plans for user "+userID.String(), err)
 	}
 	return plans, nil
 }
@@ -142,7 +153,7 @@ func (r *repository) Search(ctx context.Context, in SearchInput) ([]*SearchResul
 
 	var out []*SearchResult
 	if err := r.db.SelectContext(ctx, &out, query, wildCard, in.UserID, in.Limit, in.Offset); err != nil {
-		return nil, commonhelpers.AnalyzeDBErr(err)
+		return nil, wrapDBErr("search plans", err)
 	}
 	return out, nil
 }
@@ -154,7 +165,7 @@ func (r *repository) CreateShare(ctx context.Context, planID, userID uuid.UUID) 
 		`INSERT INTO plan_shares (plan_id, user_id) VALUES ($1, $2)
 		 ON CONFLICT (user_id, plan_id) DO NOTHING`, planID, userID)
 	if err != nil {
-		return commonhelpers.AnalyzeDBErr(err)
+		return wrapDBErr("create share for plan "+planID.String(), err)
 	}
 	return nil
 }

@@ -25,10 +25,10 @@ type PlanService interface {
 }
 
 type Service struct {
-	repo               *Repository
-	aiGenerator        AIGenerator
-	checklistService   ChecklistService
-	planService        PlanService
+	repo             *Repository
+	aiGenerator      AIGenerator
+	checklistService ChecklistService
+	planService      PlanService
 }
 
 // NewService creates a new notes service
@@ -52,7 +52,7 @@ func (s *Service) CreateNote(planID uuid.UUID, req *CreateNoteReq) (*Note, error
 	ctx := context.Background()
 	_, err := s.planService.GetById(ctx, planID)
 	if err != nil {
-		return nil, fmt.Errorf("plan not found: %w", err)
+		return nil, fmt.Errorf("notes: create note: verify plan %s: %w", planID, err)
 	}
 
 	// Set defaults
@@ -78,33 +78,50 @@ func (s *Service) CreateNote(planID uuid.UUID, req *CreateNoteReq) (*Note, error
 		AIMetadata:     req.AIMetadata,
 	}
 
-	return s.repo.Create(note)
+	created, err := s.repo.Create(note)
+	if err != nil {
+		return nil, fmt.Errorf("notes: create note: %w", err)
+	}
+	return created, nil
 }
 
 // GetNoteByID retrieves a note by its ID
 func (s *Service) GetNoteByID(id uuid.UUID) (*Note, error) {
-	return s.repo.GetByID(id)
+	note, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, fmt.Errorf("notes: get note: %w", err)
+	}
+	return note, nil
 }
 
 // GetNotesByPlanID retrieves all notes for a plan with optional filters
 func (s *Service) GetNotesByPlanID(planID uuid.UUID, filters *FilterOptions) ([]Note, error) {
-	return s.repo.GetByPlanID(planID, filters)
+	out, err := s.repo.GetByPlanID(planID, filters)
+	if err != nil {
+		return nil, fmt.Errorf("notes: list notes by plan: %w", err)
+	}
+	return out, nil
 }
 
 // UpdateNote updates an existing note
 func (s *Service) UpdateNote(id uuid.UUID, updates *UpdateNoteReq) (*Note, error) {
-	// Verify note exists
-	_, err := s.repo.GetByID(id)
-	if err != nil {
-		return nil, err
+	// Verify note exists before applying the partial update.
+	if _, err := s.repo.GetByID(id); err != nil {
+		return nil, fmt.Errorf("notes: update note: %w", err)
 	}
-
-	return s.repo.Update(id, updates)
+	updated, err := s.repo.Update(id, updates)
+	if err != nil {
+		return nil, fmt.Errorf("notes: update note: %w", err)
+	}
+	return updated, nil
 }
 
 // DeleteNote removes a note
 func (s *Service) DeleteNote(id uuid.UUID) error {
-	return s.repo.Delete(id)
+	if err := s.repo.Delete(id); err != nil {
+		return fmt.Errorf("notes: delete note: %w", err)
+	}
+	return nil
 }
 
 // GenerateAINotes generates AI-powered notes based on plan context
@@ -113,14 +130,14 @@ func (s *Service) GenerateAINotes(planID uuid.UUID, requestType string) ([]Note,
 	ctx := context.Background()
 	plan, err := s.planService.GetById(ctx, planID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get plan: %w", err)
+		return nil, fmt.Errorf("notes: generate ai notes: get plan %s: %w", planID, err)
 	}
 
 	// Get checklist items for context
 	scope := "daily"
 	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planID, &scope, nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get checklist items: %w", err)
+		return nil, fmt.Errorf("notes: generate ai notes: get checklist items: %w", err)
 	}
 
 	var notes []Note
@@ -359,14 +376,14 @@ func (s *Service) generateTagsFromContent(content string) []string {
 
 	// Action tags
 	actionKeywords := map[string][]string{
-		"review":    {"review", "check", "examine"},
-		"testing":   {"test", "testing", "qa"},
-		"bug-fix":   {"bug", "fix", "issue", "error"},
-		"feature":   {"feature", "enhancement", "improve"},
-		"refactor":  {"refactor", "cleanup", "optimize"},
-		"research":  {"research", "investigate", "explore"},
-		"planning":  {"plan", "planning", "strategy"},
-		"meeting":   {"meeting", "discussion", "sync"},
+		"review":   {"review", "check", "examine"},
+		"testing":  {"test", "testing", "qa"},
+		"bug-fix":  {"bug", "fix", "issue", "error"},
+		"feature":  {"feature", "enhancement", "improve"},
+		"refactor": {"refactor", "cleanup", "optimize"},
+		"research": {"research", "investigate", "explore"},
+		"planning": {"plan", "planning", "strategy"},
+		"meeting":  {"meeting", "discussion", "sync"},
 	}
 
 	for tag, keywords := range actionKeywords {

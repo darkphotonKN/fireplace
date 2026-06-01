@@ -1,0 +1,113 @@
+# Fireplace API Gateway — runnable requests (REST Client / JetBrains http-client)
+#
+# These replace Postman for dev use: version-controlled, diffable in PRs, seeded
+# from the OpenAPI example values in docs/swagger.json. One representative
+# request per checklist endpoint (the reference vertical), plus the
+# conditional-rule demonstration on PATCH .../dates:
+#   - "dates present"  (startDate <= dueDate)  -> 200
+#   - "dates omitted"  (both left unchanged)   -> 200   (fields are optional)
+#   - "dates invalid"  (startDate >  dueDate)  -> 400   (rule enforced DOWNSTREAM
+#                                                        in plan-service, not by
+#                                                        the schema)
+#
+# VS Code REST Client auto-captures the token from the signin response below.
+# JetBrains users: replace {{token}} with a pasted token, or use the client.global
+# capture in the response handler.
+
+@baseUrl     = http://localhost:8080/api
+@planId      = 550e8400-e29b-41d4-a716-446655440000
+@checklistId = 3f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8
+
+### Sign in to obtain a JWT (seeds {{token}} for the protected requests)
+# @name signin
+POST {{baseUrl}}/users/signin
+Content-Type: application/json
+
+{
+  "email": "darkphoton20@gmail.com",
+  "password": "replace-me"
+}
+
+# VS Code REST Client: pull the access token out of the named response above.
+@token = {{signin.response.body.result.accessToken}}
+
+### Create a checklist item (task) under a plan
+POST {{baseUrl}}/plans/{{planId}}/checklists
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "description": "Write the integration test plan",
+  "scope": "daily",
+  "type": "task"
+}
+
+### List non-archived checklist items (filter by scope)
+GET {{baseUrl}}/plans/{{planId}}/checklists?scope=daily
+Authorization: Bearer {{token}}
+
+### List archived checklist items
+GET {{baseUrl}}/plans/{{planId}}/checklists/archived
+Authorization: Bearer {{token}}
+
+### List upcoming checklist items (start date within the next week)
+GET {{baseUrl}}/plans/{{planId}}/checklists/upcoming
+Authorization: Bearer {{token}}
+
+### Get a single checklist item
+GET {{baseUrl}}/plans/{{planId}}/checklists/{{checklistId}}
+Authorization: Bearer {{token}}
+
+### Update a checklist item (partial)
+PATCH {{baseUrl}}/plans/{{planId}}/checklists/{{checklistId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "description": "Updated description",
+  "done": true
+}
+
+### Update dates — CONDITIONAL DEMO A: both dates present, startDate <= dueDate -> 200
+PATCH {{baseUrl}}/plans/{{planId}}/checklists/{{checklistId}}/dates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "startDate": "2026-06-01",
+  "dueDate": "2026-06-15"
+}
+
+### Update dates — CONDITIONAL DEMO B: dates omitted (both optional, left unchanged) -> 200
+PATCH {{baseUrl}}/plans/{{planId}}/checklists/{{checklistId}}/dates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Update dates — CONDITIONAL DEMO C: startDate AFTER dueDate -> 400 (rule enforced downstream)
+PATCH {{baseUrl}}/plans/{{planId}}/checklists/{{checklistId}}/dates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "startDate": "2026-06-20",
+  "dueDate": "2026-06-15"
+}
+
+### Clear a date — three-state JSON: null clears the column
+PATCH {{baseUrl}}/plans/{{planId}}/checklists/{{checklistId}}/dates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "startDate": null
+}
+
+### Archive a checklist item (body ignored; always archives)
+PATCH {{baseUrl}}/plans/{{planId}}/checklists/{{checklistId}}/archive
+Authorization: Bearer {{token}}
+
+### Delete a checklist item
+DELETE {{baseUrl}}/plans/{{planId}}/checklists/{{checklistId}}
+Authorization: Bearer {{token}}

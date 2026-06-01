@@ -2,6 +2,7 @@ package plan
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	eventspb "github.com/darkphotonKN/fireplace/common/api/proto/events"
@@ -61,28 +62,36 @@ func (c *Consumer) consumeEvents() {
 }
 
 // handleUserDeleted unmarshals the auth event and cascades the delete to
-// every plan owned by the user. Failures requeue once via Nack(false, true);
-// duplicate processing is acceptable here because plan deletion is idempotent
-// at the "row already gone" boundary.
+// every plan owned by the user. The consumer is the event-processing boundary:
+// it is the one place that inspects the error to decide ack vs requeue and logs
+// the outcome. Transient failures (commonconstants.ErrTransient) requeue for
+// retry; permanent failures (parse errors, logic failures) are acked to drop
+// the poison message rather than loop forever. Duplicate processing is safe
+// because plan deletion is idempotent at the "row already gone" boundary.
 func (c *Consumer) handleUserDeleted(ctx context.Context, msg amqp.Delivery) {
 	var event eventspb.UserDeletedEvent
 	if err := proto.Unmarshal(msg.Body, &event); err != nil {
-		slog.Error("plan-service: failed to unmarshal user.deleted", "error", err)
+		slog.ErrorContext(ctx, "plan-service: failed to unmarshal user.deleted", "err", err)
 		msg.Ack(false) // unparseable — don't requeue, just drop
 		return
 	}
 	userID, err := uuid.Parse(event.Id)
 	if err != nil {
-		slog.Error("plan-service: invalid user_id in user.deleted", "error", err, "raw_id", event.Id)
+		slog.ErrorContext(ctx, "plan-service: invalid user_id in user.deleted", "err", err, "raw_id", event.Id)
 		msg.Ack(false)
 		return
 	}
 	if err := c.service.CascadeDeleteForUser(ctx, userID); err != nil {
-		slog.Error("plan-service: cascade delete failed", "error", err, "user_id", userID)
-		_ = msg.Nack(false, true) // requeue once
+		if errors.Is(err, commonconstants.ErrTransient) {
+			slog.WarnContext(ctx, "plan-service: cascade delete transient failure, requeueing", "err", err, "user_id", userID)
+			_ = msg.Nack(false, true) // requeue — transient, worth retrying
+			return
+		}
+		slog.ErrorContext(ctx, "plan-service: cascade delete failed, dropping", "err", err, "user_id", userID)
+		msg.Ack(false) // permanent failure — drop to avoid a poison-message loop
 		return
 	}
-	slog.Info("plan-service: cascade-deleted plans for user", "user_id", userID)
+	slog.InfoContext(ctx, "plan-service: cascade-deleted plans for user", "user_id", userID)
 	msg.Ack(false)
 }
 

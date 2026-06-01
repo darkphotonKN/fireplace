@@ -10,7 +10,6 @@ import (
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/concepts"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/discovery"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/interfaces"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/logger"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/models"
 )
 
@@ -58,13 +57,12 @@ func NewService(repo Repository, contentGen interfaces.ContentGenerator, checkli
 func (s *service) GenerateSuggestions(ctx context.Context, planId uuid.UUID) (string, error) {
 	prompt, err := s.generatePromptWithChecklist(ctx, planId, "")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("insights: generate suggestions: %w", err)
 	}
 
 	res, err := s.contentGen.Generate(prompt)
-
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("insights: generate suggestions: %w", err)
 	}
 
 	return res, nil
@@ -77,7 +75,7 @@ func (s *service) GenerateDailySuggestions(ctx context.Context, planId uuid.UUID
 	// TODO: add default rules for daily suggestion to additional prompt argument.
 	prompt, err := s.generatePromptWithChecklist(ctx, planId, "focus on tasks that are marked as \"longterm\" and breaking them down when you make your suggestions.")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("insights: generate daily suggestions: %w", err)
 	}
 
 	suggestions := make([]string, 3)
@@ -90,10 +88,9 @@ func (s *service) GenerateDailySuggestions(ctx context.Context, planId uuid.UUID
 		if i > 0 {
 			prompt = fmt.Sprintf("%sAlso, don't choose one closely related to this specific action item as this has already been added to the list too:%s", prompt, suggestions[i-1])
 		}
-		logger.Debug("Updated prompt for daily suggestions", "prompt", prompt)
 		res, err := s.contentGen.Generate(prompt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("insights: generate daily suggestions: %w", err)
 		}
 		suggestions[i] = res
 	}
@@ -151,8 +148,6 @@ func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.U
 		%s
 		`, focus, s.basePrompt, checklistPrompt, additionalPrompt)
 
-	logger.Debug("Final prompt for checklist generation", "prompt", prompt)
-
 	return prompt, nil
 }
 
@@ -164,16 +159,13 @@ func (s *service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) 
 	// gets relavant planID and checklistItems
 	plan, err := s.planService.GetById(ctx, planId)
 	if err != nil {
-		logger.Error("Error retrieving plan for checklist suggestion", "error", err, "planId", planId)
-		return "", "", err
+		return "", "", fmt.Errorf("insights: acquire data: get plan %s: %w", planId, err)
 	}
 
 	// get entire checklist as context
 	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planId, nil, nil, nil)
-
 	if err != nil {
-		logger.Error("Error retrieving checklist items for suggestion", "error", err, "planId", planId)
-		return "", "", err
+		return "", "", fmt.Errorf("insights: acquire data: get checklist items for plan %s: %w", planId, err)
 	}
 
 	// gets relavant focus from plan
@@ -195,9 +187,8 @@ func (s *service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) 
 func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.UUID) ([]discovery.Resource, error) {
 	// gather relevant data for constructing prompt
 	focus, checklistPrompt, err := s.AcquireGenRelevantData(ctx, planId)
-
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("insights: suggested videos: %w", err)
 	}
 
 	// construct search term prompts
@@ -211,9 +202,8 @@ func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.U
 	`, focus, checklistPrompt)
 
 	searchTermsStr, err := s.contentGen.Generate(message)
-
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("insights: suggested videos: generate search terms: %w", err)
 	}
 
 	// format the string into individual search terms
@@ -226,15 +216,9 @@ func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.U
 		concepts[index].Description = searchTerm
 	}
 
-	logger.Debug("Mapped search terms to concepts", "concepts", concepts)
-
 	resources, err := s.youtubeVideoFinder.FindResources(ctx, concepts)
-
-	logger.Debug("Found video resources", "resources", resources)
-
 	if err != nil {
-		logger.Error("Error finding video resources", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("insights: suggested videos: find resources: %w", err)
 	}
 
 	return resources, nil

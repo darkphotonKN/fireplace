@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/logger"
 	"github.com/robfig/cron/v3"
@@ -32,9 +33,8 @@ func (j *DailyResetJob) Start() {
 	jobID, err := j.cron.AddFunc("0 0 14 * * *", func() {
 		logger.Info("Running daily reset job")
 		ctx := context.Background()
-		err := j.checklistService.ResetDailyItems(ctx)
-		if err != nil {
-			logger.Error("Error resetting daily items", "error", err)
+		if err := j.checklistService.ResetDailyItems(ctx); err != nil {
+			slog.ErrorContext(ctx, "daily reset job failed", "err", err)
 		}
 	})
 

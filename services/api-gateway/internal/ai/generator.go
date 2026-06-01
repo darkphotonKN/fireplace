@@ -2,10 +2,10 @@ package ai
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/interfaces"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/logger"
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -58,7 +58,6 @@ func (g *Generator) Generate(message string) (string, error) {
 
 		// retry chat completion gen after a short delay
 		if err != nil {
-			logger.Error("Error attempting chat completion", "error", err, "attempt", attempt+1)
 			time.Sleep(g.retryDelay)
 			continue
 		}
@@ -67,11 +66,8 @@ func (g *Generator) Generate(message string) (string, error) {
 	}
 
 	if err != nil {
-		logger.Error("ChatCompletion failed after retries", "error", err)
-		return "", err
+		return "", fmt.Errorf("ai: chat completion failed after %d attempts: %w", g.maxRetries, err)
 	}
-
-	logger.Debug("Generated AI content", "content", resp.Choices[0].Message.Content)
 
 	return resp.Choices[0].Message.Content, nil
 }

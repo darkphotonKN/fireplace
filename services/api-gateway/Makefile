@@ -103,7 +103,29 @@ db-drop-create: db-drop db-create
 	@echo "✅ Fresh database created and migrated!"
 	@$(MIGRATE_COMMAND) version
 
-.PHONY: run test migrate-up migrate-down migrate-status migrate-down-to migrate-reset migrate-create migrate-fix db-force-clean db-drop db-create db-drop-create
+# ---------------------------------------------------------------------------
+# API docs — code-first OpenAPI 2.0 via swaggo/swag. See docs/api-conventions.md.
+# The spec (docs/swagger.{json,yaml}) is a generated build artifact, never
+# hand-edited. `make gen` == `go generate ./...`.
+# ---------------------------------------------------------------------------
+
+# Regenerate the OpenAPI 2.0 spec FROM the annotated handlers + edge DTOs.
+gen:
+	@go run github.com/swaggo/swag/cmd/swag init -g cmd/main.go -o docs --parseDependency --parseInternal
+
+# Lint the generated spec: catches example-vs-schema drift + spec hygiene.
+# Requires Node (npx). For a pure-Go setup, drop this and rely on `make gen`
+# succeeding as the (weaker) net — tradeoff noted in docs/api-conventions.md.
+lint:
+	@npx --yes @stoplight/spectral-cli@6 lint docs/swagger.json
+
+# Serve the generated spec in a local UI (standalone — no DB/Consul needed).
+# The running gateway also serves it at http://localhost:8080/swagger/index.html
+# (gin-swagger).
+docs:
+	@npx --yes @redocly/cli@latest preview-docs --port 8089 docs/swagger.json
+
+.PHONY: run test migrate-up migrate-down migrate-status migrate-down-to migrate-reset migrate-create migrate-fix db-force-clean db-drop db-create db-drop-create gen lint docs
 
 
 

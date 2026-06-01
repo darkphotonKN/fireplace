@@ -2,13 +2,12 @@ package auth
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	pb "github.com/darkphotonKN/fireplace/common/api/proto/auth"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	commongrpc "github.com/darkphotonKN/fireplace/common/grpcerror"
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -39,7 +38,7 @@ func (h *Handler) SignUp(ctx context.Context, req *pb.SignUpRequest) (*pb.AuthRe
 		Name:     req.Name,
 	})
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "auth: sign up", err)
 	}
 	return tokensToProto(tokens), nil
 }
@@ -50,7 +49,7 @@ func (h *Handler) SignIn(ctx context.Context, req *pb.SignInRequest) (*pb.AuthRe
 		Password: req.Password,
 	})
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "auth: sign in", err)
 	}
 	return tokensToProto(tokens), nil
 }
@@ -58,7 +57,7 @@ func (h *Handler) SignIn(ctx context.Context, req *pb.SignInRequest) (*pb.AuthRe
 func (h *Handler) RefreshToken(ctx context.Context, req *pb.RefreshTokenRequest) (*pb.AuthResponse, error) {
 	tokens, err := h.service.Refresh(ctx, req.RefreshToken)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "auth: refresh token", err)
 	}
 	return tokensToProto(tokens), nil
 }
@@ -66,11 +65,11 @@ func (h *Handler) RefreshToken(ctx context.Context, req *pb.RefreshTokenRequest)
 func (h *Handler) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "auth: get user", fmt.Errorf("%w: invalid id %q", commonconstants.ErrUUIDCouldNotBeParsed, req.Id))
 	}
 	u, err := h.service.GetUser(ctx, id)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "auth: get user", err)
 	}
 	return userToProto(u), nil
 }
@@ -78,7 +77,7 @@ func (h *Handler) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User
 func (h *Handler) ListUsers(ctx context.Context, _ *pb.ListUsersRequest) (*pb.ListUsersResponse, error) {
 	users, err := h.service.ListUsers(ctx)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "auth: list users", err)
 	}
 	out := make([]*pb.User, 0, len(users))
 	for _, u := range users {
@@ -90,7 +89,7 @@ func (h *Handler) ListUsers(ctx context.Context, _ *pb.ListUsersRequest) (*pb.Li
 func (h *Handler) UpdateProfile(ctx context.Context, req *pb.UpdateProfileRequest) (*pb.User, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "auth: update profile", fmt.Errorf("%w: invalid id %q", commonconstants.ErrUUIDCouldNotBeParsed, req.Id))
 	}
 	u, err := h.service.UpdateProfile(ctx, &UpdateProfileInput{
 		ID:          id,
@@ -99,7 +98,7 @@ func (h *Handler) UpdateProfile(ctx context.Context, req *pb.UpdateProfileReques
 		Bio:         req.Bio,
 	})
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "auth: update profile", err)
 	}
 	return userToProto(u), nil
 }
@@ -107,10 +106,10 @@ func (h *Handler) UpdateProfile(ctx context.Context, req *pb.UpdateProfileReques
 func (h *Handler) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*emptypb.Empty, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "auth: delete user", fmt.Errorf("%w: invalid id %q", commonconstants.ErrUUIDCouldNotBeParsed, req.Id))
 	}
 	if err := h.service.DeleteUser(ctx, id); err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "auth: delete user", err)
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -134,21 +133,5 @@ func tokensToProto(t *AuthTokens) *pb.AuthResponse {
 		RefreshToken:     t.RefreshToken,
 		AccessExpiresIn:  int64(t.AccessExpiresIn),
 		RefreshExpiresIn: int64(t.RefreshExpiresIn),
-	}
-}
-
-func mapError(err error) error {
-	switch {
-	case errors.Is(err, commonconstants.ErrNotFound):
-		return status.Error(codes.NotFound, err.Error())
-	case errors.Is(err, commonconstants.ErrDuplicateResource):
-		return status.Error(codes.AlreadyExists, err.Error())
-	case errors.Is(err, commonconstants.ErrInvalidInput),
-		errors.Is(err, commonconstants.ErrConstraintViolation):
-		return status.Error(codes.InvalidArgument, err.Error())
-	case errors.Is(err, commonconstants.ErrUnauthorized):
-		return status.Error(codes.Unauthenticated, err.Error())
-	default:
-		return status.Error(codes.Internal, err.Error())
 	}
 }

@@ -1,14 +1,15 @@
 package calendargw
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
+	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/apierr"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type Handler struct {
@@ -25,13 +26,13 @@ func NewHandler(client *Client) *Handler {
 func (h *Handler) GetCalendar(c *gin.Context) {
 	planID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid plan ID"})
+		apierr.Fail(c, "calendargw: get calendar", fmt.Errorf("%w: plan id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("id")))
 		return
 	}
 
 	userID, err := auth.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		apierr.Fail(c, "calendargw: get calendar", fmt.Errorf("%w: %v", commonconstants.ErrUnauthorized, err))
 		return
 	}
 
@@ -47,8 +48,7 @@ func (h *Handler) GetCalendar(c *gin.Context) {
 
 	resp, err := h.client.GetCalendar(c.Request.Context(), planID, userID, view, date)
 	if err != nil {
-		code, msg := httpStatusFromGRPC(err)
-		c.JSON(code, gin.H{"error": msg})
+		apierr.Fail(c, "calendargw: get calendar", err)
 		return
 	}
 
@@ -57,23 +57,4 @@ func (h *Handler) GetCalendar(c *gin.Context) {
 		"message":    "Calendar entries retrieved successfully",
 		"result":     resp,
 	})
-}
-
-func httpStatusFromGRPC(err error) (int, string) {
-	s, ok := status.FromError(err)
-	if !ok {
-		return http.StatusInternalServerError, err.Error()
-	}
-	switch s.Code() {
-	case codes.NotFound:
-		return http.StatusNotFound, s.Message()
-	case codes.PermissionDenied:
-		return http.StatusForbidden, s.Message()
-	case codes.InvalidArgument:
-		return http.StatusBadRequest, s.Message()
-	case codes.Unauthenticated:
-		return http.StatusUnauthorized, s.Message()
-	default:
-		return http.StatusInternalServerError, s.Message()
-	}
 }

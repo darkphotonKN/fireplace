@@ -2,13 +2,12 @@ package plan
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	pb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	commongrpc "github.com/darkphotonKN/fireplace/common/grpcerror"
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -34,10 +33,16 @@ func NewHandler(s Service) *Handler {
 	return &Handler{service: s}
 }
 
+// badUUID builds an InvalidArgument-class domain error for a malformed id so it
+// flows through the shared mapper like any other domain error.
+func badUUID(field, value string) error {
+	return fmt.Errorf("%w: %s %q", commonconstants.ErrUUIDCouldNotBeParsed, field, value)
+}
+
 func (h *Handler) CreatePlan(ctx context.Context, req *pb.CreatePlanRequest) (*pb.Plan, error) {
 	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid user_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: create plan", badUUID("user_id", req.UserId))
 	}
 
 	// Caller can override the per-plan-type daily-reset default by setting
@@ -55,7 +60,7 @@ func (h *Handler) CreatePlan(ctx context.Context, req *pb.CreatePlanRequest) (*p
 		DailyReset:  &dr,
 	})
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "plan: create plan", err)
 	}
 	return planToProto(p), nil
 }
@@ -63,11 +68,11 @@ func (h *Handler) CreatePlan(ctx context.Context, req *pb.CreatePlanRequest) (*p
 func (h *Handler) GetPlan(ctx context.Context, req *pb.GetPlanRequest) (*pb.Plan, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: get plan", badUUID("id", req.Id))
 	}
 	p, err := h.service.GetByID(ctx, id)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "plan: get plan", err)
 	}
 	return planToProto(p), nil
 }
@@ -75,11 +80,11 @@ func (h *Handler) GetPlan(ctx context.Context, req *pb.GetPlanRequest) (*pb.Plan
 func (h *Handler) ListPlans(ctx context.Context, req *pb.ListPlansRequest) (*pb.ListPlansResponse, error) {
 	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid user_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: list plans", badUUID("user_id", req.UserId))
 	}
 	plans, err := h.service.ListByUser(ctx, userID)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "plan: list plans", err)
 	}
 	out := make([]*pb.Plan, 0, len(plans))
 	for _, p := range plans {
@@ -91,11 +96,11 @@ func (h *Handler) ListPlans(ctx context.Context, req *pb.ListPlansRequest) (*pb.
 func (h *Handler) ListSharedPlans(ctx context.Context, req *pb.ListSharedPlansRequest) (*pb.ListPlansResponse, error) {
 	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid user_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: list shared plans", badUUID("user_id", req.UserId))
 	}
 	plans, err := h.service.ListShared(ctx, userID, int(req.Limit), int(req.Offset))
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "plan: list shared plans", err)
 	}
 	out := make([]*pb.Plan, 0, len(plans))
 	for _, p := range plans {
@@ -107,7 +112,7 @@ func (h *Handler) ListSharedPlans(ctx context.Context, req *pb.ListSharedPlansRe
 func (h *Handler) SearchPlans(ctx context.Context, req *pb.SearchPlansRequest) (*pb.SearchPlansResponse, error) {
 	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid user_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: search plans", badUUID("user_id", req.UserId))
 	}
 	results, err := h.service.Search(ctx, SearchInput{
 		UserID: userID,
@@ -116,7 +121,7 @@ func (h *Handler) SearchPlans(ctx context.Context, req *pb.SearchPlansRequest) (
 		Offset: int(req.Offset),
 	})
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "plan: search plans", err)
 	}
 	out := make([]*pb.SearchPlanResult, 0, len(results))
 	for _, r := range results {
@@ -132,11 +137,11 @@ func (h *Handler) SearchPlans(ctx context.Context, req *pb.SearchPlansRequest) (
 func (h *Handler) UpdatePlan(ctx context.Context, req *pb.UpdatePlanRequest) (*pb.Plan, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: update plan", badUUID("id", req.Id))
 	}
 	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid user_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: update plan", badUUID("user_id", req.UserId))
 	}
 	p, err := h.service.Update(ctx, &UpdatePlanInput{
 		ID:          id,
@@ -148,7 +153,7 @@ func (h *Handler) UpdatePlan(ctx context.Context, req *pb.UpdatePlanRequest) (*p
 		DailyReset:  req.DailyReset,
 	})
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "plan: update plan", err)
 	}
 	return planToProto(p), nil
 }
@@ -156,15 +161,15 @@ func (h *Handler) UpdatePlan(ctx context.Context, req *pb.UpdatePlanRequest) (*p
 func (h *Handler) ToggleDailyReset(ctx context.Context, req *pb.ToggleDailyResetRequest) (*pb.Plan, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: toggle daily reset", badUUID("id", req.Id))
 	}
 	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid user_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: toggle daily reset", badUUID("user_id", req.UserId))
 	}
 	p, err := h.service.ToggleDailyReset(ctx, id, userID)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "plan: toggle daily reset", err)
 	}
 	return planToProto(p), nil
 }
@@ -172,14 +177,14 @@ func (h *Handler) ToggleDailyReset(ctx context.Context, req *pb.ToggleDailyReset
 func (h *Handler) DeletePlan(ctx context.Context, req *pb.DeletePlanRequest) (*emptypb.Empty, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: delete plan", badUUID("id", req.Id))
 	}
 	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid user_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: delete plan", badUUID("user_id", req.UserId))
 	}
 	if err := h.service.Delete(ctx, id, userID); err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "plan: delete plan", err)
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -187,14 +192,14 @@ func (h *Handler) DeletePlan(ctx context.Context, req *pb.DeletePlanRequest) (*e
 func (h *Handler) AssertPlanOwnership(ctx context.Context, req *pb.AssertPlanOwnershipRequest) (*emptypb.Empty, error) {
 	planID, err := uuid.Parse(req.PlanId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid plan_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: assert ownership", badUUID("plan_id", req.PlanId))
 	}
 	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid user_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "plan: assert ownership", badUUID("user_id", req.UserId))
 	}
 	if err := h.service.AssertOwnership(ctx, planID, userID); err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "plan: assert ownership", err)
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -210,23 +215,5 @@ func planToProto(p *Plan) *pb.Plan {
 		DailyReset:  p.DailyReset,
 		CreatedAt:   timestamppb.New(p.CreatedAt),
 		UpdatedAt:   timestamppb.New(p.UpdatedAt),
-	}
-}
-
-func mapError(err error) error {
-	switch {
-	case errors.Is(err, commonconstants.ErrNotFound):
-		return status.Error(codes.NotFound, err.Error())
-	case errors.Is(err, commonconstants.ErrDuplicateResource):
-		return status.Error(codes.AlreadyExists, err.Error())
-	case errors.Is(err, commonconstants.ErrInvalidInput),
-		errors.Is(err, commonconstants.ErrConstraintViolation):
-		return status.Error(codes.InvalidArgument, err.Error())
-	case errors.Is(err, commonconstants.ErrForbidden):
-		return status.Error(codes.PermissionDenied, err.Error())
-	case errors.Is(err, commonconstants.ErrUnauthorized):
-		return status.Error(codes.Unauthenticated, err.Error())
-	default:
-		return status.Error(codes.Internal, err.Error())
 	}
 }

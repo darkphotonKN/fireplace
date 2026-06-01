@@ -2,13 +2,12 @@ package calendar
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	pb "github.com/darkphotonKN/fireplace/common/api/proto/calendar"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	commongrpc "github.com/darkphotonKN/fireplace/common/grpcerror"
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type CalendarService interface {
@@ -24,19 +23,27 @@ func NewHandler(s CalendarService) *Handler {
 	return &Handler{service: s}
 }
 
+// badUUID builds an InvalidArgument-class domain error for a malformed id so it
+// flows through the shared mapper like any other domain error.
+func badUUID(field, value string) error {
+	return fmt.Errorf("%w: %s %q", commonconstants.ErrUUIDCouldNotBeParsed, field, value)
+}
+
 func (h *Handler) GetCalendar(ctx context.Context, req *pb.GetCalendarRequest) (*pb.GetCalendarResponse, error) {
 	planID, err := uuid.Parse(req.PlanId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid plan_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "calendar: get calendar", badUUID("plan_id", req.PlanId))
 	}
 	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid user_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "calendar: get calendar", badUUID("user_id", req.UserId))
 	}
 
 	out, err := h.service.GetCalendar(ctx, planID, userID, req.View, req.Date)
 	if err != nil {
-		return nil, mapError(err)
+		// commongrpc.Status preserves any gRPC status propagated from
+		// plan-service so the gateway still maps it correctly.
+		return nil, commongrpc.Fail(ctx, "calendar: get calendar", err)
 	}
 
 	items := make([]*pb.CalendarItem, 0, len(out.Items))
@@ -57,22 +64,4 @@ func (h *Handler) GetCalendar(ctx context.Context, req *pb.GetCalendarRequest) (
 		WindowEnd:   out.WindowEnd,
 		Items:       items,
 	}, nil
-}
-
-func mapError(err error) error {
-	switch {
-	case errors.Is(err, commonconstants.ErrNotFound):
-		return status.Error(codes.NotFound, err.Error())
-	case errors.Is(err, commonconstants.ErrForbidden):
-		return status.Error(codes.PermissionDenied, err.Error())
-	case errors.Is(err, commonconstants.ErrInvalidInput):
-		return status.Error(codes.InvalidArgument, err.Error())
-	default:
-		// Propagate any underlying gRPC status from plan-service through
-		// untouched so the gateway can map it correctly.
-		if _, ok := status.FromError(err); ok {
-			return err
-		}
-		return status.Error(codes.Internal, err.Error())
-	}
 }

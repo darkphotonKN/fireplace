@@ -6,6 +6,7 @@ import (
 	"time"
 
 	planpb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
+	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 	"github.com/google/uuid"
 )
 
@@ -36,16 +37,16 @@ func (s *Service) GetCalendar(ctx context.Context, planID, userID uuid.UUID, vie
 	}
 	windowStart, windowEnd, err := resolveWindow(view, date)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("calendar: get calendar: %w", err)
 	}
 
 	if err := s.plans.AssertPlanOwnership(ctx, planID, userID); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("calendar: get calendar: %w", err)
 	}
 
 	items, err := s.plans.ListItemsInDateWindow(ctx, planID, userID, windowStart, windowEnd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch calendar items: %w", err)
+		return nil, fmt.Errorf("calendar: get calendar: fetch items: %w", err)
 	}
 
 	formatted := make([]CalendarItem, 0, len(items))
@@ -85,7 +86,7 @@ func resolveWindow(view, date string) (time.Time, time.Time, error) {
 	case "month":
 		t, err := time.ParseInLocation("2006-01", date, time.UTC)
 		if err != nil {
-			return time.Time{}, time.Time{}, fmt.Errorf("invalid date for month view, expected YYYY-MM: %w", err)
+			return time.Time{}, time.Time{}, fmt.Errorf("%w: invalid date for month view, expected YYYY-MM: %v", commonconstants.ErrInvalidInput, err)
 		}
 		start := t
 		end := t.AddDate(0, 1, -1)
@@ -93,13 +94,13 @@ func resolveWindow(view, date string) (time.Time, time.Time, error) {
 	case "week":
 		t, err := time.ParseInLocation(dateLayout, date, time.UTC)
 		if err != nil {
-			return time.Time{}, time.Time{}, fmt.Errorf("invalid date for week view, expected YYYY-MM-DD: %w", err)
+			return time.Time{}, time.Time{}, fmt.Errorf("%w: invalid date for week view, expected YYYY-MM-DD: %v", commonconstants.ErrInvalidInput, err)
 		}
 		offset := int(t.Weekday()) // Sunday=0, Saturday=6
 		start := t.AddDate(0, 0, -offset)
 		end := start.AddDate(0, 0, 6)
 		return start, end, nil
 	default:
-		return time.Time{}, time.Time{}, fmt.Errorf("invalid view: must be 'week' or 'month'")
+		return time.Time{}, time.Time{}, fmt.Errorf("%w: invalid view: must be 'week' or 'month'", commonconstants.ErrInvalidInput)
 	}
 }

@@ -2,7 +2,7 @@ package plan
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	commonbroker "github.com/darkphotonKN/fireplace/common/broker"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
@@ -49,7 +49,7 @@ func (s *service) Create(ctx context.Context, in *CreatePlanInput) (*Plan, error
 
 	created, err := s.repo.Create(ctx, p)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("plan: create: %w", err)
 	}
 
 	s.PublishPlanCreated(ctx, created)
@@ -57,7 +57,11 @@ func (s *service) Create(ctx context.Context, in *CreatePlanInput) (*Plan, error
 }
 
 func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*Plan, error) {
-	return s.repo.GetByID(ctx, id)
+	p, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("plan: get by id: %w", err)
+	}
+	return p, nil
 }
 
 // AssertOwnership returns ErrNotFound if the plan doesn't exist and ErrForbidden
@@ -66,9 +70,10 @@ func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*Plan, error) {
 func (s *service) AssertOwnership(ctx context.Context, planID, userID uuid.UUID) error {
 	p, err := s.repo.GetByID(ctx, planID)
 	if err != nil {
-		return err // already commonconstants.ErrNotFound when applicable
+		return fmt.Errorf("plan: assert ownership: %w", err) // preserves ErrNotFound
 	}
 	if p.UserID != userID {
+		// Business decision: an existing plan owned by someone else is forbidden.
 		return commonconstants.ErrForbidden
 	}
 	return nil
@@ -76,15 +81,19 @@ func (s *service) AssertOwnership(ctx context.Context, planID, userID uuid.UUID)
 
 func (s *service) Update(ctx context.Context, in *UpdatePlanInput) (*Plan, error) {
 	if err := s.repo.Update(ctx, in); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("plan: update: %w", err)
 	}
-	return s.repo.GetByID(ctx, in.ID)
+	p, err := s.repo.GetByID(ctx, in.ID)
+	if err != nil {
+		return nil, fmt.Errorf("plan: update: reload: %w", err)
+	}
+	return p, nil
 }
 
 func (s *service) ToggleDailyReset(ctx context.Context, id, userID uuid.UUID) (*Plan, error) {
 	p, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("plan: toggle daily reset: %w", err)
 	}
 	flipped := !p.DailyReset
 	if err := s.repo.Update(ctx, &UpdatePlanInput{
@@ -92,29 +101,45 @@ func (s *service) ToggleDailyReset(ctx context.Context, id, userID uuid.UUID) (*
 		UserID:     userID,
 		DailyReset: &flipped,
 	}); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("plan: toggle daily reset: %w", err)
 	}
-	return s.repo.GetByID(ctx, id)
+	updated, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("plan: toggle daily reset: reload: %w", err)
+	}
+	return updated, nil
 }
 
 func (s *service) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	if err := s.repo.Delete(ctx, id, userID); err != nil {
-		return err
+		return fmt.Errorf("plan: delete: %w", err)
 	}
 	s.PublishPlanDeleted(ctx, id, userID)
 	return nil
 }
 
 func (s *service) ListByUser(ctx context.Context, userID uuid.UUID) ([]*Plan, error) {
-	return s.repo.ListByUser(ctx, userID)
+	plans, err := s.repo.ListByUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("plan: list by user: %w", err)
+	}
+	return plans, nil
 }
 
 func (s *service) ListShared(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Plan, error) {
-	return s.repo.ListShared(ctx, userID, limit, offset)
+	plans, err := s.repo.ListShared(ctx, userID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("plan: list shared: %w", err)
+	}
+	return plans, nil
 }
 
 func (s *service) Search(ctx context.Context, in SearchInput) ([]*SearchResult, error) {
-	return s.repo.Search(ctx, in)
+	out, err := s.repo.Search(ctx, in)
+	if err != nil {
+		return nil, fmt.Errorf("plan: search: %w", err)
+	}
+	return out, nil
 }
 
 // CascadeDeleteForUser removes all plans (and their cascading children) owned
@@ -124,7 +149,7 @@ func (s *service) Search(ctx context.Context, in SearchInput) ([]*SearchResult, 
 func (s *service) CascadeDeleteForUser(ctx context.Context, userID uuid.UUID) error {
 	plans, err := s.repo.ListByUser(ctx, userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("plan: cascade delete: list plans for user %s: %w", userID, err)
 	}
 	var firstErr error
 	for _, p := range plans {
@@ -133,7 +158,7 @@ func (s *service) CascadeDeleteForUser(ctx context.Context, userID uuid.UUID) er
 		}
 	}
 	if firstErr != nil {
-		return errors.New("cascade delete partial failure: " + firstErr.Error())
+		return fmt.Errorf("plan: cascade delete for user %s: %w", userID, firstErr)
 	}
 	return nil
 }

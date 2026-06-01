@@ -1,0 +1,594 @@
+basePath: /api
+definitions:
+  internal_gateway_plan.ChecklistListResponse:
+    properties:
+      result:
+        items:
+          $ref: '#/definitions/internal_gateway_plan.ChecklistResp'
+        type: array
+      statusCode:
+        example: 200
+        type: integer
+    type: object
+  internal_gateway_plan.ChecklistResp:
+    properties:
+      archived:
+        example: false
+        type: boolean
+      created_at:
+        format: date-time
+        type: string
+      description:
+        example: Write the integration test plan
+        type: string
+      done:
+        example: false
+        type: boolean
+      dueDate:
+        format: date-time
+        type: string
+      id:
+        example: 3f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8
+        format: uuid
+        type: string
+      parentId:
+        format: uuid
+        type: string
+      planId:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        format: uuid
+        type: string
+      scope:
+        enum:
+        - daily
+        - longterm
+        example: daily
+        type: string
+      sequence:
+        example: "1"
+        type: string
+      startDate:
+        format: date-time
+        type: string
+      type:
+        enum:
+        - task
+        - note
+        example: task
+        type: string
+      updated_at:
+        format: date-time
+        type: string
+    type: object
+  internal_gateway_plan.ChecklistResponse:
+    properties:
+      result:
+        $ref: '#/definitions/internal_gateway_plan.ChecklistResp'
+      statusCode:
+        example: 200
+        type: integer
+    type: object
+  internal_gateway_plan.CreateChecklistReq:
+    properties:
+      description:
+        description: Free-text item description.
+        example: Write the integration test plan
+        type: string
+      parentId:
+        description: |-
+          Optional parent item id for nesting. Must reference a top-level item in the
+          same plan (enforced downstream).
+        example: 550e8400-e29b-41d4-a716-446655440000
+        format: uuid
+        type: string
+      scope:
+        description: Item scope. Optional; plan-service defaults it to "longterm".
+        enum:
+        - daily
+        - longterm
+        example: daily
+        type: string
+      type:
+        description: Item kind. Optional; plan-service defaults it to "task".
+        enum:
+        - task
+        - note
+        example: task
+        type: string
+    type: object
+  internal_gateway_plan.ErrorResponse:
+    properties:
+      message:
+        example: not found
+        type: string
+      statusCode:
+        example: 404
+        type: integer
+    type: object
+  internal_gateway_plan.MessageResponse:
+    properties:
+      message:
+        example: Item deleted.
+        type: string
+      statusCode:
+        example: 200
+        type: integer
+    type: object
+  internal_gateway_plan.UpdateChecklistReq:
+    properties:
+      archived:
+        example: false
+        type: boolean
+      description:
+        example: Updated description
+        type: string
+      done:
+        example: true
+        type: boolean
+      parentId:
+        description: |-
+          Parent item id: send a UUID to re-parent, null to clear, or omit to leave
+          unchanged. swaggertype renders the three-state OptUUID as a plain string.
+        example: 550e8400-e29b-41d4-a716-446655440000
+        format: uuid
+        type: string
+      scope:
+        enum:
+        - daily
+        - longterm
+        example: longterm
+        type: string
+      type:
+        enum:
+        - task
+        - note
+        example: task
+        type: string
+    type: object
+  internal_gateway_plan.UpdateDatesReq:
+    properties:
+      dueDate:
+        description: |-
+          New due date "YYYY-MM-DD", null to clear, or omit to leave unchanged. Must
+          be on or after startDate when both are present (enforced downstream).
+        example: "2026-06-15"
+        format: date
+        type: string
+      startDate:
+        description: New start date "YYYY-MM-DD", null to clear, or omit to leave
+          unchanged.
+        example: "2026-06-01"
+        format: date
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: |-
+    HTTP edge for the Fireplace microservices. This spec is a
+    code-generated SHAPE contract (OpenAPI 2.0), not a validator:
+    runtime validation lives in Go (gin `binding` tags at the edge,
+    domain invariants in the downstream services). Conditional
+    rules are described in prose on each field, never encoded as
+    schema constraints. See docs/api-conventions.md.
+  title: Fireplace API Gateway
+  version: "1.0"
+paths:
+  /plans/{id}/checklists:
+    get:
+      description: |-
+        Lists non-archived checklist items for a plan, optionally
+        filtered by scope and/or type.
+      parameters:
+      - description: Plan ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Filter by scope
+        enum:
+        - daily
+        - longterm
+        in: query
+        name: scope
+        type: string
+      - description: Filter by type
+        enum:
+        - task
+        - note
+        in: query
+        name: type
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ChecklistListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List checklist items
+      tags:
+      - checklists
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Creates a checklist item (task or note) under the given plan.
+        `scope` and `type` are optional shape enums. Parent nesting is
+        validated downstream by plan-service (a parent must be a
+        top-level item in the same plan — two-tier maximum); that rule
+        is enforced in code, not in this schema.
+      parameters:
+      - description: Plan ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Checklist item to create
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_gateway_plan.CreateChecklistReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ChecklistResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a checklist item
+      tags:
+      - checklists
+  /plans/{id}/checklists/{checklist_id}:
+    delete:
+      description: Permanently deletes a checklist item.
+      parameters:
+      - description: Plan ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Checklist item ID (UUID)
+        in: path
+        name: checklist_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.MessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a checklist item
+      tags:
+      - checklists
+    get:
+      description: Returns one checklist item by id.
+      parameters:
+      - description: Plan ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Checklist item ID (UUID)
+        in: path
+        name: checklist_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ChecklistResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a checklist item
+      tags:
+      - checklists
+    patch:
+      consumes:
+      - application/json
+      description: |-
+        Partial update. All fields optional; `parentId` is three-state
+        (omit = leave, null = clear, value = set). Domain rules
+        (task→note conversion blocked when the item has children;
+        re-parenting constrained to two tiers within the same plan) are
+        enforced downstream, not in this schema.
+      parameters:
+      - description: Plan ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Checklist item ID (UUID)
+        in: path
+        name: checklist_id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_gateway_plan.UpdateChecklistReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ChecklistResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a checklist item
+      tags:
+      - checklists
+  /plans/{id}/checklists/{checklist_id}/archive:
+    patch:
+      description: |-
+        Archives the item (sets archived=true). The request body is
+        ignored — this endpoint always archives, mirroring the monolith.
+      parameters:
+      - description: Plan ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Checklist item ID (UUID)
+        in: path
+        name: checklist_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ChecklistResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Archive a checklist item
+      tags:
+      - checklists
+  /plans/{id}/checklists/{checklist_id}/dates:
+    patch:
+      consumes:
+      - application/json
+      description: |-
+        Sets, clears, or leaves the item's start/due dates. Both fields
+        are OPTIONAL and three-state (omit = leave, null = clear,
+        "YYYY-MM-DD" = set).
+
+        CONDITIONAL RULE (enforced downstream in plan-service, described
+        here in prose and intentionally NOT encoded in the schema): when
+        both dates are present, `startDate` must be on or before
+        `dueDate`. The spec is a shape contract, not a validator — see
+        docs/api-conventions.md.
+      parameters:
+      - description: Plan ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Checklist item ID (UUID)
+        in: path
+        name: checklist_id
+        required: true
+        type: string
+      - description: Dates to set/clear
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_gateway_plan.UpdateDatesReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ChecklistResponse'
+        "400":
+          description: e.g. startDate after dueDate (enforced downstream)
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update checklist item dates
+      tags:
+      - checklists
+  /plans/{id}/checklists/archived:
+    get:
+      description: Lists archived checklist items for a plan.
+      parameters:
+      - description: Plan ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ChecklistListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List archived checklist items
+      tags:
+      - checklists
+  /plans/{id}/checklists/upcoming:
+    get:
+      description: Lists checklist items whose start date falls within the next week.
+      parameters:
+      - description: Plan ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ChecklistListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_gateway_plan.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List upcoming checklist items
+      tags:
+      - checklists
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    description: 'JWT bearer token. Format: "Bearer &lt;token&gt;".'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
+tags:
+- description: Checklist items belonging to a plan (tasks and notes). Reference vertical
+    for the code-first OpenAPI setup.
+  name: checklists

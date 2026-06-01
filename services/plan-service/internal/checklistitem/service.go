@@ -2,6 +2,7 @@ package checklistitem
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -35,7 +36,11 @@ func NewService(repo Repository, publishCh commonbroker.Publisher) *service {
 }
 
 func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*Item, error) {
-	return s.repo.GetByID(ctx, id)
+	item, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("checklistitem: get by id: %w", err)
+	}
+	return item, nil
 }
 
 func (s *service) ListByPlanID(ctx context.Context, in ListItemsInput) ([]*Item, error) {
@@ -48,14 +53,22 @@ func (s *service) ListByPlanID(ctx context.Context, in ListItemsInput) ([]*Item,
 	if in.Upcoming != nil && *in.Upcoming != UpcomingWeek && *in.Upcoming != UpcomingMonth {
 		return nil, fmt.Errorf("%w: upcoming must be 'week' or 'month'", commonconstants.ErrInvalidInput)
 	}
-	return s.repo.ListByPlanID(ctx, in)
+	items, err := s.repo.ListByPlanID(ctx, in)
+	if err != nil {
+		return nil, fmt.Errorf("checklistitem: list by plan: %w", err)
+	}
+	return items, nil
 }
 
 func (s *service) ListArchivedByPlanID(ctx context.Context, planID uuid.UUID, scope *string) ([]*Item, error) {
 	if scope != nil && *scope != ScopeDaily && *scope != ScopeLongterm {
 		return nil, fmt.Errorf("%w: scope must be 'daily' or 'longterm'", commonconstants.ErrInvalidInput)
 	}
-	return s.repo.ListArchivedByPlanID(ctx, planID, scope)
+	items, err := s.repo.ListArchivedByPlanID(ctx, planID, scope)
+	if err != nil {
+		return nil, fmt.Errorf("checklistitem: list archived by plan: %w", err)
+	}
+	return items, nil
 }
 
 func (s *service) ListUpcoming(ctx context.Context, planID uuid.UUID) ([]*Item, error) {
@@ -78,21 +91,26 @@ func (s *service) Create(ctx context.Context, in CreateItemInput) (*Item, error)
 
 	count, err := s.repo.CountItems(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("checklistitem: create: count items: %w", err)
 	}
 	item, err := s.repo.Create(ctx, in, count+1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("checklistitem: create: %w", err)
 	}
 	return item, nil
 }
 
 // validateParent enforces the two-tier rule: parent must exist, belong to the
-// same plan, and itself have no parent.
+// same plan, and itself have no parent. A missing parent is a client error
+// (invalid input); any other repo error is propagated unchanged so a transient
+// DB failure is not misreported as bad input.
 func (s *service) validateParent(ctx context.Context, planID, parentID uuid.UUID) error {
 	parent, err := s.repo.GetByID(ctx, parentID)
 	if err != nil {
-		return fmt.Errorf("%w: parent not found", commonconstants.ErrInvalidInput)
+		if errors.Is(err, commonconstants.ErrNotFound) {
+			return fmt.Errorf("%w: parent not found", commonconstants.ErrInvalidInput)
+		}
+		return fmt.Errorf("checklistitem: validate parent: %w", err)
 	}
 	if parent.PlanID != planID {
 		return fmt.Errorf("%w: parent belongs to a different plan", commonconstants.ErrInvalidInput)
@@ -112,7 +130,7 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 	if in.Type != nil && *in.Type == TypeNote {
 		hasKids, err := s.repo.HasChildren(ctx, in.ID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("checklistitem: update: check children: %w", err)
 		}
 		if hasKids {
 			return nil, fmt.Errorf("%w: cannot convert a parent with children into a note", commonconstants.ErrInvalidInput)
@@ -123,7 +141,7 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 	if in.Type != nil && *in.Type == TypeNote && in.Done == nil {
 		current, err := s.repo.GetByID(ctx, in.ID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("checklistitem: update: load current: %w", err)
 		}
 		if current.Done {
 			f := false
@@ -136,14 +154,14 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 	if in.SetParent && in.ParentID != nil {
 		current, err := s.repo.GetByID(ctx, in.ID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("checklistitem: update: load current: %w", err)
 		}
 		if err := s.validateParent(ctx, current.PlanID, *in.ParentID); err != nil {
 			return nil, err
 		}
 		hasKids, err := s.repo.HasChildren(ctx, in.ID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("checklistitem: update: check children: %w", err)
 		}
 		if hasKids {
 			return nil, fmt.Errorf("%w: cannot re-parent a row with children", commonconstants.ErrInvalidInput)
@@ -151,12 +169,12 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 	}
 
 	if err := s.repo.Update(ctx, in); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("checklistitem: update: %w", err)
 	}
 
 	updated, err := s.repo.GetByID(ctx, in.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("checklistitem: update: reload: %w", err)
 	}
 
 	// Emit completion event when an Update sets done=true.
@@ -171,12 +189,16 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 
 func (s *service) UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, error) {
 	if !in.SetStart && !in.SetDue {
-		return s.repo.GetByID(ctx, in.ID)
+		item, err := s.repo.GetByID(ctx, in.ID)
+		if err != nil {
+			return nil, fmt.Errorf("checklistitem: update dates: %w", err)
+		}
+		return item, nil
 	}
 
 	current, err := s.repo.GetByID(ctx, in.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("checklistitem: update dates: load current: %w", err)
 	}
 
 	finalStart := current.StartDate
@@ -192,7 +214,7 @@ func (s *service) UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, 
 	}
 
 	if err := s.repo.UpdateDates(ctx, in.ID, finalStart, finalDue); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("checklistitem: update dates: %w", err)
 	}
 	current.StartDate = finalStart
 	current.DueDate = finalDue
@@ -201,27 +223,46 @@ func (s *service) UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, 
 
 func (s *service) Archive(ctx context.Context, id uuid.UUID, archived bool) (*Item, error) {
 	if err := s.repo.Update(ctx, UpdateItemInput{ID: id, Archived: &archived}); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("checklistitem: archive: %w", err)
 	}
-	return s.repo.GetByID(ctx, id)
+	item, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("checklistitem: archive: reload: %w", err)
+	}
+	return item, nil
 }
 
 func (s *service) Delete(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return fmt.Errorf("checklistitem: delete: %w", err)
+	}
+	return nil
 }
 
 func (s *service) DailyReset(ctx context.Context) (int64, error) {
-	return s.repo.BulkResetDailyItems(ctx)
+	n, err := s.repo.BulkResetDailyItems(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("checklistitem: daily reset: %w", err)
+	}
+	return n, nil
 }
 
 // GetByUserID returns non-archived items across all the user's plans.
 // Used by useranalytics in 4c via gRPC.
 func (s *service) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item, error) {
-	return s.repo.GetByUserID(ctx, userID)
+	items, err := s.repo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("checklistitem: get by user: %w", err)
+	}
+	return items, nil
 }
 
 // ListInDateWindow returns items whose date range overlaps the given window.
 // Used by calendar-service over gRPC.
 func (s *service) ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error) {
-	return s.repo.ListInDateWindow(ctx, planID, windowStart, windowEnd)
+	items, err := s.repo.ListInDateWindow(ctx, planID, windowStart, windowEnd)
+	if err != nil {
+		return nil, fmt.Errorf("checklistitem: list in date window: %w", err)
+	}
+	return items, nil
 }

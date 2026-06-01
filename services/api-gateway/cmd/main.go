@@ -11,6 +11,31 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// The OpenAPI spec is generated FROM this code (code-first) and is a build
+// artifact — never hand-edited. `make gen` (or `go generate ./...`) regenerates
+// docs/swagger.{json,yaml}. Output is Swagger / OpenAPI 2.0 (swaggo/swag
+// default); see docs/api-conventions.md for the governing principle.
+//
+//go:generate sh -c "cd .. && go run github.com/swaggo/swag/cmd/swag init -g cmd/main.go -o docs --parseDependency --parseInternal"
+
+//	@title			Fireplace API Gateway
+//	@version		1.0
+//	@description	HTTP edge for the Fireplace microservices. This spec is a
+//	@description	code-generated SHAPE contract (OpenAPI 2.0), not a validator:
+//	@description	runtime validation lives in Go (gin `binding` tags at the edge,
+//	@description	domain invariants in the downstream services). Conditional
+//	@description	rules are described in prose on each field, never encoded as
+//	@description	schema constraints. See docs/api-conventions.md.
+//	@host			localhost:8080
+//	@BasePath		/api
+//	@schemes		http https
+//	@tag.name		checklists
+//	@tag.description	Checklist items belonging to a plan (tasks and notes). Reference vertical for the code-first OpenAPI setup.
+//	@securityDefinitions.apikey	BearerAuth
+//	@in				header
+//	@name			Authorization
+//	@description	JWT bearer token. Format: "Bearer &lt;token&gt;".
+
 /**
 * Main entry point to entire application.
 * NOTE: Keep code here as clean and little as possible.

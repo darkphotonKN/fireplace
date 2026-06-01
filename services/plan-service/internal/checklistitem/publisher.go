@@ -18,7 +18,7 @@ func (s *service) PublishItemCompleted(ctx context.Context, item *Item) {
 		CompletedAt: timestamppb.Now(),
 	})
 	if err != nil {
-		slog.Error("failed to marshal checklist_item.completed", "error", err, "item_id", item.ID)
+		slog.ErrorContext(ctx, "failed to marshal checklist_item.completed", "err", err, "item_id", item.ID)
 		return
 	}
 	if err := s.publishCh.PublishWithContext(ctx,
@@ -30,7 +30,7 @@ func (s *service) PublishItemCompleted(ctx context.Context, item *Item) {
 			DeliveryMode: commonbroker.Persistent,
 		},
 	); err != nil {
-		slog.Error("failed to publish checklist_item.completed", "error", err, "item_id", item.ID)
+		slog.ErrorContext(ctx, "failed to publish checklist_item.completed", "err", err, "item_id", item.ID)
 	}
 }
 
@@ -41,7 +41,7 @@ func (s *service) PublishItemUncompleted(ctx context.Context, item *Item) {
 		UncompletedAt: timestamppb.Now(),
 	})
 	if err != nil {
-		slog.Error("failed to marshal checklist_item.uncompleted", "error", err, "item_id", item.ID)
+		slog.ErrorContext(ctx, "failed to marshal checklist_item.uncompleted", "err", err, "item_id", item.ID)
 		return
 	}
 	if err := s.publishCh.PublishWithContext(ctx,
@@ -53,6 +53,6 @@ func (s *service) PublishItemUncompleted(ctx context.Context, item *Item) {
 			DeliveryMode: commonbroker.Persistent,
 		},
 	); err != nil {
-		slog.Error("failed to publish checklist_item.uncompleted", "error", err, "item_id", item.ID)
+		slog.ErrorContext(ctx, "failed to publish checklist_item.uncompleted", "err", err, "item_id", item.ID)
 	}
 }

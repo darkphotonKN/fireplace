@@ -1,8 +1,11 @@
 package notes
 
 import (
+	"fmt"
 	"net/http"
 
+	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/apierr"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -18,31 +21,21 @@ func NewHandler(service *Service) *Handler {
 
 // Create handles POST /api/plans/:id/notes
 func (h *Handler) Create(c *gin.Context) {
-	planIDStr := c.Param("id")
-	planID, err := uuid.Parse(planIDStr)
+	planID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid plan ID",
-			"statusCode": http.StatusBadRequest,
-		})
+		apierr.Fail(c, "notes: create", fmt.Errorf("%w: plan id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("id")))
 		return
 	}
 
 	var req CreateNoteReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      err.Error(),
-			"statusCode": http.StatusBadRequest,
-		})
+		apierr.Fail(c, "notes: create", fmt.Errorf("%w: malformed request body: %v", commonconstants.ErrInvalidInput, err))
 		return
 	}
 
 	note, err := h.service.CreateNote(planID, &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      err.Error(),
-			"statusCode": http.StatusInternalServerError,
-		})
+		apierr.Fail(c, "notes: create", err)
 		return
 	}
 
@@ -55,26 +48,15 @@ func (h *Handler) Create(c *gin.Context) {
 
 // GetByID handles GET /api/plans/:id/notes/:noteId
 func (h *Handler) GetByID(c *gin.Context) {
-	noteIDStr := c.Param("noteId")
-	noteID, err := uuid.Parse(noteIDStr)
+	noteID, err := uuid.Parse(c.Param("noteId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid note ID",
-			"statusCode": http.StatusBadRequest,
-		})
+		apierr.Fail(c, "notes: get", fmt.Errorf("%w: note id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("noteId")))
 		return
 	}
 
 	note, err := h.service.GetNoteByID(noteID)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if err.Error() == "note not found" {
-			status = http.StatusNotFound
-		}
-		c.JSON(status, gin.H{
-			"error":      err.Error(),
-			"statusCode": status,
-		})
+		apierr.Fail(c, "notes: get", err)
 		return
 	}
 
@@ -87,13 +69,9 @@ func (h *Handler) GetByID(c *gin.Context) {
 
 // GetAll handles GET /api/plans/:id/notes
 func (h *Handler) GetAll(c *gin.Context) {
-	planIDStr := c.Param("id")
-	planID, err := uuid.Parse(planIDStr)
+	planID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid plan ID",
-			"statusCode": http.StatusBadRequest,
-		})
+		apierr.Fail(c, "notes: list", fmt.Errorf("%w: plan id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("id")))
 		return
 	}
 
@@ -138,10 +116,7 @@ func (h *Handler) GetAll(c *gin.Context) {
 
 	notes, err := h.service.GetNotesByPlanID(planID, filters)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      err.Error(),
-			"statusCode": http.StatusInternalServerError,
-		})
+		apierr.Fail(c, "notes: list", err)
 		return
 	}
 
@@ -159,35 +134,21 @@ func (h *Handler) GetAll(c *gin.Context) {
 
 // Update handles PATCH /api/plans/:id/notes/:noteId
 func (h *Handler) Update(c *gin.Context) {
-	noteIDStr := c.Param("noteId")
-	noteID, err := uuid.Parse(noteIDStr)
+	noteID, err := uuid.Parse(c.Param("noteId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid note ID",
-			"statusCode": http.StatusBadRequest,
-		})
+		apierr.Fail(c, "notes: update", fmt.Errorf("%w: note id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("noteId")))
 		return
 	}
 
 	var req UpdateNoteReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      err.Error(),
-			"statusCode": http.StatusBadRequest,
-		})
+		apierr.Fail(c, "notes: update", fmt.Errorf("%w: malformed request body: %v", commonconstants.ErrInvalidInput, err))
 		return
 	}
 
 	note, err := h.service.UpdateNote(noteID, &req)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if err.Error() == "note not found" {
-			status = http.StatusNotFound
-		}
-		c.JSON(status, gin.H{
-			"error":      err.Error(),
-			"statusCode": status,
-		})
+		apierr.Fail(c, "notes: update", err)
 		return
 	}
 
@@ -200,26 +161,14 @@ func (h *Handler) Update(c *gin.Context) {
 
 // Delete handles DELETE /api/plans/:id/notes/:noteId
 func (h *Handler) Delete(c *gin.Context) {
-	noteIDStr := c.Param("noteId")
-	noteID, err := uuid.Parse(noteIDStr)
+	noteID, err := uuid.Parse(c.Param("noteId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid note ID",
-			"statusCode": http.StatusBadRequest,
-		})
+		apierr.Fail(c, "notes: delete", fmt.Errorf("%w: note id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("noteId")))
 		return
 	}
 
-	err = h.service.DeleteNote(noteID)
-	if err != nil {
-		status := http.StatusInternalServerError
-		if err.Error() == "note not found" {
-			status = http.StatusNotFound
-		}
-		c.JSON(status, gin.H{
-			"error":      err.Error(),
-			"statusCode": status,
-		})
+	if err := h.service.DeleteNote(noteID); err != nil {
+		apierr.Fail(c, "notes: delete", err)
 		return
 	}
 
@@ -232,13 +181,9 @@ func (h *Handler) Delete(c *gin.Context) {
 
 // GenerateAINotes handles POST /api/plans/:id/notes/generate-ai
 func (h *Handler) GenerateAINotes(c *gin.Context) {
-	planIDStr := c.Param("id")
-	planID, err := uuid.Parse(planIDStr)
+	planID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid plan ID",
-			"statusCode": http.StatusBadRequest,
-		})
+		apierr.Fail(c, "notes: generate ai", fmt.Errorf("%w: plan id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("id")))
 		return
 	}
 
@@ -250,10 +195,7 @@ func (h *Handler) GenerateAINotes(c *gin.Context) {
 
 	notes, err := h.service.GenerateAINotes(planID, req.RequestType)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      err.Error(),
-			"statusCode": http.StatusInternalServerError,
-		})
+		apierr.Fail(c, "notes: generate ai", err)
 		return
 	}
 
@@ -263,4 +205,3 @@ func (h *Handler) GenerateAINotes(c *gin.Context) {
 		"statusCode": http.StatusOK,
 	})
 }
-

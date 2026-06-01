@@ -2,10 +2,7 @@ package checklistitem
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
@@ -22,6 +19,21 @@ func NewRepository(db *sqlx.DB) *repository {
 	return &repository{db: db}
 }
 
+// wrapDBErr is the repo boundary translation point: it converts infrastructure
+// errors (sql.ErrNoRows, duplicate keys, constraint violations, transient
+// failures) into domain sentinels via AnalyzeDBErr, and wraps anything else
+// with the repo name + operation for context. It never logs and never decides
+// transport status.
+func wrapDBErr(op string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if mapped := commonhelpers.AnalyzeDBErr(err); mapped != err {
+		return mapped
+	}
+	return fmt.Errorf("checklistitem repo: %s: %w", op, err)
+}
+
 func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
@@ -29,10 +41,7 @@ func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Item, error) {
 	FROM checklist_items WHERE id = $1`
 	var item Item
 	if err := r.db.GetContext(ctx, &item, query, id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, commonconstants.ErrNotFound
-		}
-		return nil, commonhelpers.AnalyzeDBErr(err)
+		return nil, wrapDBErr("get item by id "+id.String(), err)
 	}
 	return &item, nil
 }
@@ -64,7 +73,7 @@ func (r *repository) ListByPlanID(ctx context.Context, in ListItemsInput) ([]*It
 
 	var items []*Item
 	if err := r.db.SelectContext(ctx, &items, query, args...); err != nil {
-		return nil, commonhelpers.AnalyzeDBErr(err)
+		return nil, wrapDBErr("list by plan "+in.PlanID.String(), err)
 	}
 	return items, nil
 }
@@ -84,7 +93,7 @@ func (r *repository) ListArchivedByPlanID(ctx context.Context, planID uuid.UUID,
 
 	var items []*Item
 	if err := r.db.SelectContext(ctx, &items, query, args...); err != nil {
-		return nil, commonhelpers.AnalyzeDBErr(err)
+		return nil, wrapDBErr("list archived by plan "+planID.String(), err)
 	}
 	return items, nil
 }
@@ -93,7 +102,7 @@ func (r *repository) HasChildren(ctx context.Context, id uuid.UUID) (bool, error
 	var exists bool
 	query := `SELECT EXISTS(SELECT 1 FROM checklist_items WHERE parent_id = $1)`
 	if err := r.db.GetContext(ctx, &exists, query, id); err != nil {
-		return false, commonhelpers.AnalyzeDBErr(err)
+		return false, wrapDBErr("has children "+id.String(), err)
 	}
 	return exists, nil
 }
@@ -101,7 +110,7 @@ func (r *repository) HasChildren(ctx context.Context, id uuid.UUID) (bool, error
 func (r *repository) CountItems(ctx context.Context) (int, error) {
 	var count int
 	if err := r.db.QueryRowxContext(ctx, `SELECT COUNT(id) FROM checklist_items`).Scan(&count); err != nil {
-		return 0, commonhelpers.AnalyzeDBErr(err)
+		return 0, wrapDBErr("count items", err)
 	}
 	return count, nil
 }
@@ -142,14 +151,14 @@ func (r *repository) Create(ctx context.Context, in CreateItemInput, sequenceNo 
 
 	rows, err := r.db.NamedQueryContext(ctx, query, row)
 	if err != nil {
-		return nil, commonhelpers.AnalyzeDBErr(err)
+		return nil, wrapDBErr("create item", err)
 	}
 	defer rows.Close()
 
 	out := &Item{}
 	if rows.Next() {
 		if err := rows.StructScan(out); err != nil {
-			return nil, commonhelpers.AnalyzeDBErr(err)
+			return nil, wrapDBErr("create item: scan", err)
 		}
 	} else {
 		return nil, commonconstants.ErrNotFound
@@ -186,7 +195,7 @@ func (r *repository) Update(ctx context.Context, in UpdateItemInput) error {
 	query := `UPDATE checklist_items SET ` + setClause + ` WHERE id = :id`
 	res, err := r.db.NamedExecContext(ctx, query, params)
 	if err != nil {
-		return commonhelpers.AnalyzeDBErr(err)
+		return wrapDBErr("update item "+in.ID.String(), err)
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return commonconstants.ErrNotFound
@@ -199,7 +208,7 @@ func (r *repository) UpdateDates(ctx context.Context, id uuid.UUID, startDate, d
 		`UPDATE checklist_items SET start_date = $2, due_date = $3 WHERE id = $1`,
 		id, startDate, dueDate)
 	if err != nil {
-		return commonhelpers.AnalyzeDBErr(err)
+		return wrapDBErr("update dates "+id.String(), err)
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return commonconstants.ErrNotFound
@@ -210,7 +219,7 @@ func (r *repository) UpdateDates(ctx context.Context, id uuid.UUID, startDate, d
 func (r *repository) Delete(ctx context.Context, id uuid.UUID) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM checklist_items WHERE id = $1`, id)
 	if err != nil {
-		return commonhelpers.AnalyzeDBErr(err)
+		return wrapDBErr("delete item "+id.String(), err)
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return commonconstants.ErrNotFound
@@ -233,10 +242,9 @@ func (r *repository) BulkResetDailyItems(ctx context.Context) (int64, error) {
 
 	res, err := r.db.ExecContext(ctx, query)
 	if err != nil {
-		return 0, commonhelpers.AnalyzeDBErr(err)
+		return 0, wrapDBErr("bulk reset daily items", err)
 	}
 	rows, _ := res.RowsAffected()
-	slog.Info("daily reset complete", "rows", rows)
 	return rows, nil
 }
 
@@ -253,7 +261,7 @@ func (r *repository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item
 
 	var items []*Item
 	if err := r.db.SelectContext(ctx, &items, query, userID); err != nil {
-		return nil, commonhelpers.AnalyzeDBErr(err)
+		return nil, wrapDBErr("get items by user "+userID.String(), err)
 	}
 	return items, nil
 }
@@ -275,7 +283,7 @@ func (r *repository) ListInDateWindow(ctx context.Context, planID uuid.UUID, win
 
 	var items []*Item
 	if err := r.db.SelectContext(ctx, &items, query, planID, windowStart, windowEnd); err != nil {
-		return nil, commonhelpers.AnalyzeDBErr(err)
+		return nil, wrapDBErr("list in date window for plan "+planID.String(), err)
 	}
 	return items, nil
 }

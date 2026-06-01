@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
@@ -20,6 +22,21 @@ func NewRepository(db *sqlx.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// wrapDBErr is the repo boundary translation point: it converts infrastructure
+// errors (sql.ErrNoRows, duplicate keys, constraint violations, transient
+// failures) into domain sentinels via AnalyzeDBErr, and wraps anything else
+// with the repo name + operation for context. It never logs and never decides
+// HTTP status.
+func wrapDBErr(op string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if mapped := commonhelpers.AnalyzeDBErr(err); mapped != err {
+		return mapped
+	}
+	return fmt.Errorf("notes repo: %s: %w", op, err)
+}
+
 // Create inserts a new note into the database
 func (r *Repository) Create(note *Note) (*Note, error) {
 	var aiMetadataJSON []byte
@@ -28,7 +45,7 @@ func (r *Repository) Create(note *Note) (*Note, error) {
 	if note.AIMetadata != nil {
 		aiMetadataJSON, err = json.Marshal(note.AIMetadata)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal AI metadata: %w", err)
+			return nil, fmt.Errorf("notes repo: create note: marshal ai metadata: %w", err)
 		}
 	}
 
@@ -71,7 +88,7 @@ func (r *Repository) Create(note *Note) (*Note, error) {
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to create note: %w", err)
+		return nil, wrapDBErr("create note", err)
 	}
 
 	// Unmarshal AI metadata if present
@@ -113,10 +130,7 @@ func (r *Repository) GetByID(id uuid.UUID) (*Note, error) {
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("note not found")
-		}
-		return nil, fmt.Errorf("failed to get note: %w", err)
+		return nil, wrapDBErr("get note by id "+id.String(), err)
 	}
 
 	// Unmarshal AI metadata if present
@@ -191,7 +205,7 @@ func (r *Repository) GetByPlanID(planID uuid.UUID, filters *FilterOptions) ([]No
 
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get notes: %w", err)
+		return nil, wrapDBErr("list notes by plan "+planID.String(), err)
 	}
 	defer rows.Close()
 
@@ -216,7 +230,7 @@ func (r *Repository) GetByPlanID(planID uuid.UUID, filters *FilterOptions) ([]No
 		)
 
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan note: %w", err)
+			return nil, wrapDBErr("list notes by plan "+planID.String()+": scan", err)
 		}
 
 		// Unmarshal AI metadata if present
@@ -270,7 +284,7 @@ func (r *Repository) Update(id uuid.UUID, updates *UpdateNoteReq) (*Note, error)
 	}
 
 	if len(setClauses) == 0 {
-		return nil, fmt.Errorf("no fields to update")
+		return nil, fmt.Errorf("%w: no fields to update", commonconstants.ErrInvalidInput)
 	}
 
 	argCount++
@@ -303,10 +317,7 @@ func (r *Repository) Update(id uuid.UUID, updates *UpdateNoteReq) (*Note, error)
 	)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("note not found")
-		}
-		return nil, fmt.Errorf("failed to update note: %w", err)
+		return nil, wrapDBErr("update note "+id.String(), err)
 	}
 
 	// Unmarshal AI metadata if present
@@ -326,16 +337,16 @@ func (r *Repository) Delete(id uuid.UUID) error {
 
 	result, err := r.db.Exec(query, id)
 	if err != nil {
-		return fmt.Errorf("failed to delete note: %w", err)
+		return wrapDBErr("delete note "+id.String(), err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to check rows affected: %w", err)
+		return wrapDBErr("delete note "+id.String()+": rows affected", err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("note not found")
+		return commonconstants.ErrNotFound
 	}
 
 	return nil
@@ -347,7 +358,7 @@ func (r *Repository) DeleteByPlanID(planID uuid.UUID) error {
 
 	_, err := r.db.Exec(query, planID)
 	if err != nil {
-		return fmt.Errorf("failed to delete notes: %w", err)
+		return wrapDBErr("delete notes by plan "+planID.String(), err)
 	}
 
 	return nil

@@ -2,14 +2,14 @@ package checklistitem
 
 import (
 	"context"
-	"errors"
+	"fmt"
+	"log/slog"
 	"time"
 
 	pb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	commongrpc "github.com/darkphotonKN/fireplace/common/grpcerror"
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -38,17 +38,23 @@ func NewHandler(s Service) *Handler {
 	return &Handler{service: s}
 }
 
+// badUUID builds an InvalidArgument-class domain error for a malformed id so it
+// flows through the shared mapper like any other domain error.
+func badUUID(field, value string) error {
+	return fmt.Errorf("%w: %s %q", commonconstants.ErrUUIDCouldNotBeParsed, field, value)
+}
+
 func (h *Handler) CreateItem(ctx context.Context, req *pb.CreateItemRequest) (*pb.ChecklistItem, error) {
 	planID, err := uuid.Parse(req.PlanId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid plan_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: create", badUUID("plan_id", req.PlanId))
 	}
 
 	var parentID *uuid.UUID
 	if req.ParentId != nil {
 		pid, err := uuid.Parse(*req.ParentId)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid parent_id: %v", err)
+			return nil, commongrpc.Fail(ctx, "checklistitem: create", badUUID("parent_id", *req.ParentId))
 		}
 		parentID = &pid
 	}
@@ -67,7 +73,7 @@ func (h *Handler) CreateItem(ctx context.Context, req *pb.CreateItemRequest) (*p
 		ParentID:    parentID,
 	})
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: create", err)
 	}
 	return itemToProto(item), nil
 }
@@ -75,11 +81,11 @@ func (h *Handler) CreateItem(ctx context.Context, req *pb.CreateItemRequest) (*p
 func (h *Handler) GetItem(ctx context.Context, req *pb.GetItemRequest) (*pb.ChecklistItem, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: get", badUUID("id", req.Id))
 	}
 	item, err := h.service.GetByID(ctx, id)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: get", err)
 	}
 	return itemToProto(item), nil
 }
@@ -87,7 +93,7 @@ func (h *Handler) GetItem(ctx context.Context, req *pb.GetItemRequest) (*pb.Chec
 func (h *Handler) ListItems(ctx context.Context, req *pb.ListItemsRequest) (*pb.ListItemsResponse, error) {
 	planID, err := uuid.Parse(req.PlanId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid plan_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: list", badUUID("plan_id", req.PlanId))
 	}
 	items, err := h.service.ListByPlanID(ctx, ListItemsInput{
 		PlanID: planID,
@@ -95,7 +101,7 @@ func (h *Handler) ListItems(ctx context.Context, req *pb.ListItemsRequest) (*pb.
 		Type:   req.Type,
 	})
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: list", err)
 	}
 	return itemListToProto(items), nil
 }
@@ -103,11 +109,11 @@ func (h *Handler) ListItems(ctx context.Context, req *pb.ListItemsRequest) (*pb.
 func (h *Handler) ListArchivedItems(ctx context.Context, req *pb.ListArchivedItemsRequest) (*pb.ListItemsResponse, error) {
 	planID, err := uuid.Parse(req.PlanId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid plan_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: list archived", badUUID("plan_id", req.PlanId))
 	}
 	items, err := h.service.ListArchivedByPlanID(ctx, planID, nil)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: list archived", err)
 	}
 	return itemListToProto(items), nil
 }
@@ -115,11 +121,11 @@ func (h *Handler) ListArchivedItems(ctx context.Context, req *pb.ListArchivedIte
 func (h *Handler) ListUpcomingItems(ctx context.Context, req *pb.ListUpcomingItemsRequest) (*pb.ListItemsResponse, error) {
 	planID, err := uuid.Parse(req.PlanId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid plan_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: list upcoming", badUUID("plan_id", req.PlanId))
 	}
 	items, err := h.service.ListUpcoming(ctx, planID)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: list upcoming", err)
 	}
 	return itemListToProto(items), nil
 }
@@ -127,11 +133,11 @@ func (h *Handler) ListUpcomingItems(ctx context.Context, req *pb.ListUpcomingIte
 func (h *Handler) ListItemsByUser(ctx context.Context, req *pb.ListItemsByUserRequest) (*pb.ListItemsResponse, error) {
 	userID, err := uuid.Parse(req.UserId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid user_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: list by user", badUUID("user_id", req.UserId))
 	}
 	items, err := h.service.GetByUserID(ctx, userID)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: list by user", err)
 	}
 	return itemListToProto(items), nil
 }
@@ -139,14 +145,15 @@ func (h *Handler) ListItemsByUser(ctx context.Context, req *pb.ListItemsByUserRe
 func (h *Handler) ListItemsInDateWindow(ctx context.Context, req *pb.ListItemsInDateWindowRequest) (*pb.ListItemsResponse, error) {
 	planID, err := uuid.Parse(req.PlanId)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid plan_id: %v", err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: list in date window", badUUID("plan_id", req.PlanId))
 	}
 	if req.WindowStart == nil || req.WindowEnd == nil {
-		return nil, status.Error(codes.InvalidArgument, "window_start and window_end are required")
+		return nil, commongrpc.Fail(ctx, "checklistitem: list in date window",
+			fmt.Errorf("%w: window_start and window_end are required", commonconstants.ErrInvalidInput))
 	}
 	items, err := h.service.ListInDateWindow(ctx, planID, req.WindowStart.AsTime(), req.WindowEnd.AsTime())
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: list in date window", err)
 	}
 	return itemListToProto(items), nil
 }
@@ -154,7 +161,7 @@ func (h *Handler) ListItemsInDateWindow(ctx context.Context, req *pb.ListItemsIn
 func (h *Handler) UpdateItem(ctx context.Context, req *pb.UpdateItemRequest) (*pb.ChecklistItem, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: update", badUUID("id", req.Id))
 	}
 
 	in := UpdateItemInput{
@@ -173,7 +180,7 @@ func (h *Handler) UpdateItem(ctx context.Context, req *pb.UpdateItemRequest) (*p
 	} else if req.ParentId != nil {
 		pid, err := uuid.Parse(*req.ParentId)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid parent_id: %v", err)
+			return nil, commongrpc.Fail(ctx, "checklistitem: update", badUUID("parent_id", *req.ParentId))
 		}
 		in.SetParent = true
 		in.ParentID = &pid
@@ -181,7 +188,7 @@ func (h *Handler) UpdateItem(ctx context.Context, req *pb.UpdateItemRequest) (*p
 
 	item, err := h.service.Update(ctx, in)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: update", err)
 	}
 	return itemToProto(item), nil
 }
@@ -189,7 +196,7 @@ func (h *Handler) UpdateItem(ctx context.Context, req *pb.UpdateItemRequest) (*p
 func (h *Handler) UpdateItemDates(ctx context.Context, req *pb.UpdateItemDatesRequest) (*pb.ChecklistItem, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: update dates", badUUID("id", req.Id))
 	}
 
 	in := UpdateDatesInput{ID: id}
@@ -206,7 +213,7 @@ func (h *Handler) UpdateItemDates(ctx context.Context, req *pb.UpdateItemDatesRe
 
 	item, err := h.service.UpdateDates(ctx, in)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: update dates", err)
 	}
 	return itemToProto(item), nil
 }
@@ -214,11 +221,11 @@ func (h *Handler) UpdateItemDates(ctx context.Context, req *pb.UpdateItemDatesRe
 func (h *Handler) ArchiveItem(ctx context.Context, req *pb.ArchiveItemRequest) (*pb.ChecklistItem, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: archive", badUUID("id", req.Id))
 	}
 	item, err := h.service.Archive(ctx, id, req.Archived)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: archive", err)
 	}
 	return itemToProto(item), nil
 }
@@ -226,10 +233,10 @@ func (h *Handler) ArchiveItem(ctx context.Context, req *pb.ArchiveItemRequest) (
 func (h *Handler) DeleteItem(ctx context.Context, req *pb.DeleteItemRequest) (*emptypb.Empty, error) {
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid id: %v", err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: delete", badUUID("id", req.Id))
 	}
 	if err := h.service.Delete(ctx, id); err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: delete", err)
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -237,8 +244,9 @@ func (h *Handler) DeleteItem(ctx context.Context, req *pb.DeleteItemRequest) (*e
 func (h *Handler) DailyReset(ctx context.Context, _ *pb.DailyResetRequest) (*pb.DailyResetResponse, error) {
 	n, err := h.service.DailyReset(ctx)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, commongrpc.Fail(ctx, "checklistitem: daily reset", err)
 	}
+	slog.InfoContext(ctx, "checklistitem: daily reset complete", "rows", n)
 	return &pb.DailyResetResponse{ResetCount: int32(n)}, nil
 }
 
@@ -309,20 +317,4 @@ func itoa(i int) string {
 		b[idx] = '-'
 	}
 	return string(b[idx:])
-}
-
-func mapError(err error) error {
-	switch {
-	case errors.Is(err, commonconstants.ErrNotFound):
-		return status.Error(codes.NotFound, err.Error())
-	case errors.Is(err, commonconstants.ErrDuplicateResource):
-		return status.Error(codes.AlreadyExists, err.Error())
-	case errors.Is(err, commonconstants.ErrInvalidInput),
-		errors.Is(err, commonconstants.ErrConstraintViolation):
-		return status.Error(codes.InvalidArgument, err.Error())
-	case errors.Is(err, commonconstants.ErrForbidden):
-		return status.Error(codes.PermissionDenied, err.Error())
-	default:
-		return status.Error(codes.Internal, err.Error())
-	}
 }

@@ -4,16 +4,17 @@ import (
 	"fmt"
 	"net/http"
 
+	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/apierr"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // Handler is the gateway's HTTP shim for auth-service. Each handler mirrors
 // the monolith's previous response shape exactly so existing frontend clients
-// don't need to change.
+// don't need to change. Error mapping + logging is delegated to apierr.Fail —
+// the single place the gateway inspects errors and writes error responses.
 type Handler struct {
 	client *Client
 }
@@ -25,26 +26,25 @@ func NewHandler(client *Client) *Handler {
 func (h *Handler) Create(c *gin.Context) {
 	var req SignUpRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"statusCode:": http.StatusBadRequest, "message": "Error with parsing payload as JSON."})
+		apierr.Fail(c, "authgw: create user", fmt.Errorf("%w: malformed request body: %v", commonconstants.ErrInvalidInput, err))
 		return
 	}
 	if _, err := h.client.SignUp(c.Request.Context(), &req); err != nil {
-		code := httpStatusFromGRPC(err)
-		c.JSON(code, gin.H{"statusCode:": code, "message": fmt.Sprintf("Error when attempting to create user: %s", err.Error())})
+		apierr.Fail(c, "authgw: create user", err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"statusCode:": http.StatusCreated, "message": "Successfully created user."})
+	c.JSON(http.StatusCreated, gin.H{"statusCode": http.StatusCreated, "message": "Successfully created user."})
 }
 
 func (h *Handler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"statusCode": http.StatusBadRequest, "message": fmt.Sprintf("Error when unmarshalling json payload: %s\n", err)})
+		apierr.Fail(c, "authgw: login", fmt.Errorf("%w: malformed request body: %v", commonconstants.ErrInvalidInput, err))
 		return
 	}
 	resp, err := h.client.SignIn(c.Request.Context(), &req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"statusCode": http.StatusBadRequest, "message": fmt.Sprintf("Error when attempting to login user: %s\n", err)})
+		apierr.Fail(c, "authgw: login", err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully logged in.", "result": resp})
@@ -53,12 +53,12 @@ func (h *Handler) Login(c *gin.Context) {
 func (h *Handler) GetProfile(c *gin.Context) {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"statusCode": http.StatusUnauthorized, "message": fmt.Sprintf("Unauthorized: %s", err.Error())})
+		apierr.Fail(c, "authgw: get profile", fmt.Errorf("%w: %v", commonconstants.ErrUnauthorized, err))
 		return
 	}
 	profile, err := h.client.GetProfile(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"statusCode": http.StatusInternalServerError, "message": fmt.Sprintf("Error fetching profile: %s", err.Error())})
+		apierr.Fail(c, "authgw: get profile", err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully retrieved profile.", "result": profile})
@@ -67,17 +67,17 @@ func (h *Handler) GetProfile(c *gin.Context) {
 func (h *Handler) UpdateProfile(c *gin.Context) {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"statusCode": http.StatusUnauthorized, "message": fmt.Sprintf("Unauthorized: %s", err.Error())})
+		apierr.Fail(c, "authgw: update profile", fmt.Errorf("%w: %v", commonconstants.ErrUnauthorized, err))
 		return
 	}
 	var req UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"statusCode": http.StatusBadRequest, "message": fmt.Sprintf("Invalid request body: %s", err.Error())})
+		apierr.Fail(c, "authgw: update profile", fmt.Errorf("%w: malformed request body: %v", commonconstants.ErrInvalidInput, err))
 		return
 	}
 	profile, err := h.client.UpdateProfile(c.Request.Context(), userID, req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"statusCode": http.StatusBadRequest, "message": fmt.Sprintf("Error updating profile: %s", err.Error())})
+		apierr.Fail(c, "authgw: update profile", err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully updated profile.", "result": profile})
@@ -87,46 +87,22 @@ func (h *Handler) GetById(c *gin.Context) {
 	idParam := c.Param("id")
 	id, err := uuid.Parse(idParam)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"statusCode:": http.StatusBadRequest, "message": fmt.Sprintf("Error with id %s, not a valid uuid.", idParam)})
+		apierr.Fail(c, "authgw: get user by id", fmt.Errorf("%w: %q", commonconstants.ErrUUIDCouldNotBeParsed, idParam))
 		return
 	}
 	user, err := h.client.GetById(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"statusCode:": http.StatusBadRequest, "message": fmt.Sprintf("Error when attempting to get user with id %s %s", idParam, err.Error())})
+		apierr.Fail(c, "authgw: get user by id", err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully retreived user.", "result": user})
+	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully retreived user.", "result": user})
 }
 
 func (h *Handler) GetAll(c *gin.Context) {
 	users, err := h.client.ListUsers(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"statusCode:": http.StatusBadRequest, "message": fmt.Sprintf("Error when attempting to get all users: %s:\n", err.Error())})
+		apierr.Fail(c, "authgw: list users", err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"statusCode:": http.StatusOK, "message": "Successfully retrieved users.", "result": users})
-}
-
-func httpStatusFromGRPC(err error) int {
-	if err == nil {
-		return http.StatusOK
-	}
-	s, ok := status.FromError(err)
-	if !ok {
-		return http.StatusInternalServerError
-	}
-	switch s.Code() {
-	case codes.NotFound:
-		return http.StatusNotFound
-	case codes.AlreadyExists:
-		return http.StatusConflict
-	case codes.InvalidArgument:
-		return http.StatusBadRequest
-	case codes.Unauthenticated:
-		return http.StatusUnauthorized
-	case codes.PermissionDenied:
-		return http.StatusForbidden
-	default:
-		return http.StatusInternalServerError
-	}
+	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "message": "Successfully retrieved users.", "result": users})
 }

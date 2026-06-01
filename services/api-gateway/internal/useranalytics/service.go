@@ -2,9 +2,9 @@ package useranalytics
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/logger"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/models"
 	"github.com/google/uuid"
 )
@@ -25,13 +25,13 @@ func NewService(repo Repository, checklistService UserAnalyticsCheckListService)
 func (s *service) GetUserAnalytics(ctx context.Context, userID uuid.UUID, date time.Time) (*UserAnalytics, error) {
 
 	// grab all the checklist data for the user
-	data, err := s.checklistService.GetByUserID(ctx, userID)
-
-	if err != nil {
-		return nil, err
+	if _, err := s.checklistService.GetByUserID(ctx, userID); err != nil {
+		return nil, fmt.Errorf("useranalytics: get analytics: load checklist data: %w", err)
 	}
 
-	logger.Debug("Retrieved checklist data for user", "userID", userID, "data", data)
-
-	return s.repo.GetByUserAndDate(ctx, userID, date)
+	analytics, err := s.repo.GetByUserAndDate(ctx, userID, date)
+	if err != nil {
+		return nil, fmt.Errorf("useranalytics: get analytics: %w", err)
+	}
+	return analytics, nil
 }
