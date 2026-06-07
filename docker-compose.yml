@@ -188,6 +188,13 @@ services:
     networks:
       - fireplace-network
 
+  # Orchestrator Service (ordinal 5) — NO DATABASE.
+  # orchestrator-service coordinates other services over gRPC + AMQP and owns no
+  # data, so it has no postgres entry here (and no DB_* env). It registers in
+  # Consul and binds gRPC on 7105; it only needs the shared infra above
+  # (fireplace-consul + fireplace-rabbitmq) to run. Ordinal 5 / ports 5305+6305
+  # are reserved should it ever gain a DB.
+
   # --- Temporal (workflow orchestration) ---
   temporal-postgres:
     image: postgres:16

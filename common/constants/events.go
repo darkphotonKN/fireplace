@@ -18,9 +18,10 @@ per routing-key once real consumers come online.
 * Exchanges — one per domain.
 **/
 const (
-	AuthEventsExchange    = "auth.events"
-	PlanEventsExchange    = "plan.events"
-	ExampleEventsExchange = "example.events"
+	AuthEventsExchange         = "auth.events"
+	PlanEventsExchange         = "plan.events"
+	ExampleEventsExchange      = "example.events"
+	OrchestratorEventsExchange = "orchestrator.events"
 
 	DlxEventsExchange = "dlx.exchange"
 	RetryExchange     = "retry.exchange"
@@ -51,8 +52,9 @@ const (
 * Queue names — {service}.events
 **/
 const (
-	AuthServiceEventsQueue    = "auth-service.events"
-	PlanServiceEventsQueue    = "plan-service.events"
-	ExampleServiceEventsQueue = "example-service.events"
-	ApiGatewayEventsQueue     = "api-gateway.events"
+	AuthServiceEventsQueue         = "auth-service.events"
+	PlanServiceEventsQueue         = "plan-service.events"
+	ExampleServiceEventsQueue      = "example-service.events"
+	OrchestratorServiceEventsQueue = "orchestrator-service.events"
+	ApiGatewayEventsQueue          = "api-gateway.events"
 )

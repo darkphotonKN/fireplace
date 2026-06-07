@@ -4,6 +4,7 @@ gen:
     --go-grpc_out=. --go-grpc_opt=paths=source_relative \
 		api/proto/auth/auth.proto \
 		api/proto/example/example.proto \
+		api/proto/orchestrator/orchestrator.proto \
 		api/proto/plan/plan.proto \
 		api/proto/plan/checklist.proto \
 		api/proto/calendar/calendar.proto \

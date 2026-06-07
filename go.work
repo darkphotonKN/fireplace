@@ -6,5 +6,6 @@ use (
 	./services/auth-service
 	./services/calendar-service
 	./services/example-service
+	./services/orchestrator-service
 	./services/plan-service
 )

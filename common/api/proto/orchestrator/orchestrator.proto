@@ -1,0 +1,21 @@
+syntax = "proto3";
+package orchestrator;
+
+option go_package = "github.com/darkphotonKN/fireplace/common/api/proto/orchestrator";
+
+// OrchestratorService — coordinates cross-service workflows / sagas. Scaffolded
+// empty for now; a single Ping RPC exists so the gRPC + AMQP wiring can be
+// smoke-tested while real orchestration RPCs are added. Mirrors the
+// ExampleService template (no DB, publish/consume pattern wired).
+service OrchestratorService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {
+  string message = 1;
+}
+
+message PingResponse {
+  string reply = 1;
+  string served_by = 2;
+}
