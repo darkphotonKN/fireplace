@@ -148,27 +148,36 @@ export default function PlanDetail({
 
         {/* Main Grid - Flexible Layout */}
         <div className="grid grid-cols-1 gap-6">
-          {/* Top Row — Checklist (longterm) on the left, Daily (AI-only) on the right.
+          {/* Daily — warm "reminder" strip pinned to the top of the stack. The
+              accent border + tint set it apart from the neutral core blocks
+              below; Todo renders its own "Daily" header internally so no extra
+              title is needed here. */}
+          <Card className="relative overflow-hidden backdrop-blur-sm shadow-sm border-0 border-l-4 border-l-amber-500/50 bg-gradient-to-br from-amber-500/[0.07] to-orange-500/[0.02] ring-1 ring-amber-500/10">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -top-10 -right-10 w-40 h-40 rounded-full bg-amber-400/10 blur-3xl"
+            />
+            <div className="relative p-6">
+              <p className="mb-3 text-xs font-medium uppercase tracking-wide text-amber-500/80">
+                Today&apos;s reminders · resets daily
+              </p>
+              <Todo fixedTaskType="daily" dailyAIOnly />
+            </div>
+          </Card>
+
+          {/* PRIMARY — Items (longterm) take the full width as the main focus.
               The dedicated Note block is hidden in this iteration; NotesContainer
               import is preserved for a future feature. */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <Card className="backdrop-blur-sm shadow-sm border-0">
-              <div className="p-6">
-                <Todo fixedTaskType="longterm" enableTypeFilter />
-              </div>
-            </Card>
+          <Card className="backdrop-blur-sm shadow-sm border-0">
+            <div className="p-6">
+              <Todo fixedTaskType="longterm" enableTypeFilter />
+            </div>
+          </Card>
 
-            <Card className="backdrop-blur-sm shadow-sm border-0">
-              <div className="p-6">
-                <Todo fixedTaskType="daily" dailyAIOnly />
-              </div>
-            </Card>
-          </div>
-
-          {/* Second Row - Calendar (full width) */}
+          {/* Core blocks — Calendar (full width) */}
           <CalendarCard planId={planId} />
 
-          {/* Fourth Row - Recent Videos only */}
+          {/* Recommended Videos */}
           <Card className="backdrop-blur-sm shadow-sm border-0">
             <h2 className="text-xl font-semibold p-6 pb-4">
               Recommended Videos
