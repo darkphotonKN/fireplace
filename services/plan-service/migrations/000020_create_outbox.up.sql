@@ -18,4 +18,3 @@ CREATE TABLE outbox (
 
 CREATE INDEX idx_outbox_pending ON outbox(created_at) WHERE published_at IS NULL;
 
-CREATE INDEX idx_outbox_cleanup ON outbox(published_at) WHERE published_at IS NOT NULL;

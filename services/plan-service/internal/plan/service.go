@@ -47,12 +47,13 @@ func (s *service) Create(ctx context.Context, in *CreatePlanInput) (*Plan, error
 		DailyReset:  dailyReset,
 	}
 
+	// transction with write and outbox to tie write with event publish and guarantee it
+	// through our go workers publishing the outbox events
 	created, err := s.repo.Create(ctx, p)
 	if err != nil {
 		return nil, fmt.Errorf("plan: create: %w", err)
 	}
 
-	s.PublishPlanCreated(ctx, created)
 	return created, nil
 }
 
