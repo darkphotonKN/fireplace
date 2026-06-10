@@ -2,8 +2,8 @@ package outbox
 
 import (
 	"context"
-	"fmt"
 
+	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -23,7 +23,7 @@ func (r *repository) CreateTx(ctx context.Context, tx *sqlx.Tx, params CreateOut
 
 	_, err := tx.NamedExecContext(ctx, query, params)
 	if err != nil {
-		return fmt.Errorf("Error when attempting to write to outbox: %w", err)
+		return commonhelpers.WrapDBErr("outbox repo", "create outbox", err)
 	}
 
 	return nil

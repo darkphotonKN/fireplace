@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
-	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
@@ -20,21 +19,6 @@ type Repository struct {
 // NewRepository creates a new notes repository
 func NewRepository(db *sqlx.DB) *Repository {
 	return &Repository{db: db}
-}
-
-// wrapDBErr is the repo boundary translation point: it converts infrastructure
-// errors (sql.ErrNoRows, duplicate keys, constraint violations, transient
-// failures) into domain sentinels via AnalyzeDBErr, and wraps anything else
-// with the repo name + operation for context. It never logs and never decides
-// HTTP status.
-func wrapDBErr(op string, err error) error {
-	if err == nil {
-		return nil
-	}
-	if mapped := commonhelpers.AnalyzeDBErr(err); mapped != err {
-		return mapped
-	}
-	return fmt.Errorf("notes repo: %s: %w", op, err)
 }
 
 // Create inserts a new note into the database

@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
@@ -15,12 +16,14 @@ import (
 
 /**
 * Analyzes which type of custom error an error is and returns the
-* appropriate error type. If the error is a new type then return it directly.
+* appropriate error type. If the error is a new type then return nil and let wrapper
+* handle it directly.
 **/
-func AnalyzeDBErr(err error) error {
+func analyzeDBErr(err error) error {
 	if err == nil {
 		return nil
 	}
+
 	// match custom error types
 	if IsDuplicateError(err) {
 		return commonconstants.ErrDuplicateResource
@@ -36,7 +39,7 @@ func AnalyzeDBErr(err error) error {
 	}
 
 	// unexpected errors
-	return err
+	return nil
 }
 
 /**
@@ -79,4 +82,27 @@ func IsTransientError(err error) bool {
 	}
 
 	return false
+}
+
+// wrapDBErr is the repo boundary translation point: it converts infrastructure
+// errors (sql.ErrNoRows, duplicate keys, constraint violations, transient
+// failures) into domain sentinels via AnalyzeDBErr, and wraps anything else
+// with the repo name + operation for context. It never logs and never decides
+// transport status.
+// repoName - where the error occured, e.g. users repo
+// op - the operation that was attempted to run
+// err - the error
+func WrapDBErr(repoName string, op string, err error) error {
+	if err == nil {
+		return err
+	}
+
+	// matches a sentinel error
+	if analyzedDBEr := analyzeDBErr(err); analyzedDBEr != nil {
+		// return only sentinel
+		return analyzedDBEr
+	}
+
+	// return with context wrapped
+	return fmt.Errorf("error occured in %s during %s: %w", repoName, op, err)
 }

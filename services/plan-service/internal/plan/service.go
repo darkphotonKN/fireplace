@@ -4,9 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	commonbroker "github.com/darkphotonKN/fireplace/common/broker"
+	pb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
+	"github.com/darkphotonKN/fireplace/services/plan-service/internal/outbox"
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
+	"google.golang.org/protobuf/proto"
 )
 
 type Repository interface {
@@ -18,15 +22,23 @@ type Repository interface {
 	ListShared(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Plan, error)
 	Search(ctx context.Context, in SearchInput) ([]*SearchResult, error)
 	CreateShare(ctx context.Context, planID, userID uuid.UUID) error
+
+	// Transaction methods
+	CreateTx(ctx context.Context, p *Plan) (*Plan, error)
 }
 
 type service struct {
-	repo      Repository
-	publishCh commonbroker.Publisher
+	repo          Repository
+	outboxService OutboxService
+	db            *sqlx.DB
 }
 
-func NewService(repo Repository, publishCh commonbroker.Publisher) *service {
-	return &service{repo: repo, publishCh: publishCh}
+type OutboxService interface {
+	CreateTx(ctx context.Context, params outbox.CreateOutboxParams) error
+}
+
+func NewService(repo Repository, outboxService OutboxService, db *sqlx.DB) *service {
+	return &service{repo: repo, outboxService: outboxService, db: db}
 }
 
 func (s *service) Create(ctx context.Context, in *CreatePlanInput) (*Plan, error) {
@@ -49,6 +61,42 @@ func (s *service) Create(ctx context.Context, in *CreatePlanInput) (*Plan, error
 
 	// transction with write and outbox to tie write with event publish and guarantee it
 	// through our go workers publishing the outbox events
+
+	err := commonhelpers.ExecTx(ctx, s.db, func(tx *sqlx.Tx) error {
+		// write plan
+		plan, err := s.repo.CreateTx(ctx, p)
+
+		if err != nil {
+			return err
+		}
+
+		payload, err := proto.Marshal(&pb.CreatePlanRequest{
+			UserId:      plan.UserID.String(),
+			Name:        plan.Name,
+			Focus:       plan.Focus,
+			Description: plan.Description,
+			PlanType:    plan.PlanType,
+			DailyReset:  plan.DailyReset,
+		})
+
+		if err != nil {
+			return err
+		}
+
+		// write outbox
+		err = s.outboxService.CreateTx(ctx, outbox.CreateOutboxParams{
+			RoutingKey: commonconstants.PlanCreated,
+			Exchange:   commonconstants.PlanEventsExchange,
+			Payload:    payload,
+		})
+
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
 	created, err := s.repo.Create(ctx, p)
 	if err != nil {
 		return nil, fmt.Errorf("plan: create: %w", err)

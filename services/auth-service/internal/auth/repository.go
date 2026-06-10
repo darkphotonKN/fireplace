@@ -19,19 +19,13 @@ func NewRepository(db *sqlx.DB) *repository {
 	return &repository{DB: db}
 }
 
-// wrapDBErr is the repo boundary translation point: it converts infrastructure
-// errors (sql.ErrNoRows, duplicate keys, constraint violations, transient
-// failures) into domain sentinels via AnalyzeDBErr, and wraps anything else
-// with the repo name + operation for context. It never logs and never decides
-// transport status.
+// wrapDBErr is the repo boundary translation point: it delegates to the shared
+// WrapDBErr helper, which converts infrastructure errors (sql.ErrNoRows,
+// duplicate keys, constraint violations, transient failures) into domain
+// sentinels and wraps anything else with the repo name + operation for context.
+// It never logs and never decides transport status.
 func wrapDBErr(op string, err error) error {
-	if err == nil {
-		return nil
-	}
-	if mapped := commonhelpers.AnalyzeDBErr(err); mapped != err {
-		return mapped
-	}
-	return fmt.Errorf("auth repo: %s: %w", op, err)
+	return commonhelpers.WrapDBErr("auth repo", op, err)
 }
 
 func (r *repository) Create(ctx context.Context, u *User) error {
