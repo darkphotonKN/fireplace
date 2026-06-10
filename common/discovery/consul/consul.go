@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+
 	"github.com/hashicorp/consul/api"
 	consul "github.com/hashicorp/consul/api"
 	"strconv"
@@ -77,7 +79,7 @@ func (r *Registry) Register(ctx context.Context, instanceID, serviceName, hostPo
 	})
 
 	if err != nil {
-		fmt.Printf("\nError when attempting to start service register agent: %s\n\n", err)
+		slog.ErrorContext(ctx, "failed to register service with consul", "err", err, "service", serviceName, "instance", instanceID)
 		return err
 	}
 

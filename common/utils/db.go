@@ -3,6 +3,7 @@ package commonhelpers
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -19,7 +20,7 @@ func ExecTx(ctx context.Context, db *sqlx.DB, fn func(tx *sqlx.Tx) error) (err e
 	tx, txBeginErr := db.BeginTxx(ctx, nil)
 
 	if txBeginErr != nil {
-		fmt.Printf("Error when attempting to start transaction: %v\n", txBeginErr)
+		slog.ErrorContext(ctx, "failed to begin transaction", "err", txBeginErr)
 		return fmt.Errorf("Error when attempting to start transaction: %v", txBeginErr)
 	}
 
@@ -28,14 +29,14 @@ func ExecTx(ctx context.Context, db *sqlx.DB, fn func(tx *sqlx.Tx) error) (err e
 		if p := recover(); p != nil {
 			tx.Rollback()
 
-			fmt.Println("Transaction rolled back due to panic:", p)
+			slog.ErrorContext(ctx, "transaction rolled back due to panic", "panic", p)
 
 			// re-throw panic after rollback
 			panic(p)
 		}
 
 		if err != nil {
-			fmt.Printf("Error during transaction, rolling back: Error: %v\n", err)
+			slog.ErrorContext(ctx, "transaction failed, rolling back", "err", err)
 			tx.Rollback()
 		}
 	}()
@@ -49,7 +50,7 @@ func ExecTx(ctx context.Context, db *sqlx.DB, fn func(tx *sqlx.Tx) error) (err e
 
 	// no error, safe to commit
 	if commitErr := tx.Commit(); commitErr != nil {
-		fmt.Printf("Failed to commit transaction, rolling back. Error: %s\n", commitErr)
+		slog.ErrorContext(ctx, "failed to commit transaction, rolling back", "err", commitErr)
 		tx.Rollback() // rollback if commit fails
 
 		return commitErr
