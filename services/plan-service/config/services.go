@@ -7,6 +7,7 @@ import (
 	commonbroker "github.com/darkphotonKN/fireplace/common/broker"
 	"github.com/darkphotonKN/fireplace/common/discovery"
 	"github.com/darkphotonKN/fireplace/services/plan-service/internal/checklistitem"
+	"github.com/darkphotonKN/fireplace/services/plan-service/internal/outbox"
 	"github.com/darkphotonKN/fireplace/services/plan-service/internal/plan"
 	"github.com/jmoiron/sqlx"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -18,9 +19,12 @@ import (
 func SetupServices(db *sqlx.DB, amqpChannel *amqp.Channel, _ discovery.Registry) *grpc.Server {
 	publisher := commonbroker.NewAmqpPublisher(amqpChannel)
 
+	outboxRepo := outbox.NewRepository(db)
+	outboxService := outbox.NewService(outboxRepo)
+
 	// --- plans ---
 	planRepo := plan.NewRepository(db)
-	planService := plan.NewService(planRepo, publisher)
+	planService := plan.NewService(planRepo, outboxService, db)
 	planHandler := plan.NewHandler(planService)
 
 	// --- checklist items ---

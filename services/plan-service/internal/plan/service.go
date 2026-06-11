@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type Repository interface {
@@ -24,7 +25,7 @@ type Repository interface {
 	CreateShare(ctx context.Context, planID, userID uuid.UUID) error
 
 	// Transaction methods
-	CreateTx(ctx context.Context, p *Plan) (*Plan, error)
+	CreateTx(ctx context.Context, tx *sqlx.Tx, p *Plan) (*Plan, error)
 }
 
 type service struct {
@@ -34,7 +35,7 @@ type service struct {
 }
 
 type OutboxService interface {
-	CreateTx(ctx context.Context, params outbox.CreateOutboxParams) error
+	CreateTx(ctx context.Context, tx *sqlx.Tx, params outbox.CreateOutboxParams) error
 }
 
 func NewService(repo Repository, outboxService OutboxService, db *sqlx.DB) *service {
@@ -62,21 +63,26 @@ func (s *service) Create(ctx context.Context, in *CreatePlanInput) (*Plan, error
 	// transction with write and outbox to tie write with event publish and guarantee it
 	// through our go workers publishing the outbox events
 
+	var newPlan *Plan
+
 	err := commonhelpers.ExecTx(ctx, s.db, func(tx *sqlx.Tx) error {
 		// write plan
-		plan, err := s.repo.CreateTx(ctx, p)
+		plan, err := s.repo.CreateTx(ctx, tx, p)
 
 		if err != nil {
 			return err
 		}
 
-		payload, err := proto.Marshal(&pb.CreatePlanRequest{
+		payload, err := proto.Marshal(&pb.Plan{
+			Id:          plan.ID.String(),
 			UserId:      plan.UserID.String(),
 			Name:        plan.Name,
 			Focus:       plan.Focus,
 			Description: plan.Description,
 			PlanType:    plan.PlanType,
 			DailyReset:  plan.DailyReset,
+			CreatedAt:   timestamppb.New(plan.CreatedAt),
+			UpdatedAt:   timestamppb.New(plan.UpdatedAt),
 		})
 
 		if err != nil {
@@ -84,7 +90,7 @@ func (s *service) Create(ctx context.Context, in *CreatePlanInput) (*Plan, error
 		}
 
 		// write outbox
-		err = s.outboxService.CreateTx(ctx, outbox.CreateOutboxParams{
+		err = s.outboxService.CreateTx(ctx, tx, outbox.CreateOutboxParams{
 			RoutingKey: commonconstants.PlanCreated,
 			Exchange:   commonconstants.PlanEventsExchange,
 			Payload:    payload,
@@ -94,15 +100,16 @@ func (s *service) Create(ctx context.Context, in *CreatePlanInput) (*Plan, error
 			return err
 		}
 
+		newPlan = plan
+
 		return nil
 	})
 
-	created, err := s.repo.Create(ctx, p)
 	if err != nil {
-		return nil, fmt.Errorf("plan: create: %w", err)
+		return nil, err
 	}
 
-	return created, nil
+	return newPlan, nil
 }
 
 func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*Plan, error) {

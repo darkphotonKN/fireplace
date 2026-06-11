@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
@@ -14,6 +15,15 @@ import (
 
 type Repository struct {
 	db *sqlx.DB
+}
+
+// wrapDBErr delegates to the shared WrapDBErr helper, translating infrastructure
+// errors into domain sentinels (or wrapping with repo + operation context). This
+// notes repo is slated to move into a dedicated microservice under the
+// strangler-fig migration; this local shim just keeps existing call sites
+// compiling in the gateway in the meantime.
+func wrapDBErr(op string, err error) error {
+	return commonhelpers.WrapDBErr("notes repo", op, err)
 }
 
 // NewRepository creates a new notes repository
