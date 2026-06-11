@@ -1,4 +1,5 @@
 CREATE TABLE outbox (
+    -- also used as event_id
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- Core routing and event metadata

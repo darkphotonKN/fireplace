@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	pb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
+	pbevents "github.com/darkphotonKN/fireplace/common/api/proto/events"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/darkphotonKN/fireplace/services/plan-service/internal/outbox"
@@ -73,16 +73,13 @@ func (s *service) Create(ctx context.Context, in *CreatePlanInput) (*Plan, error
 			return err
 		}
 
-		payload, err := proto.Marshal(&pb.Plan{
-			Id:          plan.ID.String(),
-			UserId:      plan.UserID.String(),
-			Name:        plan.Name,
-			Focus:       plan.Focus,
-			Description: plan.Description,
-			PlanType:    plan.PlanType,
-			DailyReset:  plan.DailyReset,
-			CreatedAt:   timestamppb.New(plan.CreatedAt),
-			UpdatedAt:   timestamppb.New(plan.UpdatedAt),
+		payload, err := proto.Marshal(&pbevents.PlanCreatedEvent{
+			Id:        plan.ID.String(),
+			UserId:    plan.UserID.String(),
+			Name:      plan.Name,
+			Focus:     plan.Focus,
+			PlanType:  plan.PlanType,
+			CreatedAt: timestamppb.New(plan.CreatedAt),
 		})
 
 		if err != nil {

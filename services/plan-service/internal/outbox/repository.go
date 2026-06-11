@@ -17,8 +17,8 @@ func NewRepository(db *sqlx.DB) *repository {
 
 func (r *repository) CreateTx(ctx context.Context, tx *sqlx.Tx, params CreateOutboxParams) error {
 	query := `
-	INSERT INTO outbox (routing_key, exchange, payload)
-	VALUES (:routing_key, :exchange, :payload)
+	INSERT INTO outbox (event_id, routing_key, exchange, payload)
+	VALUES (:event_id, :routing_key, :exchange, :payload)
 	`
 
 	_, err := tx.NamedExecContext(ctx, query, params)
