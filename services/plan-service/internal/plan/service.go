@@ -83,7 +83,8 @@ func (s *service) Create(ctx context.Context, in *CreatePlanInput) (*Plan, error
 		})
 
 		if err != nil {
-			return err
+			// wrap error, db and transaction has no context of this
+			return fmt.Errorf("create plan error when marshalling to proto plan id %s: %w", plan.ID, err)
 		}
 
 		// write outbox
