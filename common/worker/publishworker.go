@@ -32,19 +32,16 @@ func NewPublishWorker(eventDrainer EventDrainer, publisher broker.Publisher, int
 // by default this should be initiated in main.go however, after the event drain
 // injections and publishers have been initialized
 func (w *PublishWorker) Run(ctx context.Context) error {
-	after := time.After(w.interval)
+	timer := time.NewTicker(w.interval)
 
 	for {
 		select {
-		case <-after:
+		case <-timer.C:
 			return nil
 
 		case <-ctx.Done():
 			// TODO: wip
 
 		}
-
 	}
-
-	return nil
 }

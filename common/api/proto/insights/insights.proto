@@ -1,0 +1,62 @@
+syntax = "proto3";
+package insights;
+
+option go_package = "github.com/darkphotonKN/fireplace/common/api/proto/insights";
+
+// InsightsService — AI-generated productivity suggestions for a plan. It owns no
+// durable data of its own today; it reads plan focus + checklist items from
+// plan-service over gRPC and calls an LLM to produce suggestions. The reserved
+// insights-service-db (ordinal 6) is for future caching/persistence of
+// generated insights.
+//
+// user_id is carried on every request so insights can assert plan ownership
+// against plan-service before generating anything (same trust model as the
+// other services: the gateway authenticates and forwards the user_id).
+service InsightsService {
+  // GenerateSuggestion returns a single, actionable next checklist item for the
+  // plan, derived from its focus + current checklist.
+  rpc GenerateSuggestion(GenerateSuggestionRequest) returns (GenerateSuggestionResponse);
+
+  // GenerateDailySuggestions returns a handful of daily focus suggestions
+  // derived from longterm checklist items + plan focus.
+  rpc GenerateDailySuggestions(GenerateDailySuggestionsRequest) returns (GenerateDailySuggestionsResponse);
+
+  // SuggestVideos returns recommended learning videos for the plan.
+  rpc SuggestVideos(SuggestVideosRequest) returns (SuggestVideosResponse);
+}
+
+message GenerateSuggestionRequest {
+  string plan_id = 1;
+  string user_id = 2;
+}
+
+message GenerateSuggestionResponse {
+  string suggestion = 1;
+}
+
+message GenerateDailySuggestionsRequest {
+  string plan_id = 1;
+  string user_id = 2;
+}
+
+message GenerateDailySuggestionsResponse {
+  repeated string suggestions = 1;
+}
+
+message SuggestVideosRequest {
+  string plan_id = 1;
+  string user_id = 2;
+}
+
+// Video mirrors the shape the frontend already consumes for video suggestions.
+message Video {
+  string title = 1;
+  string url = 2;
+  string source = 3;
+  string type = 4;
+  string description = 5;
+}
+
+message SuggestVideosResponse {
+  repeated Video videos = 1;
+}

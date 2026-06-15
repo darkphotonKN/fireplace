@@ -3,6 +3,7 @@ package outbox
 import (
 	"context"
 
+	commonmodel "github.com/darkphotonKN/fireplace/common/model"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -20,4 +21,9 @@ func NewService(repo Repository) *service {
 
 func (s *service) CreateTx(ctx context.Context, tx *sqlx.Tx, params CreateOutboxParams) error {
 	return s.repo.CreateTx(ctx, tx, params)
+}
+
+func (s *service) Drain(ctx context.Context) ([]*commonmodel.OutboxEvent, error) {
+
+	return nil, nil
 }

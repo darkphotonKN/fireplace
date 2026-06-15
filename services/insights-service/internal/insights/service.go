@@ -1,0 +1,155 @@
+package insights
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/google/uuid"
+)
+
+// dailySuggestionCount is how many daily suggestions GenerateDailySuggestions
+// requests from the LLM. Ported from the gateway behaviour.
+const dailySuggestionCount = 3
+
+// ErrGeneratorNotConfigured is returned by StubContentGenerator until the real
+// OpenAI-backed generator is migrated from the api-gateway. It is intentionally
+// a plain (non-sentinel) error so the gRPC mapper reports it as Internal — a
+// clear "this path isn't wired yet" signal during the migration.
+var ErrGeneratorNotConfigured = errors.New("insights: content generator not configured")
+
+// ContentGenerator is the LLM seam: anything that turns a prompt into text. The
+// gateway's OpenAI-backed generator will implement this once migrated in.
+type ContentGenerator interface {
+	Generate(prompt string) (string, error)
+}
+
+// PlanGateway is the slice of plan-service this package depends on. Tests can
+// substitute a fake.
+type PlanGateway interface {
+	GetPlanContext(ctx context.Context, planID, userID uuid.UUID) (*PlanContext, error)
+}
+
+type Service struct {
+	plans PlanGateway
+	gen   ContentGenerator
+}
+
+func NewService(plans PlanGateway, gen ContentGenerator) *Service {
+	return &Service{plans: plans, gen: gen}
+}
+
+// StubContentGenerator is a placeholder ContentGenerator used until the real
+// OpenAI integration is migrated. Every call returns ErrGeneratorNotConfigured.
+type StubContentGenerator struct{}
+
+func (StubContentGenerator) Generate(prompt string) (string, error) {
+	return "", ErrGeneratorNotConfigured
+}
+
+// basePrompt is the shared instruction block for single-task suggestions.
+// Ported from the api-gateway insights service.
+const basePrompt = `
+Please suggest ONE specific, actionable task that would be the most valuable next step to add to my checklist.
+
+Your suggestion should:
+- Be a single, concrete task (not multiple tasks)
+- Start with a verb
+- Be specific enough to complete in a single sitting
+- Be directly relevant to the project focus
+- Use technical terminology accurately if applicable
+- Be 4-20 words in length
+
+Format your response as a single task item with no additional commentary, explanation or punctuation at the end.`
+
+// GenerateSuggestion returns a single, actionable next checklist item for the
+// plan, derived from its focus + current checklist.
+func (s *Service) GenerateSuggestion(ctx context.Context, planID, userID uuid.UUID) (string, error) {
+	pc, err := s.plans.GetPlanContext(ctx, planID, userID)
+	if err != nil {
+		return "", fmt.Errorf("insights: generate suggestion: %w", err)
+	}
+
+	res, err := s.gen.Generate(buildChecklistPrompt(pc, ""))
+	if err != nil {
+		return "", fmt.Errorf("insights: generate suggestion: %w", err)
+	}
+	return res, nil
+}
+
+// GenerateDailySuggestions returns dailySuggestionCount daily focus suggestions
+// derived from the plan's longterm checklist items + focus, nudging each draw
+// away from the previous so they don't collide.
+func (s *Service) GenerateDailySuggestions(ctx context.Context, planID, userID uuid.UUID) ([]string, error) {
+	pc, err := s.plans.GetPlanContext(ctx, planID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("insights: generate daily suggestions: %w", err)
+	}
+
+	base := buildChecklistPrompt(pc, `Focus on tasks that are marked as "longterm" and break them down when you make your suggestions.`)
+
+	suggestions := make([]string, 0, dailySuggestionCount)
+	for i := 0; i < dailySuggestionCount; i++ {
+		prompt := base
+		if i > 0 {
+			prompt = fmt.Sprintf("%s\nAlso, don't choose one closely related to this, as it has already been added: %s", base, suggestions[i-1])
+		}
+		res, err := s.gen.Generate(prompt)
+		if err != nil {
+			return nil, fmt.Errorf("insights: generate daily suggestions: %w", err)
+		}
+		suggestions = append(suggestions, res)
+	}
+	return suggestions, nil
+}
+
+// SuggestVideos uses the plan focus + checklist to ask the LLM for search terms,
+// which (once migrated) feed a video finder.
+//
+// TODO: the video-finder that turns these search terms into concrete results
+// still lives in the api-gateway (internal/discovery). Until it is migrated this
+// returns an empty list after the search-term generation step.
+func (s *Service) SuggestVideos(ctx context.Context, planID, userID uuid.UUID) ([]Video, error) {
+	pc, err := s.plans.GetPlanContext(ctx, planID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("insights: suggest videos: %w", err)
+	}
+
+	searchTerms, err := s.gen.Generate(buildVideoSearchPrompt(pc))
+	if err != nil {
+		return nil, fmt.Errorf("insights: suggest videos: generate search terms: %w", err)
+	}
+	_ = searchTerms // fed into the video finder once that is migrated in.
+
+	return []Video{}, nil
+}
+
+// buildChecklistPrompt assembles the checklist-suggestion prompt from plan
+// context plus any extra instruction.
+func buildChecklistPrompt(pc *PlanContext, additional string) string {
+	return fmt.Sprintf(`Based on this project focus: "%s"
+%s
+So far the checklist already has these items, so either add one that follows the current progress or don't suggest one that's already present.
+This is the current existing checklist:
+%s
+%s`, pc.Focus, basePrompt, formatChecklist(pc), additional)
+}
+
+// buildVideoSearchPrompt assembles the prompt that asks for video search terms.
+func buildVideoSearchPrompt(pc *PlanContext) string {
+	return fmt.Sprintf(`The user's focus for this task: %s
+Current checklist items for this task:
+%s
+
+Please use this information to now provide exactly 3 relevant search terms.`, pc.Focus, formatChecklist(pc))
+}
+
+// formatChecklist flattens checklist items into prompt lines.
+func formatChecklist(pc *PlanContext) string {
+	var b strings.Builder
+	for _, item := range pc.ChecklistItems {
+		fmt.Fprintf(&b, "A %s task: %s\n", item.Scope, item.Description)
+	}
+	return b.String()
+}

@@ -188,6 +188,36 @@ services:
     networks:
       - fireplace-network
 
+  # Insights Service Database (ordinal 6)
+  insights-service-db:
+    image: postgres:17
+    container_name: fireplace_insights_service_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fireplace_insights_service_db
+    ports:
+      - "5306:5432"
+    volumes:
+      - fireplace_insights_service_pgdata:/var/lib/postgresql/data
+    networks:
+      - fireplace-network
+
+  insights-service-test-db:
+    image: postgres:17
+    container_name: fireplace_insights_service_test_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fireplace_insights_service_test_db
+    ports:
+      - "6306:5432"
+    volumes:
+      - fireplace_insights_service_test_pgdata:/var/lib/postgresql/data
+    restart: "no"
+    networks:
+      - fireplace-network
+
   # Orchestrator Service (ordinal 5) — NO DATABASE.
   # orchestrator-service coordinates other services over gRPC + AMQP and owns no
   # data, so it has no postgres entry here (and no DB_* env). It registers in
@@ -254,4 +284,6 @@ volumes:
   fireplace_plan_service_test_pgdata:
   fireplace_calendar_service_pgdata:
   fireplace_calendar_service_test_pgdata:
+  fireplace_insights_service_pgdata:
+  fireplace_insights_service_test_pgdata:
   temporal-pgdata:
