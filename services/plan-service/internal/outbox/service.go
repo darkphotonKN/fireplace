@@ -4,6 +4,7 @@ import (
 	"context"
 
 	commonmodel "github.com/darkphotonKN/fireplace/common/model"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -14,6 +15,7 @@ type service struct {
 type Repository interface {
 	CreateTx(ctx context.Context, tx *sqlx.Tx, params CreateOutboxParams) error
 	GetAllUnpublished(ctx context.Context) ([]*commonmodel.OutboxEvent, error)
+	BatchMarkPublished(ctx context.Context, ids []uuid.UUID) error
 }
 
 func NewService(repo Repository) *service {
@@ -24,6 +26,10 @@ func (s *service) CreateTx(ctx context.Context, tx *sqlx.Tx, params CreateOutbox
 	return s.repo.CreateTx(ctx, tx, params)
 }
 
-func (s *service) Drain(ctx context.Context) ([]*commonmodel.OutboxEvent, error) {
+func (s *service) GetUnpublished(ctx context.Context) ([]*commonmodel.OutboxEvent, error) {
 	return s.repo.GetAllUnpublished(ctx)
+}
+
+func (s *service) MarkUnpublished(ctx context.Context, ids []uuid.UUID) error {
+	return s.repo.BatchMarkPublished(ctx, ids)
 }
