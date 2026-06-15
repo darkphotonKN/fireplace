@@ -13,6 +13,7 @@ type service struct {
 
 type Repository interface {
 	CreateTx(ctx context.Context, tx *sqlx.Tx, params CreateOutboxParams) error
+	GetAllUnpublished(ctx context.Context) ([]*commonmodel.OutboxEvent, error)
 }
 
 func NewService(repo Repository) *service {
@@ -24,6 +25,5 @@ func (s *service) CreateTx(ctx context.Context, tx *sqlx.Tx, params CreateOutbox
 }
 
 func (s *service) Drain(ctx context.Context) ([]*commonmodel.OutboxEvent, error) {
-
-	return nil, nil
+	return s.repo.GetAllUnpublished(ctx)
 }

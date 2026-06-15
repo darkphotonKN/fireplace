@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"strings"
 
+	"database/sql/driver"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 /**
@@ -67,17 +69,28 @@ func IsConstraintViolation(err error) bool {
 * Helper that detemrines if an error is considered a transient error that means we could retry consuming the event message and running the subsequent processes.
 **/
 func IsTransientError(err error) bool {
-	if err == nil {
-		return false
+	// context errors
+	contextErrors := errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
+
+	// sql and sql driver errors
+	sqlErrors := errors.Is(err, sql.ErrConnDone) || errors.Is(err, driver.ErrBadConn)
+
+	// postgres specific errors
+	var pgErrors *pgconn.PgError
+	isPgTransientErr := false
+
+	// sets error to the matching error if any error inside "err" matches a case
+	hasPgErr := errors.As(err, &pgErrors)
+
+	if hasPgErr {
+		switch pgErrors.Code {
+		// pg transient errors
+		case "40001", "40P01", "57P03", "08000", "08003", "08006", "08001", "08004":
+			isPgTransientErr = true
+		}
 	}
 
-	errStr := err.Error()
-
-	if errors.Is(err, sql.ErrConnDone) || errors.Is(err, context.DeadlineExceeded) ||
-		strings.Contains(errStr, "connection refused") ||
-		strings.Contains(errStr, "connection reset") ||
-		strings.Contains(errStr, "timeout") ||
-		strings.Contains(errStr, "too many connections") {
+	if contextErrors || sqlErrors || isPgTransientErr {
 		return true
 	}
 
