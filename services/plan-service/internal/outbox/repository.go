@@ -3,7 +3,6 @@ package outbox
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	commonmodel "github.com/darkphotonKN/fireplace/common/model"
@@ -59,35 +58,41 @@ func (r *repository) GetAllUnpublished(ctx context.Context) ([]*commonmodel.Outb
 }
 
 func (r *repository) BatchUpdatePublished(ctx context.Context, ids []uuid.UUID) error {
-	unprocessedIds := make([]uuid.UUID, 0)
+	if len(ids) == 0 {
+		return nil
+	}
 
-	query := `
+	queryStart := `
 	UPDATE outbox SET
 	published_at = NOW()
-	WHERE
-	`
-	var b strings.Builder
-	b.WriteString(query)
+	WHERE id IN (`
+
+	var query strings.Builder
+	query.WriteString(queryStart)
 
 	// arguments for the ids
-	args := make([]uuid.UUID, 0, len(ids))
+	args := make([]any, 0, len(ids))
 
 	for i, id := range ids {
-		newId := fmt.Sprintf("id = $%d AND ", i+1)
-		_, err := b.WriteString(newId)
-
-		if err != nil {
-			slog.ErrorContext(ctx, fmt.Sprintf("error attemptings to build string for id %s", id))
-			unprocessedIds = append(unprocessedIds, id)
-
-			// move on to the next query
-			continue
+		if i > 0 {
+			query.WriteString(", ")
 		}
+
+		fmt.Fprintf(&query, "$%d", i+1)
 
 		// successful
 		args = append(args, id)
 	}
 
-	// execute query
+	// close off query
+	query.WriteString(")")
 
+	// execute query
+	_, err := r.db.ExecContext(ctx, query.String(), args...)
+
+	if err != nil {
+		return commonhelpers.WrapDBErr("plans", "BatchUpdatePublished", err)
+	}
+
+	return nil
 }
