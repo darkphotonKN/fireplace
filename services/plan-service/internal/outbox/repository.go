@@ -33,9 +33,9 @@ func (r *repository) CreateTx(ctx context.Context, tx *sqlx.Tx, params CreateOut
 	return nil
 }
 
-func (r *repository) GetAllUnpublished(ctx context.Context) ([]*commonmodel.OutboxEvent, error) {
+func (r *repository) GetUnpublished(ctx context.Context, tx *sqlx.Tx, limit int) ([]*commonmodel.OutboxEvent, error) {
 	query := `
-	SELECT 
+	SELECT
 		id,
 		routing_key,
 		exchange,
@@ -43,12 +43,15 @@ func (r *repository) GetAllUnpublished(ctx context.Context) ([]*commonmodel.Outb
 		published_at,
 		created_at
 	FROM outbox
-	WHERE published IS NULL
+	WHERE published_at IS NULL
+	ORDER BY created_at ASC
+	LIMIT $1
+	FOR UPDATE SKIP LOCKED
 	`
 
 	var res []*commonmodel.OutboxEvent
 
-	err := r.db.SelectContext(ctx, &res, query)
+	err := tx.SelectContext(ctx, &res, query, limit)
 
 	if err != nil {
 		return nil, commonhelpers.WrapDBErr("plans", "GetAllUnpublished", err)
@@ -57,7 +60,7 @@ func (r *repository) GetAllUnpublished(ctx context.Context) ([]*commonmodel.Outb
 	return res, nil
 }
 
-func (r *repository) BatchUpdatePublished(ctx context.Context, ids []uuid.UUID) error {
+func (r *repository) BatchUpdatePublishedAt(ctx context.Context, tx *sqlx.Tx, ids []uuid.UUID) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -85,10 +88,10 @@ func (r *repository) BatchUpdatePublished(ctx context.Context, ids []uuid.UUID) 
 	}
 
 	// close off query
-	query.WriteString(")")
+	query.WriteString(`)`)
 
 	// execute query
-	_, err := r.db.ExecContext(ctx, query.String(), args...)
+	_, err := tx.ExecContext(ctx, query.String(), args...)
 
 	if err != nil {
 		return commonhelpers.WrapDBErr("plans", "BatchUpdatePublished", err)

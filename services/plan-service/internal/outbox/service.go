@@ -12,10 +12,13 @@ type service struct {
 	repo Repository
 }
 
+// defaultUnpublishedLimit caps how many outbox rows a single drain pulls.
+const defaultUnpublishedLimit = 10
+
 type Repository interface {
 	CreateTx(ctx context.Context, tx *sqlx.Tx, params CreateOutboxParams) error
-	GetAllUnpublished(ctx context.Context) ([]*commonmodel.OutboxEvent, error)
-	BatchMarkPublished(ctx context.Context, ids []uuid.UUID) error
+	GetUnpublished(ctx context.Context, tx *sqlx.Tx, limit int) ([]*commonmodel.OutboxEvent, error)
+	BatchUpdatePublishedAt(ctx context.Context, tx *sqlx.Tx, ids []uuid.UUID) error
 }
 
 func NewService(repo Repository) *service {
@@ -26,10 +29,10 @@ func (s *service) CreateTx(ctx context.Context, tx *sqlx.Tx, params CreateOutbox
 	return s.repo.CreateTx(ctx, tx, params)
 }
 
-func (s *service) GetUnpublished(ctx context.Context) ([]*commonmodel.OutboxEvent, error) {
-	return s.repo.GetAllUnpublished(ctx)
+func (s *service) GetUnpublished(ctx context.Context, tx *sqlx.Tx) ([]*commonmodel.OutboxEvent, error) {
+	return s.repo.GetUnpublished(ctx, tx, defaultUnpublishedLimit)
 }
 
-func (s *service) MarkUnpublished(ctx context.Context, ids []uuid.UUID) error {
-	return s.repo.BatchMarkPublished(ctx, ids)
+func (s *service) MarkPublished(ctx context.Context, tx *sqlx.Tx, ids []uuid.UUID) error {
+	return s.repo.BatchUpdatePublishedAt(ctx, tx, ids)
 }

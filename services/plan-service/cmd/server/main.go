@@ -5,6 +5,9 @@ import (
 	"log"
 	"log/slog"
 	"net"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/darkphotonKN/fireplace/common/broker"
@@ -91,10 +94,36 @@ func main() {
 		ch.Close()
 	}()
 
-	grpcServer := config.SetupServices(db, ch, registry)
+	// for graceful shutdown
+	// returns a context that cancels AUTOMATICALLY when SIGTERM or SIGINT arrives.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	slog.Info("plan-service gRPC server starting", "port", grpcAddr)
-	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatal("Can't connect to grpc server. Error:", err.Error())
-	}
+	// setup DI of services and grpc server
+
+	// setup separate context for cancelling to give grace window for final drain
+	// NOTE: don't tie this to sigterm or everything downstream is torn down when
+	// sigterm fires
+	wg := sync.WaitGroup{}
+	workerCtx, workerCtxCnl := context.WithCancel(context.Background())
+	grpcServer := config.SetupServices(workerCtx, db, ch, registry, &wg)
+
+	go func() {
+		slog.Info("plan-service gRPC server starting", "port", grpcAddr)
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Fatal("Can't connect to grpc server. Error:", err.Error())
+		}
+	}()
+
+	<-ctx.Done()
+	slog.Info("shutdown signal received, stopping gRPC server")
+	grpcServer.GracefulStop()
+
+	slog.Info("grpc server stopped")
+
+	// gracefully kill workers, giving it time to close
+	workerCtxCnl()
+
+	// block until given workers time to clean up
+	wg.Wait()
 }
