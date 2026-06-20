@@ -44,7 +44,7 @@ type CreateChecklistReq struct {
 	Description string `json:"description" example:"Write the integration test plan"`
 	// Item scope. Optional; plan-service defaults it to "longterm".
 	Scope *string `json:"scope,omitempty" enums:"daily,longterm" example:"daily"`
-	// Item kind. Optional; plan-service defaults it to "task".
+	// Item type. Optional; plan-service defaults it to "task".
 	Type *string `json:"type,omitempty" enums:"task,note" example:"task"`
 	// Optional parent item id for nesting. Must reference a top-level item in the
 	// same plan (enforced downstream).

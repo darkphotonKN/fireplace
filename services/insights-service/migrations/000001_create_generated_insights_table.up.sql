@@ -17,14 +17,14 @@ CREATE TABLE IF NOT EXISTS generated_insights (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     plan_id UUID NOT NULL,
     user_id UUID NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('suggestion', 'daily', 'video')),
+    insight_type TEXT NOT NULL CHECK (insight_type IN ('suggestion', 'daily', 'video')),
     content TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Fast "latest insights for a plan of a given kind" lookups.
-CREATE INDEX idx_generated_insights_plan_kind ON generated_insights (plan_id, kind, created_at DESC);
+-- Fast "latest insights for a plan of a given type" lookups.
+CREATE INDEX idx_generated_insights_plan_insight_type ON generated_insights (plan_id, insight_type, created_at DESC);
 
 CREATE TRIGGER update_generated_insights_updated_at
     BEFORE UPDATE ON generated_insights
