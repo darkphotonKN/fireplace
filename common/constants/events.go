@@ -8,7 +8,10 @@ Simple rule:
 Constant      |    Pattern                             |    Example
 Exchange         {domain}.events                            auth.events
 Routing Key      {resource}.{action}                        user.created
-Queue            {service}.{domain}.{resource}.{action}     plan-service.auth.user.deleted
+Queue names —  {consumer-service}.{routing-key}
+												owner       what it consumes
+e.g. : 	InsightsPlanEventsQueue        = "insights-service.plan.created"
+Reads as insights queue for plan.created event.
 
 For the scaffolded MVP we use a single per-service "events" queue and split
 per routing-key once real consumers come online.
@@ -48,13 +51,18 @@ const (
 	ChecklistItemDeleted     = "checklist_item.deleted"
 )
 
-/**
-* Queue names — {service}.events
-**/
+/*
+*
+* Queue names —  {consumer-service}.{routing-key}
+*												owner       what it consumes
+* e.g. : 	InsightsPlanEventsQueue        = "insights-service.plan.created"
+* Reads as insights queue for plan.created event.
+ */
 const (
 	AuthServiceEventsQueue         = "auth-service.events"
 	PlanServiceEventsQueue         = "plan-service.events"
 	ExampleServiceEventsQueue      = "example-service.events"
 	OrchestratorServiceEventsQueue = "orchestrator-service.events"
 	ApiGatewayEventsQueue          = "api-gateway.events"
+	InsightsPlanEventsQueue        = "insights-service.plan.created"
 )

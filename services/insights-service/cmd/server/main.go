@@ -5,9 +5,12 @@ import (
 	"log"
 	"log/slog"
 	"net"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/darkphotonKN/fireplace/common/broker"
+	"github.com/darkphotonKN/fireplace/common/cache"
 	"github.com/darkphotonKN/fireplace/common/discovery"
 	"github.com/darkphotonKN/fireplace/common/discovery/consul"
 	commontelemetry "github.com/darkphotonKN/fireplace/common/telemetry"
@@ -33,6 +36,9 @@ var (
 	amqpPassword = commonhelpers.GetEnvString("RABBITMQ_PASS", "fireplace")
 	amqpHost     = commonhelpers.GetEnvString("RABBITMQ_HOST", "localhost")
 	amqpPort     = commonhelpers.GetEnvString("RABBITMQ_PORT", "5683")
+
+	redisAddr     = commonhelpers.GetEnvString("REDIS_ADDR", "localhost:6380")
+	redisPassword = commonhelpers.GetEnvString("REDIS_PASSWORD", "")
 )
 
 func main() {
@@ -89,10 +95,33 @@ func main() {
 		ch.Close()
 	}()
 
-	grpcServer := config.SetupServices(db, ch, registry)
-
-	slog.Info("insights-service gRPC server starting", "port", grpcAddr)
-	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatal("Can't connect to grpc server. Error:", err.Error())
+	redisClient, err := cache.Connect(ctx, cache.Config{
+		Addr:     redisAddr,
+		Password: redisPassword,
+		DB:       0,
+	})
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer redisClient.Close()
+
+	// for graceful shutdown
+	// returns a context that cancels AUTOMATICALLY when SIGTERM or SIGINT arrives.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	grpcServer := config.SetupServices(db, ch, registry, redisClient)
+
+	go func() {
+		slog.Info("insights-service gRPC server starting", "port", grpcAddr)
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Fatal("Can't connect to grpc server. Error:", err.Error())
+		}
+	}()
+
+	<-ctx.Done()
+	slog.Info("shutdown signal received, stopping gRPC server")
+	grpcServer.GracefulStop()
+
+	slog.Info("grpc server stopped")
 }

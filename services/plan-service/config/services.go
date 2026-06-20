@@ -2,7 +2,6 @@ package config
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"

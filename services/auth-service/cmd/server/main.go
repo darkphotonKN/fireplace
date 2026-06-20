@@ -5,6 +5,8 @@ import (
 	"log"
 	"log/slog"
 	"net"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/darkphotonKN/fireplace/common/broker"
@@ -89,10 +91,23 @@ func main() {
 		ch.Close()
 	}()
 
+	// for graceful shutdown
+	// returns a context that cancels AUTOMATICALLY when SIGTERM or SIGINT arrives.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	grpcServer := config.SetupServices(db, ch, registry)
 
-	slog.Info("auth-service gRPC server starting", "port", grpcAddr)
-	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatal("Can't connect to grpc server. Error:", err.Error())
-	}
+	go func() {
+		slog.Info("auth-service gRPC server starting", "port", grpcAddr)
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Fatal("Can't connect to grpc server. Error:", err.Error())
+		}
+	}()
+
+	<-ctx.Done()
+	slog.Info("shutdown signal received, stopping gRPC server")
+	grpcServer.GracefulStop()
+
+	slog.Info("grpc server stopped")
 }

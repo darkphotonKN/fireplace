@@ -31,13 +31,21 @@ type PlanGateway interface {
 	GetPlanContext(ctx context.Context, planID, userID uuid.UUID) (*PlanContext, error)
 }
 
+// Repository is the persistence seam for insights. The consumer owns the
+// abstraction (DIP); the concrete *repository is injected at SetupServices.
+type Repository interface {
+	Create(ctx context.Context) error
+}
+
 type Service struct {
 	plans PlanGateway
 	gen   ContentGenerator
+	cache Cache
+	repo  Repository
 }
 
-func NewService(plans PlanGateway, gen ContentGenerator) *Service {
-	return &Service{plans: plans, gen: gen}
+func NewService(plans PlanGateway, gen ContentGenerator, cache Cache, repo Repository) *Service {
+	return &Service{plans: plans, gen: gen, cache: cache, repo: repo}
 }
 
 // StubContentGenerator is a placeholder ContentGenerator used until the real
@@ -46,6 +54,10 @@ type StubContentGenerator struct{}
 
 func (StubContentGenerator) Generate(prompt string) (string, error) {
 	return "", ErrGeneratorNotConfigured
+}
+
+func (s *Service) Create(ctx context.Context) error {
+	return s.repo.Create(ctx)
 }
 
 // basePrompt is the shared instruction block for single-task suggestions.
