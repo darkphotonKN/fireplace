@@ -1,6 +1,10 @@
 package insights
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // Video is the formatted view of a recommended learning video. Mirrors the
 // shape the frontend already consumes (and the insights.Video proto message).
@@ -26,4 +30,19 @@ type PlanContext struct {
 type ChecklistItem struct {
 	Description string
 	Scope       string
+}
+
+// create from req
+type PlanCreatedParam struct {
+	PlanID  uuid.UUID
+	UserID  uuid.UUID
+	EventID uuid.UUID
+}
+
+// create param for interfacing with the repo
+type CreateInsightParam struct {
+	PlanID      uuid.UUID `db:"plan_id"`
+	UserID      uuid.UUID `db:"user_id"`
+	InsightType string    `db:"insight_type"`
+	Content     string    `db:"content"`
 }

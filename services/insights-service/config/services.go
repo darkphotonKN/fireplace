@@ -29,7 +29,7 @@ func SetupServices(db *sqlx.DB, _ *amqp.Channel, registry discovery.Registry, re
 	planClient := insights.NewPlanClient(registry)
 	generator := insights.StubContentGenerator{}
 	repo := insights.NewRepository(db)
-	service := insights.NewService(planClient, generator, redisClient, repo)
+	service := insights.NewService(planClient, generator, redisClient, repo, db)
 	handler := insights.NewHandler(service)
 
 	grpcServer := grpc.NewServer()

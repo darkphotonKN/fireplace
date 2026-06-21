@@ -5,8 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 )
 
 // dailySuggestionCount is how many daily suggestions GenerateDailySuggestions
@@ -34,18 +38,25 @@ type PlanGateway interface {
 // Repository is the persistence seam for insights. The consumer owns the
 // abstraction (DIP); the concrete *repository is injected at SetupServices.
 type Repository interface {
-	Create(ctx context.Context) error
+	Create(ctx context.Context, param CreateInsightParam) error
+	CreateTx(ctx context.Context, tx *sqlx.Tx, param CreateInsightParam) error
 }
 
 type Service struct {
-	plans PlanGateway
-	gen   ContentGenerator
-	cache Cache
-	repo  Repository
+	plans        PlanGateway
+	gen          ContentGenerator
+	inboxService InboxService
+	cache        Cache
+	repo         Repository
+	db           *sqlx.DB
 }
 
-func NewService(plans PlanGateway, gen ContentGenerator, cache Cache, repo Repository) *Service {
-	return &Service{plans: plans, gen: gen, cache: cache, repo: repo}
+func NewService(plans PlanGateway, gen ContentGenerator, cache Cache, repo Repository, db *sqlx.DB) *Service {
+	return &Service{plans: plans, gen: gen, cache: cache, repo: repo, db: db}
+}
+
+type InboxService interface {
+	CreateTx(ctx context.Context, tx *sqlx.Tx, eventID uuid.UUID) error
 }
 
 // StubContentGenerator is a placeholder ContentGenerator used until the real
@@ -56,8 +67,92 @@ func (StubContentGenerator) Generate(prompt string) (string, error) {
 	return "", ErrGeneratorNotConfigured
 }
 
-func (s *Service) Create(ctx context.Context) error {
-	return s.repo.Create(ctx)
+const (
+	inProgressMarker   = "in-progress"
+	inboxWriteComplete = "inbox write complete"
+)
+
+var (
+	ErrEventAlreadyProcessed = errors.New("event was already processed")
+	ErrUnexpectedInboxIssue  = errors.New("unexpected inbox issue")
+	ErrBadRequest            = errors.New("bad request")
+)
+
+// TODO: temp, need to solve the source of truth of this
+type InsightType string
+
+var (
+	InsightTypeSuggestion InsightType = "suggestion"
+)
+
+func (s *Service) Create(ctx context.Context, req PlanCreatedParam) error {
+	// dedup with cache for best-effort, effeciency
+	key := fmt.Sprintf("dedup:insights:%s", req.EventID)
+	// shorter ttl before DB write, expires and prevents holding the lock for too
+	// long if crash happens and subsequent requests are actually allowed to write
+	// best effort so we don't care about error at this point, omit
+	acquired, _ := s.cache.SetNX(ctx, key, inProgressMarker, time.Second*5).Result()
+
+	if !acquired {
+		return ErrEventAlreadyProcessed
+	}
+
+	// safe and not duplicate
+	if err := commonhelpers.ExecTx(ctx, s.db, func(tx *sqlx.Tx) error {
+		// attempt to create dedup table first, rollback on conflict, true authority here
+		err := s.inboxService.CreateTx(ctx, tx, req.EventID)
+
+		// rollback if duplicate attempted
+		if err != nil {
+			// duplicate caught, reject but return sentinel error so boundary can Ack
+			// (message handled, event was ALREADY processed, no need to retry)
+			if errors.Is(err, commonconstants.ErrDuplicateResource) {
+				// use domain specific error to prevent nacks, let boundary ack
+				return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", req.EventID, ErrEventAlreadyProcessed)
+			}
+
+			if errors.Is(err, commonconstants.ErrTransient) {
+				return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", req.EventID, err)
+			}
+
+			// other types of errors, identify so boundary can log
+			return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", req.EventID, ErrUnexpectedInboxIssue)
+		}
+
+		err = s.repo.CreateTx(ctx, tx, CreateInsightParam{
+			PlanID:      req.PlanID,
+			UserID:      req.UserID,
+			InsightType: string(InsightTypeSuggestion),
+			Content:     "", // TODO: need to acquire and fill
+		})
+
+		// rollback on error, wrapping context
+		if err != nil {
+			// retry on transient, propogate with context
+			if errors.Is(err, commonconstants.ErrTransient) {
+				return fmt.Errorf("service attempted to write generated_insights for planID %s, eventID %s: %w", req.PlanID, req.EventID, err)
+			}
+
+			// all other errors mean request error, execption, or duplicate, just reject
+
+			return fmt.Errorf("service attempted to write generated_insights for planID %s, eventID %s: %w", req.PlanID, req.EventID, ErrBadRequest)
+		}
+
+		return nil
+	}); err != nil {
+		// delete cache early
+		s.cache.Del(ctx, key)
+
+		// propogate error
+		return err
+	}
+
+	// succes, both inbox and business effect
+
+	// update redis key with longer ttl and complete marker
+	s.cache.Set(ctx, key, inboxWriteComplete, time.Hour*24)
+
+	return nil
 }
 
 // basePrompt is the shared instruction block for single-task suggestions.

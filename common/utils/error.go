@@ -51,7 +51,15 @@ func IsDuplicateError(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "duplicate key value")
+
+	var pgErrors *pgconn.PgError
+	errors.As(err, &pgErrors)
+
+	if pgErrors != nil && pgErrors.Code == "23505" {
+		return true
+	}
+
+	return false
 }
 
 /**

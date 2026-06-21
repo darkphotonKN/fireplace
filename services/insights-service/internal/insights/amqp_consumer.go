@@ -17,7 +17,7 @@ type Consumer struct {
 
 // ConsumerService is the slice of the service the consumer needs.
 type ConsumerService interface {
-	CascadeDeleteForUser(ctx context.Context, userID uuid.UUID) error
+	Create(ctx context.Context) error
 }
 
 func NewConsumer(service ConsumerService, ch *amqp.Channel) *Consumer {
@@ -44,7 +44,9 @@ func (c *Consumer) consumePlanEvents() {
 	for msg := range msgs {
 		switch msg.RoutingKey {
 		case commonconstants.PlanCreated:
-		// generate default insights
+			err := c.service.Create(ctx)
+			// TODO: temp, placeholder, need to handle properly
+			slog.ErrorContext(ctx, "attempted to consume plan and run insights Create", "error", err)
 
 		default:
 			slog.Debug("plan-service: unhandled routing key", "routing_key", msg.RoutingKey)
