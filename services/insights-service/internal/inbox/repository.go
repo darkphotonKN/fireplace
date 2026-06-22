@@ -30,7 +30,6 @@ func (r *repository) Create(ctx context.Context, eventID uuid.UUID) error {
 	return nil
 }
 
-// CreateTx is the transactional sibling of Create — stub for now.
 func (r *repository) CreateTx(ctx context.Context, tx *sqlx.Tx, eventID uuid.UUID) error {
 	query := `
 	INSERT INTO processed_events(event_id, consumer)
