@@ -74,8 +74,7 @@ const (
 
 var (
 	ErrEventAlreadyProcessed = errors.New("event was already processed")
-	ErrUnexpectedInboxIssue  = errors.New("unexpected inbox issue")
-	ErrBadRequest            = errors.New("bad request")
+	ErrUnexpectedError       = errors.New("unexpected error")
 )
 
 // TODO: temp, need to solve the source of truth of this
@@ -116,7 +115,7 @@ func (s *Service) Create(ctx context.Context, req PlanCreatedParam) error {
 			}
 
 			// other types of errors, identify so boundary can log
-			return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", req.EventID, ErrUnexpectedInboxIssue)
+			return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", req.EventID, ErrUnexpectedError)
 		}
 
 		err = s.repo.CreateTx(ctx, tx, CreateInsightParam{
@@ -135,7 +134,7 @@ func (s *Service) Create(ctx context.Context, req PlanCreatedParam) error {
 
 			// all other errors mean request error, execption, or duplicate, just reject
 
-			return fmt.Errorf("service attempted to write generated_insights for planID %s, eventID %s: %w", req.PlanID, req.EventID, ErrBadRequest)
+			return fmt.Errorf("service attempted to write generated_insights for planID %s, eventID %s: %w", req.PlanID, req.EventID, ErrUnexpectedError)
 		}
 
 		return nil
