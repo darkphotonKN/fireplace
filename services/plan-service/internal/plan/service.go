@@ -60,7 +60,7 @@ func (s *service) Create(ctx context.Context, in *CreatePlanInput) (*Plan, error
 		DailyReset:  dailyReset,
 	}
 
-	// transction with write and outbox to tie write with event publish and guarantee it
+	// transaction with write and outbox to tie write with event publish and guarantee it
 	// through our go workers publishing the outbox events
 
 	var newPlan *Plan

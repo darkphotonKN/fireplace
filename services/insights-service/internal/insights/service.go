@@ -84,9 +84,9 @@ var (
 	InsightTypeSuggestion InsightType = "suggestion"
 )
 
-func (s *Service) Create(ctx context.Context, req PlanCreatedParam) error {
+func (s *Service) Create(ctx context.Context, param CreateInsightFromPlanParam) error {
 	// dedup with cache for best-effort, effeciency
-	key := fmt.Sprintf("dedup:insights:%s", req.EventID)
+	key := fmt.Sprintf("dedup:insights:%s", param.EventID)
 	// shorter ttl before DB write, expires and prevents holding the lock for too
 	// long if crash happens and subsequent requests are actually allowed to write
 	// best effort so we don't care about error at this point, omit
@@ -99,7 +99,7 @@ func (s *Service) Create(ctx context.Context, req PlanCreatedParam) error {
 	// safe and not duplicate
 	if err := commonhelpers.ExecTx(ctx, s.db, func(tx *sqlx.Tx) error {
 		// attempt to create dedup table first, rollback on conflict, true authority here
-		err := s.inboxService.CreateTx(ctx, tx, req.EventID)
+		err := s.inboxService.CreateTx(ctx, tx, param.EventID)
 
 		// rollback if duplicate attempted
 		if err != nil {
@@ -107,20 +107,20 @@ func (s *Service) Create(ctx context.Context, req PlanCreatedParam) error {
 			// (message handled, event was ALREADY processed, no need to retry)
 			if errors.Is(err, commonconstants.ErrDuplicateResource) {
 				// use domain specific error to prevent nacks, let boundary ack
-				return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", req.EventID, ErrEventAlreadyProcessed)
+				return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", param.EventID, ErrEventAlreadyProcessed)
 			}
 
 			if errors.Is(err, commonconstants.ErrTransient) {
-				return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", req.EventID, err)
+				return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", param.EventID, err)
 			}
 
 			// other types of errors, identify so boundary can log
-			return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", req.EventID, ErrUnexpectedError)
+			return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", param.EventID, ErrUnexpectedError)
 		}
 
 		err = s.repo.CreateTx(ctx, tx, CreateInsightParam{
-			PlanID:      req.PlanID,
-			UserID:      req.UserID,
+			PlanID:      param.PlanID,
+			UserID:      param.UserID,
 			InsightType: string(InsightTypeSuggestion),
 			Content:     "", // TODO: need to acquire and fill
 		})
@@ -129,12 +129,12 @@ func (s *Service) Create(ctx context.Context, req PlanCreatedParam) error {
 		if err != nil {
 			// retry on transient, propogate with context
 			if errors.Is(err, commonconstants.ErrTransient) {
-				return fmt.Errorf("service attempted to write generated_insights for planID %s, eventID %s: %w", req.PlanID, req.EventID, err)
+				return fmt.Errorf("service attempted to write generated_insights for planID %s, eventID %s: %w", param.PlanID, param.EventID, err)
 			}
 
 			// all other errors mean request error, execption, or duplicate, just reject
 
-			return fmt.Errorf("service attempted to write generated_insights for planID %s, eventID %s: %w", req.PlanID, req.EventID, ErrUnexpectedError)
+			return fmt.Errorf("service attempted to write generated_insights for planID %s, eventID %s: %w", param.PlanID, param.EventID, ErrUnexpectedError)
 		}
 
 		return nil

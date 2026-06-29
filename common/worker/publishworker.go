@@ -98,6 +98,7 @@ func (w *PublishWorker) Drain(ctx context.Context) error {
 		for _, event := range events {
 			err := w.publisher.PublishWithContext(ctx, event.Exchange, event.RoutingKey,
 				commonbroker.Message{
+					MessageId:    event.ID.String(),
 					ContentType:  "application/protobuf",
 					Body:         event.Payload,
 					DeliveryMode: commonbroker.Persistent,

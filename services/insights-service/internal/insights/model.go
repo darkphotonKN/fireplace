@@ -31,7 +31,7 @@ type ChecklistItem struct {
 }
 
 // create from req
-type PlanCreatedParam struct {
+type CreateInsightFromPlanParam struct {
 	PlanID  uuid.UUID
 	UserID  uuid.UUID
 	EventID uuid.UUID

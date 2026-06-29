@@ -13,7 +13,7 @@ message PlanCreatedEvent {
   string name = 3;
   string focus = 4;
   string plan_type = 5;
-  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp created_at = 7;
 }
 
 message PlanDeletedEvent {

@@ -7,6 +7,7 @@ import "context"
 * message brokers.
 **/
 type Message struct {
+	MessageId     string
 	ContentType   string
 	Body          []byte
 	DeliveryMode  uint8

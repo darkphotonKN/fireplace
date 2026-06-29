@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 
-	pb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
+	pbevents "github.com/darkphotonKN/fireplace/common/api/proto/events"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 
 	"google.golang.org/protobuf/proto"
@@ -21,7 +21,7 @@ type Consumer struct {
 
 // ConsumerService is the slice of the service the consumer needs.
 type ConsumerService interface {
-	Create(ctx context.Context, param PlanCreatedParam) error
+	Create(ctx context.Context, param CreateInsightFromPlanParam) error
 }
 
 func NewConsumer(service ConsumerService, ch *amqp.Channel) *Consumer {
@@ -48,9 +48,11 @@ func (c *Consumer) consumePlanEvents() {
 	for msg := range msgs {
 		switch msg.RoutingKey {
 		case commonconstants.PlanCreated:
+			slog.DebugContext(ctx, "plan created before unmarsshal", "msg", msg)
+
 			// parse into protobuf to attempt to match contract
-			var planCreated pb.CreatePlanRequest
-			err := proto.Unmarshal(msg.Body, &planCreated)
+			var event pbevents.PlanCreatedEvent
+			err := proto.Unmarshal(msg.Body, &event)
 			if err != nil {
 				// unmarshal error, could be local bug or schema evolution, deploy mismatch, send to DLQ
 				// for manual inspection and replay later
@@ -59,25 +61,33 @@ func (c *Consumer) consumePlanEvents() {
 				continue
 			}
 
-			userIdUUID, err := uuid.Parse(planCreated.UserId)
+			userIdUUID, err := uuid.Parse(event.UserId)
 			if err != nil {
 				msg.Nack(false, false)
-				slog.ErrorContext(ctx, "UUID parse error", "error", err)
+				slog.ErrorContext(ctx, "userId UUID parse error", "error", err)
 				continue
 			}
 
-			planIDUUID, err := uuid.Parse(planCreated.UserId) // TODO: need to update tomorrow, missing field
+			planIdUUID, err := uuid.Parse(event.Id)
 			if err != nil {
 				msg.Nack(false, false)
-				slog.ErrorContext(ctx, "UUID parse error", "error", err)
+				slog.ErrorContext(ctx, "planId UUID parse error", "error", err)
 				continue
 			}
 
-			err = c.service.Create(ctx, PlanCreatedParam{
-				EventID: userIdUUID, // NOTE: WIP need to use the right value
-				UserID:  userIdUUID, // NOTE: WIP need to use the right value
-				PlanID:  planIDUUID, // NOTE: WIP need to use the right value
+			eventIdUUID, err := uuid.Parse(msg.MessageId)
+			if err != nil {
+				msg.Nack(false, false)
+				slog.ErrorContext(ctx, "eventIdUUID UUID parse error", "error", err)
+				continue
+			}
+
+			err = c.service.Create(ctx, CreateInsightFromPlanParam{
+				PlanID:  planIdUUID,
+				UserID:  userIdUUID,
+				EventID: eventIdUUID,
 			})
+
 			if err != nil {
 				c.errorHandler(ctx, err, msg)
 				continue
@@ -91,7 +101,7 @@ func (c *Consumer) consumePlanEvents() {
 }
 
 func (c *Consumer) errorHandler(ctx context.Context, err error, msg amqp.Delivery) {
-	// we handle our own senintel erorr here to differentiate between a db plain duplicate
+	// we handle our own senintel error here to differentiate between a db plain duplicate
 	// error with when we actually consider that duplicate a duplicate attempt of an
 	// already processed message
 	if errors.Is(err, ErrEventAlreadyProcessed) {
