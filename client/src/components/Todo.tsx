@@ -1752,10 +1752,10 @@ export default function Todo({
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded bg-white/5 dark:bg-gray-900/10"
-                  style={{ color: 'rgb(247, 111, 83)' }}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-md bg-primary text-white font-semibold shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none"
                   disabled={isSubmitting || isTyping}
                 >
+                  <Plus className="w-4 h-4" />
                   {isSubmitting ? 'Adding...' : 'Add'}
                 </button>
               </form>
