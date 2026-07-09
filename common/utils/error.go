@@ -9,7 +9,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	"database/sql/driver"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
@@ -41,6 +40,7 @@ func analyzeDBErr(err error) error {
 	}
 
 	// unexpected errors
+	// not a known infra error
 	return nil
 }
 
@@ -52,10 +52,9 @@ func IsDuplicateError(err error) bool {
 		return false
 	}
 
-	var pgErrors *pgconn.PgError
-	errors.As(err, &pgErrors)
+	var pgErr *pgconn.PgError
 
-	if pgErrors != nil && pgErrors.Code == "23505" {
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return true
 	}
 
@@ -70,7 +69,22 @@ func IsConstraintViolation(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "violates check constraint")
+
+	var pgErr *pgconn.PgError
+
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+
+	switch pgErr.Code {
+	case "23502", // not null violation
+		"23503", // foreign key violation
+		"23514", // check violation
+		"23P01": // exclusiion violation
+		return true
+	}
+
+	return false
 }
 
 /**
@@ -84,14 +98,14 @@ func IsTransientError(err error) bool {
 	sqlErrors := errors.Is(err, sql.ErrConnDone) || errors.Is(err, driver.ErrBadConn)
 
 	// postgres specific errors
-	var pgErrors *pgconn.PgError
+	var pgErr *pgconn.PgError
 	isPgTransientErr := false
 
 	// sets error to the matching error if any error inside "err" matches a case
-	hasPgErr := errors.As(err, &pgErrors)
+	hasPgErr := errors.As(err, &pgErr)
 
 	if hasPgErr {
-		switch pgErrors.Code {
+		switch pgErr.Code {
 		// pg transient errors
 		case "40001", "40P01", "57P03", "08000", "08003", "08006", "08001", "08004":
 			isPgTransientErr = true

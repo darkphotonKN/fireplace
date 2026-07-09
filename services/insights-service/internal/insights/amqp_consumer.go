@@ -101,7 +101,7 @@ func (c *Consumer) consumePlanEvents() {
 }
 
 func (c *Consumer) errorHandler(ctx context.Context, err error, msg amqp.Delivery) {
-	// we handle our own senintel error here to differentiate between a db plain duplicate
+	// we handle our own sentinel error here to differentiate between a db plain duplicate
 	// error with when we actually consider that duplicate a duplicate attempt of an
 	// already processed message
 	if errors.Is(err, ErrEventAlreadyProcessed) {

@@ -115,7 +115,7 @@ func (s *Service) Create(ctx context.Context, param CreateInsightFromPlanParam) 
 			}
 
 			// other types of errors, identify so boundary can log
-			return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w", param.EventID, ErrUnexpectedError)
+			return fmt.Errorf("service attempted to write insights inbox for eventID %s: %w: %w", param.EventID, ErrUnexpectedError, err)
 		}
 
 		err = s.repo.CreateTx(ctx, tx, CreateInsightParam{
