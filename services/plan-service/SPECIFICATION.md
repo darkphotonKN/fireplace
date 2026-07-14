@@ -1,5 +1,7 @@
 # plan-service — Specification
 
+<!-- migrating to thin format: one line per capability, → FS-NNNN pointers -->
+
 > Scope: plans, checklist items, Gantt dates, nesting/notes, sharing, resources. Platform maps: ../../CLAUDE.md.
 
 plan-service owns the core domain of Fireplace: Plans and Checklist Items. This spec

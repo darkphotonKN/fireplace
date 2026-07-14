@@ -1,5 +1,7 @@
 # orchestrator-service — Specification
 
+<!-- migrating to thin format: one line per capability, → FS-NNNN pointers -->
+
 > Scope: cross-service coordination scaffold — infrastructure for future multi-service (saga-style) workflows over gRPC + AMQP. Platform maps: ../../CLAUDE.md.
 
 ## Status

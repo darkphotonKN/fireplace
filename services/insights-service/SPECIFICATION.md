@@ -1,5 +1,7 @@
 # insights-service — Specification
 
+<!-- migrating to thin format: one line per capability, → FS-NNNN pointers -->
+
 > Scope: AI suggestions (checklist, daily, video) + event-driven generation. Platform maps: ../../CLAUDE.md.
 
 insights-service is the **owner** of the AI Insights + video-suggestion domain in the Fireplace platform. This document describes the **target design this service implements**. Where a piece is not yet ported (real OpenAI generator, video-finder, DLQ, read-path cache), it is marked **In Progress** — it is this service's feature that is partially implemented.

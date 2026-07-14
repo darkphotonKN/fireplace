@@ -1,5 +1,7 @@
 # api-gateway — Specification
 
+<!-- migrating to thin format: one line per capability, → FS-NNNN pointers -->
+
 > Scope: HTTP edge/BFF — API surface, edge auth, and the gateway-owned Notes & User Analytics domains. Platform maps: ../../CLAUDE.md.
 
 ## Role

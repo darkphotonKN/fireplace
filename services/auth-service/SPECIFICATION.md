@@ -1,5 +1,7 @@
 # auth-service — Specification
 
+<!-- migrating to thin format: one line per capability, → FS-NNNN pointers -->
+
 > Scope: user identity, credentials, JWT issuance, profiles. Platform glossary & cross-service maps: ../../CLAUDE.md.
 
 ## Domain Terms

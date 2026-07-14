@@ -1,5 +1,7 @@
 # calendar-service — Specification
 
+<!-- migrating to thin format: one line per capability, → FS-NNNN pointers -->
+
 > Scope: per-plan Gantt calendar read-model (aggregation over plan-service). Platform maps: ../../CLAUDE.md.
 
 calendar-service renders a **Plan Calendar** window for a single plan. It aggregates checklist-item date data owned by **plan-service** and formats it for the frontend Gantt view. It owns no checklist data and performs no mutations.

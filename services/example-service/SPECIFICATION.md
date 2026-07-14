@@ -1,5 +1,7 @@
 # example-service — Specification
 
+<!-- migrating to thin format: one line per capability, → FS-NNNN pointers -->
+
 > Scope: decorative reference/template scaffold — the canonical shape new Fireplace services are cloned from. Platform maps: ../../CLAUDE.md.
 
 ## Status
