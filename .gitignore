@@ -57,3 +57,6 @@ setup-go-mcp-project.sh
 # at any depth (e.g. services/auth-service/tmp/main).
 tmp/
 tmp/*
+
+# spec-audit report output (baselines under .audit/ ARE committed; reports are not)
+.audit/reports/

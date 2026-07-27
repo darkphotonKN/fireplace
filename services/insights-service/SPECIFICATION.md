@@ -8,13 +8,13 @@ insights-service is the **owner** of the AI Insights + video-suggestion domain i
 
 ## Domain Terms
 
-| Term | Meaning |
-|------|---------|
-| **Insight** | An AI-generated productivity artifact for a plan: a single suggestion, a set of daily focus items, or video recommendations. |
-| **Content Generator** | The pluggable LLM seam (`ContentGenerator.Generate(prompt) → text`). Target implementation: OpenAI GPT-4o. Currently a stub. |
-| **Discovery** | The subsystem that turns AI-generated search terms into concrete tutorial videos (YouTube crawler). Currently only the search-term generation half exists here. |
-| **Focus** | A plan's high-level goal string, fetched from plan-service and fed into every prompt. |
-| **Plan Context** | Focus + flattened checklist items fetched from plan-service; insights owns none of this data. |
+| Term                  | Meaning                                                                                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Insight**           | An AI-generated productivity artifact for a plan: a single suggestion, a set of daily focus items, or video recommendations.                                    |
+| **Content Generator** | The pluggable LLM seam (`ContentGenerator.Generate(prompt) → text`). Target implementation: OpenAI GPT-4o. Currently a stub.                                    |
+| **Discovery**         | The subsystem that turns AI-generated search terms into concrete tutorial videos (YouTube crawler). Currently only the search-term generation half exists here. |
+| **Focus**             | A plan's high-level goal string, fetched from plan-service and fed into every prompt.                                                                           |
+| **Plan Context**      | Focus + flattened checklist items fetched from plan-service; insights owns none of this data.                                                                   |
 
 ## Features
 
@@ -42,11 +42,11 @@ insights-service is the **owner** of the AI Insights + video-suggestion domain i
 
 ## gRPC Surface (`insights.InsightsService`, :7106)
 
-| Method | Input | Output | Notes |
-|--------|-------|--------|-------|
-| `GenerateSuggestion` | `plan_id`, `user_id` | `suggestion` (string) | One verb-first actionable checklist item, 4–20 words. |
-| `GenerateDailySuggestions` | `plan_id`, `user_id` | `suggestions` (repeated string) | 3 items derived from longterm tasks; each draw nudged away from the prior so they don't collide. |
-| `SuggestVideos` | `plan_id`, `user_id` | `videos` (repeated `Video{title,url,source,type,description}`) | Generates 3 search terms; returns `[]` until video-finder is ported. |
+| Method                     | Input                | Output                                                         | Notes                                                                                            |
+| -------------------------- | -------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `GenerateSuggestion`       | `plan_id`, `user_id` | `suggestion` (string)                                          | One verb-first actionable checklist item, 4–20 words.                                            |
+| `GenerateDailySuggestions` | `plan_id`, `user_id` | `suggestions` (repeated string)                                | 3 items derived from longterm tasks; each draw nudged away from the prior so they don't collide. |
+| `SuggestVideos`            | `plan_id`, `user_id` | `videos` (repeated `Video{title,url,source,type,description}`) | Generates 3 search terms; returns `[]` until video-finder is ported.                             |
 
 All requests carry `user_id` for ownership assertion. Every method first calls plan-service `GetPlan` (which enforces ownership by taking `user_id`) to fetch plan context. Errors map through the shared gRPC error mapper; a malformed `plan_id`/`user_id` → `InvalidArgument`, stub generator → `Internal`.
 
@@ -63,13 +63,13 @@ All requests carry `user_id` for ownership assertion. Every method first calls p
 
 **ack/nack policy** (`errorHandler`):
 
-| Condition | Action | Rationale |
-|-----------|--------|-----------|
-| `ErrEventAlreadyProcessed` (duplicate) | `Ack` + drop | Already handled; no retry. |
-| `commonconstants.ErrTransient` | `Nack(requeue)` | Transient DB/infra fault; retry. |
-| `ErrUnexpectedError` | `Nack(no-requeue)` + log | Poison/unexpected; **TODO: real DLQ**. |
-| default / unknown | `Nack(no-requeue)` + log | Safety net. |
-| Unmarshal / UUID-parse failure (pre-service) | `Nack(no-requeue)` | Poison message. |
+| Condition                                    | Action                   | Rationale                              |
+| -------------------------------------------- | ------------------------ | -------------------------------------- |
+| `ErrEventAlreadyProcessed` (duplicate)       | `Ack` + drop             | Already handled; no retry.             |
+| `commonconstants.ErrTransient`               | `Nack(requeue)`          | Transient DB/infra fault; retry.       |
+| `ErrUnexpectedError`                         | `Nack(no-requeue)` + log | Poison/unexpected; **TODO: real DLQ**. |
+| default / unknown                            | `Nack(no-requeue)` + log | Safety net.                            |
+| Unmarshal / UUID-parse failure (pre-service) | `Nack(no-requeue)`       | Poison message.                        |
 
 insights-service **publishes no events**.
 
@@ -77,25 +77,25 @@ insights-service **publishes no events**.
 
 ### `generated_insights` (migration 000001)
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | `gen_random_uuid()` |
-| `plan_id` | UUID NOT NULL | |
-| `user_id` | UUID NOT NULL | |
-| `insight_type` | TEXT NOT NULL | CHECK in (`suggestion`, `daily`, `video`) |
-| `content` | TEXT NOT NULL | written empty today; will hold generated text |
-| `created_at` | TIMESTAMPTZ | default `NOW()` |
-| `updated_at` | TIMESTAMPTZ | default `NOW()`, maintained by trigger |
+| Column         | Type          | Notes                                         |
+| -------------- | ------------- | --------------------------------------------- |
+| `id`           | UUID PK       | `gen_random_uuid()`                           |
+| `plan_id`      | UUID NOT NULL |                                               |
+| `user_id`      | UUID NOT NULL |                                               |
+| `insight_type` | TEXT NOT NULL | CHECK in (`suggestion`, `daily`, `video`)     |
+| `content`      | TEXT NOT NULL | written empty today; will hold generated text |
+| `created_at`   | TIMESTAMPTZ   | default `NOW()`                               |
+| `updated_at`   | TIMESTAMPTZ   | default `NOW()`, maintained by trigger        |
 
 Index: `(plan_id, insight_type, created_at DESC)` for "latest insights for a plan of a given type." Written during event processing, **not yet read**.
 
 ### `processed_events` (migration 000002)
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `event_id` | UUID NOT NULL | part of PK |
-| `consumer` | TEXT NOT NULL | default `'insights'`, part of PK |
-| `created_at` | TIMESTAMPTZ | default `NOW()` |
+| Column       | Type          | Notes                            |
+| ------------ | ------------- | -------------------------------- |
+| `event_id`   | UUID NOT NULL | part of PK                       |
+| `consumer`   | TEXT NOT NULL | default `'insights'`, part of PK |
+| `created_at` | TIMESTAMPTZ   | default `NOW()`                  |
 
 PK `(event_id, consumer)` enforces dedup. Append-only ledger — never updated (no `updated_at`/trigger). Index on `created_at` for retention scans.
 
