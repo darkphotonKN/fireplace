@@ -1,4 +1,4 @@
-# SPECIFICATIONS.md
+# client — Specification
 
 ## Project Overview
 

@@ -5,9 +5,10 @@ Small, human-editable config files that skills load cheaply. **One writer per fi
 ## `tracker.md` — issue tracker config
 
 Read by `spec-to-issues` (publishing) and `code-review` (locating `Implements FS-NNNN`).
-It is written **once**, by the first-time detection step in `spec-to-issues`; every other skill
-only reads it. If it doesn't exist yet, that detection step creates it — see "First-time tracker
-detection" in `spec-to-issues`.
+It is written **once**, by `setup` (which owns all structural config) from the tracker answer in
+its interview; every other skill only reads it. If `setup` was never run and the file is missing,
+`spec-to-issues`' first-time detection creates it as a fallback — see "First-time tracker
+detection" in `spec-to-issues`. Either way: one writer, then read-only.
 
 Format:
 

@@ -18,27 +18,18 @@ insights-service is the **owner** of the AI Insights + video-suggestion domain i
 
 ## Features
 
-### Implemented
-
-- Single checklist suggestion — one actionable next task from focus + existing checklist.
-- Daily suggestions — 3 daily focus items derived from longterm checklist items, de-duped across draws.
-- Video suggestion prompt — generates search terms from focus + checklist.
-- Pluggable `ContentGenerator` interface seam.
-- Plan-context read path over gRPC to plan-service (focus + checklist), with ownership assertion.
-- Event-driven generation trigger: consumes `plan.created`.
-- Exactly-once processing: Redis best-effort lock + DB idempotency ledger, committed atomically.
-
-### In Progress
-
-- **Real OpenAI GPT-4o `ContentGenerator`** — currently `StubContentGenerator` returns `ErrGeneratorNotConfigured`, so generation RPCs surface `Internal`.
-- **Video-finder (Discovery / YouTube crawler)** — `SuggestVideos` generates search terms then returns an empty list; the finder that resolves terms → videos is not yet ported.
-- **DLQ for unexpected inbox errors** — unexpected errors are currently `Nack`-dropped + logged.
-- **`generated_insights` read-path cache** — rows are written during event processing but never read.
-
-### Future
-
-- Serve cached insights from `generated_insights` instead of regenerating on every RPC.
-- Fill `generated_insights.content` with the actual generated text (today written empty during event processing).
+- [x] Single checklist suggestion
+- [x] Daily suggestions, de-duped across draws
+- [x] Video suggestion prompt (search-term generation)
+- [x] Pluggable `ContentGenerator` interface seam
+- [x] Plan-context read path over gRPC, with ownership assertion
+- [x] Event-driven generation trigger
+- [x] Exactly-once event processing
+- [ ] Real OpenAI `ContentGenerator` (stub returns `ErrGeneratorNotConfigured` today)
+- [ ] Video finder resolving search terms to videos
+- [ ] DLQ for unexpected inbox errors
+- [ ] Serve cached insights instead of regenerating per RPC
+- [ ] Populate `generated_insights.content` (written empty today)
 
 ## gRPC Surface (`insights.InsightsService`, :7106)
 

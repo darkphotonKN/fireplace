@@ -13,24 +13,15 @@
 
 ## Features
 
-### Implemented
-
-- [x] User registration and login with email/password (JWT access + refresh tokens)
+- [x] Registration and login with email/password
 - [x] Password hashing with bcrypt
-- [x] Refresh-token exchange for a new access/refresh pair
-- [x] User CRUD over gRPC: get one, list all, delete
-- [x] Profile columns `display_name` + `bio` on `users` (migration `000003`)
-- [x] Read profile (`GetUser`) and update profile (`UpdateProfile` — `name`, `display_name`, `bio`)
-- [x] `user.created` / `user.deleted` events published to `auth.events`
-
-### In Progress
-
-- [ ] `user.updated` event (routing key reserved; currently a logged stub, no proto event)
-
-### Future
-
+- [x] Refresh-token exchange for a new pair
+- [x] User CRUD over gRPC
+- [x] Read and update own profile
+- [x] `user.created` / `user.deleted` events published
+- [ ] `user.updated` event
 - [ ] Password change / reset flow
-- [ ] Refresh-token revocation (would require a server-side store)
+- [ ] Refresh-token revocation
 
 > Not in scope (per master spec): avatar, timezone, notifications, public profiles.
 

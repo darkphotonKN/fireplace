@@ -31,61 +31,50 @@ read-model, HTTP REST surface, AI suggestions) are listed under **Owned elsewher
 
 ## Features (BE, this service)
 
-### Implemented
+### Plans
 
-**Plans**
-
-- [x] CRUD for plans (create / read / update / delete)
-- [x] Plan types `project` | `learning`; `focus` field (NOT NULL)
-- [x] `daily_reset` toggle per plan (`ToggleDailyReset` RPC) + default-by-plan-type on create
-      (`project` → false, else true)
-- [x] Plan name search (`SearchPlans`, user-scoped `ILIKE`, trigram GIN index)
-- [x] Plan sharing via `plan_shares`; `ListSharedPlans` (owned ∪ shared-with-me)
-- [x] `AssertPlanOwnership` — cheap ownership check for sibling services
-- [x] Cascade-delete a user's plans on `user.deleted` (consumer)
+- [x] CRUD for plans
+- [x] Plan types (`project` | `learning`) with a required focus
+- [x] Per-plan daily-reset toggle, defaulted by plan type
+- [x] Plan name search
+- [x] Plan sharing, and listing owned ∪ shared-with-me
+- [x] Ownership assertion for sibling services
+- [x] Cascade-delete a user's plans on `user.deleted`
 - [x] `plan.created` published via transactional outbox
+- [ ] `plan.deleted` event (marshaled, publish stubbed out)
 
-**Checklist Items**
+### Checklist Items
 
-- [x] CRUD within a plan; scope `daily` | `longterm`; auto-incrementing `sequence`
-- [x] Archive / unarchive (`ArchiveItem`)
-- [x] Bulk daily reset (`DailyReset` RPC; respects plan `daily_reset`)
-- [x] `ListItemsByUser` (non-archived, across a user's plans — for useranalytics)
-- [x] `checklist_item.completed` / `.uncompleted` events on done-flip (direct publish)
+- [x] CRUD within a plan, scoped `daily` | `longterm`
+- [x] Archive / unarchive
+- [x] Bulk daily reset
+- [x] List a user's items across their plans
+- [x] `checklist_item.completed` / `.uncompleted` events on done-flip
+- [ ] Daily-items-only-via-AI rule (not currently enforced)
 
-**Plan Calendar (data side)**
+### Plan Calendar (data side)
 
-- [x] `start_date` / `due_date` DATE columns (replaced `scheduled_time`; `calendar_entries` dropped)
-- [x] `UpdateItemDates` — set/clear either date; validates `start_date <= due_date`
-- [x] `ListItemsInDateWindow` — items whose `[start,due]` range intersects a window
-- [x] `ListUpcomingItems` — items starting within the next week
-
-**Nested Items + Notes**
-
-- [x] `type` (`task`|`note`) + `parent_id` self-FK on `checklist_items`
-- [x] Notes can never be `done` (DB CHECK + service guard)
-- [x] Two-tier nesting max (DB trigger + service `validateParent`)
-- [x] Indent/outdent via `UpdateItem` (`parent_id` set / cleared); `?type=` filter on `ListItems`
-
-### In Progress / Partial
-
-- [ ] `plan.deleted` event — marshaled but publish is **commented out** (stub); nothing emitted yet
-- [ ] Daily-items-only-via-AI rule — spec calls for rejecting manual `scope='daily'` creation;
-      **not currently enforced** in `checklistitem.service.Create` (validation allows `daily`)
-
-### Future (not started, this service's slice)
-
-- [ ] AI auto-scheduling of item dates (would consume from insights-service)
+- [x] Start / due dates on items
+- [x] Set or clear either date, with ordering validation
+- [x] List items intersecting a date window
+- [x] List upcoming items
+- [ ] AI auto-scheduling of item dates
 - [ ] Pinning / locking items to dates
-- [ ] Serving the `resources` table (schema-only today)
 
-**Security / Identity**
+### Nested Items + Notes
 
-- [ ] gRPC caller identity from context — a shared JWT interceptor validates the caller
-      (RS256, verify-only) and injects the user identity into `context.Context`; handlers
-      read identity from context and cross-check the legacy `req.user_id` body field
-      (mismatch → `Unauthenticated`). Phase 1 of the platform-wide auth distribution;
-      constraint in ADR-0001. → FS-0001
+- [x] Item type (`task` | `note`) with self-referencing parent
+- [x] Notes can never be done
+- [x] Two-tier nesting maximum
+- [x] Indent / outdent, and filter by type
+
+### Resources
+
+- [ ] Serving the `resources` table
+
+### Security / Identity
+
+- [ ] gRPC caller identity from context → FS-0001
 
 ---
 
