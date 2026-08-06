@@ -1,0 +1,70 @@
+# Contract gates — ADR-0002 plane 1.
+#
+# Fireplace's FIRST CI workflow. Deliberately scoped to the contract gates only:
+# build/test CI is a separate concern and is not bundled here (issue #46).
+#
+# Every gate is a no-op-with-reason until services/api-gateway/openapi.yaml exists
+# (FS-0002 slice 3). It reports SKIPPED explicitly rather than passing vacuously —
+# a green check that means "nothing ran" is worse than no check.
+
+name: contract
+
+on:
+  pull_request:
+    paths:
+      - "services/api-gateway/**"
+      - "client/src/api/**"
+      - ".spectral.yaml"
+      - ".oasdiff-ignore"
+      - ".github/workflows/contract.yml"
+  push:
+    branches: [main]
+
+jobs:
+  plane1:
+    name: plane 1 (HTTP contract)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # oasdiff diffs against the base branch's committed spec.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/api-gateway/go.mod
+          cache-dependency-path: services/api-gateway/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Module graph must be verifiable for the regenerate step to be meaningful.
+      # go.sum is committed for all modules as of issue #46.
+      - name: verify module graph
+        working-directory: services/api-gateway
+        run: go mod verify
+
+      - name: regenerate spec and fail on diff
+        working-directory: services/api-gateway
+        run: make openapi-diff
+
+      - name: lint contract depth (spectral)
+        working-directory: services/api-gateway
+        run: make lint-contract
+
+      - name: breaking-change check (oasdiff)
+        working-directory: services/api-gateway
+        run: make openapi-breaking
+
+      # The generated client is the FE's only import path for serialized endpoints.
+      # If regenerating it produces a diff, the committed client is stale.
+      - name: regenerate TS client and fail on diff
+        run: |
+          make -C services/api-gateway client
+          if ! git diff --quiet -- client/src/api/generated; then
+            echo "::error::generated client is stale — run 'make -C services/api-gateway client' and commit"
+            git diff --stat -- client/src/api/generated
+            exit 1
+          fi
+          echo "✅ generated client matches committed"

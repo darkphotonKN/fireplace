@@ -1,0 +1,74 @@
+# Spectral ruleset for the SERIALIZED contract (services/api-gateway/openapi.yaml).
+#
+# Enforces ADR-0002's "contract depth" requirement: a published operation must carry
+# descriptions, examples, and error schemas. A spec that merely parses is not a contract.
+#
+# Scope: this ruleset governs the Huma-generated OpenAPI 3.x document ONLY.
+# The legacy swaggo OpenAPI 2.0 spec is linted separately by `make -C services/api-gateway
+# lint` with Spectral's default rules, and is untouched here (ADR-0002 §8).
+
+extends: ["spectral:oas"]
+
+rules:
+  # --- Depth: every operation must explain itself -------------------------
+  operation-description: error
+  operation-operationId: error
+  operation-operationId-unique: error
+  operation-success-response: error
+
+  # Tags are organisational, not contractual. The gateway is one surface.
+  operation-tags: off
+
+  # --- Depth: schemas must describe their fields --------------------------
+  oas3-valid-media-example: error
+  oas3-valid-schema-example: error
+
+  # --- Depth: errors are part of the contract, not an afterthought --------
+  # ADR-0004 makes problem+json the error representation; an operation that
+  # documents only its happy path is an incomplete contract.
+  # NB: `operation-4xx-response` is NOT a spectral:oas rule (it lives in other
+  # rulesets). Implemented explicitly below rather than extended.
+  contract-operation-documents-errors:
+    description: Every operation must document at least one error response.
+    message: "{{path}}: operation documents no 4xx/5xx response"
+    severity: error
+    given: $.paths[*][get,put,post,delete,patch].responses
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          anyOf:
+            - required: ["400"]
+            - required: ["401"]
+            - required: ["403"]
+            - required: ["404"]
+            - required: ["409"]
+            - required: ["422"]
+            - required: ["500"]
+
+  contract-error-responses-are-problem-json:
+    description: >-
+      Error responses must be application/problem+json (RFC 9457). See ADR-0004.
+    message: "{{property}}: error responses must use application/problem+json"
+    severity: error
+    given: $.paths[*][get,put,post,delete,patch].responses[?(@property.match(/^[45]/))].content
+    then:
+      field: "application/problem+json"
+      function: truthy
+
+  contract-error-responses-carry-a-code:
+    description: >-
+      Every problem response schema must carry the `code` extension member —
+      the stable, FE-switchable domain error code mandated by ADR-0004.
+    message: "{{property}}: problem schema is missing the `code` member"
+    severity: error
+    given: $.paths[*][get,put,post,delete,patch].responses[?(@property.match(/^[45]/))].content['application/problem+json'].schema.properties
+    then:
+      field: code
+      function: truthy
+
+  # --- Hygiene ------------------------------------------------------------
+  info-contact: off
+  info-license: off
+  oas3-api-servers: off

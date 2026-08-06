@@ -14,7 +14,14 @@ services:
   fireplace-consul:
     image: hashicorp/consul
     container_name: fireplace-consul
-    command: agent -server -ui -node=server-1 -bootstrap-expect=1 -client=0.0.0.0
+    # server_rejoin_age_max defaults to 168h: a single-node dev agent that sits
+    # idle longer than a week refuses to rejoin its own cluster and exits 1
+    # ("consider wiping your data dir"), which then panics every service at
+    # Consul registration. There is no cluster to protect here (bootstrap-expect=1,
+    # discovery only, no KV), so raise it out of the way.
+    command: >
+      agent -server -ui -node=server-1 -bootstrap-expect=1 -client=0.0.0.0
+      -hcl='server_rejoin_age_max="87600h"'
     ports:
       - "8520:8500"
       - "8620:8600/udp"

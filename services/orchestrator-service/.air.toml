@@ -13,8 +13,13 @@ tmp_dir = "tmp"
   exclude_unchanged = false
   follow_symlink = false
   full_bin = ""
-  # Also watch the shared common/ module so changes there trigger a rebuild here.
-  include_dir = ["../../common"]
+  # include_dir is a WHITELIST, not an addition: setting it makes air watch ONLY
+  # those dirs and exclude everything else under root (cmd/, config/, internal/, ...).
+  # It previously held ["../../common"] — which also sits outside root = "." and so
+  # could not be watched either — leaving air watching nothing and never rebuilding.
+  # Leave empty to watch this service's whole tree. Changes under common/ still need
+  # a manual restart; air cannot watch above its root.
+  include_dir = []
   include_ext = ["go", "tpl", "tmpl", "html"]
   include_file = []
   kill_delay = "0s"

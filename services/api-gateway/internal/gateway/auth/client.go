@@ -175,3 +175,30 @@ func authRespToHTTP(r *pb.AuthResponse) *LoginResponse {
 		UserInfo:         userFromProto(r.User),
 	}
 }
+
+// --- proto-returning variants for the SERIALIZED surface --------------------
+//
+// The legacy methods above map to models.User — a monolith leftover whose table
+// was dropped in migration 000020. Serialized handlers map straight from the
+// proto to their transport type instead, deleting that hop (ADR-0003).
+
+func (c *Client) GetProfileProto(ctx context.Context, id uuid.UUID) (*pb.User, error) {
+	client, err := c.connClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return client.GetUser(ctx, &pb.GetUserRequest{Id: id.String()})
+}
+
+func (c *Client) UpdateProfileProto(ctx context.Context, id uuid.UUID, req UpdateProfileRequest) (*pb.User, error) {
+	client, err := c.connClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return client.UpdateProfile(ctx, &pb.UpdateProfileRequest{
+		Id:          id.String(),
+		Name:        req.Name,
+		DisplayName: req.DisplayName,
+		Bio:         req.Bio,
+	})
+}

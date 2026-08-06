@@ -8,6 +8,17 @@
 
 The api-gateway is the **only HTTP surface** in the Fireplace platform — the edge/BFF the frontend client talks to. It terminates HTTP (Gin), authenticates every protected request at the edge with the shared JWT, and proxies to the gRPC domain services (auth, plan, calendar) discovered via Consul. Two domains still live *inside* the gateway and are owned here: **Notes** and **User Analytics**. Everything else it exposes is a routing entry to a downstream service (see cross-refs at the bottom).
 
+## Users
+
+- [x] Profile view and edit → FS-none
+- [ ] Typed (serialized) profile surface → FS-0002
+
+<!--
+LEGACY BELOW: every section from here down predates the thin format and still carries
+FS-level detail inline. Per migrate-only-what-you-touch, they are left as found rather
+than silently rewritten — flagged for a dedicated hygiene pass.
+-->
+
 ## API Surface
 
 Full REST catalog exposed by the gateway. All routes are under base path `/api`. Auth = `JWT` means the route is behind the edge auth middleware. Insights rows are **routing-only** — their behavior is specified in insights-service.
