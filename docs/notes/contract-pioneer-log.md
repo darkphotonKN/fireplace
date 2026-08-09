@@ -615,3 +615,30 @@ applied none of them.** Every gap the verification pass found — missing fixtur
 patches, an unverified allowlist format — had already been written down here, correctly, and
 then not done. A log is a memory, not a mechanism. The mechanism is running the verification
 pass *before* extraction, every time, and treating "we wrote that down" as evidence of nothing.
+
+### Addendum, same day: the last two caveats are closed
+
+The section above was written while the work was still uncommitted. Both of its standing
+caveats are now resolved, so they are corrected here rather than left to mislead.
+
+FS-0002 and the gate task were committed and merged to `main`, and `main` was pushed. That
+put `openapi.yaml` on `origin/main` — **the baseline the breaking gate had never had.** Run
+against it for the first time:
+
+```
+make openapi-breaking          → "No changes detected"                    rc=0
+# same gate, spec mutated (displayName -> display_name):
+make openapi-breaking          → 2 errors [response-required-property-removed]  rc≠0
+```
+
+Clean when clean, red when broken, **against the real committed baseline** — not a synthetic
+fixture pair. The ratchet is live from this merge onward, exactly as the design predicted.
+
+So: *committed = derived* is now true on `main`, and the gate's "never run for real" caveat is
+retired. What remains open is unchanged and unaffected — plane 2 is still unwired, and the
+`gates-selftest` target is still the named next hardening step.
+
+The slice-⓪ blind spot is **not** closed by this and never will be: it is structural. The
+breaks FS-0002 actually shipped (envelope removal, error-shape change) were relative to the
+legacy swaggo document and remain invisible to this gate. What just became guarded is
+everything *after* this point.
