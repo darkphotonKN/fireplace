@@ -49,7 +49,7 @@ export interface components {
             /** @description Explanation specific to this occurrence */
             detail?: string;
             /** @description Field-level detail; empty for downstream failures */
-            errors?: components["schemas"]["ErrorDetail"][] | null;
+            errors: components["schemas"]["ErrorDetail"][] | null;
             /**
              * Format: int64
              * @description HTTP status code
@@ -92,9 +92,9 @@ export interface components {
             updatedAt: string;
         };
         UpdateProfileRequest: {
-            bio: string | null;
-            displayName: string | null;
-            name: string | null;
+            bio?: string;
+            displayName?: string;
+            name?: string;
         };
     };
     responses: never;

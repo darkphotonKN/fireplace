@@ -33,6 +33,7 @@ func init() {
 		p.Title = statusTitle(status)
 		p.Detail = msg
 		p.Code = apierr.CodeForStatus(status)
+		p.Errors = []*huma.ErrorDetail{}
 		return p
 	}
 }

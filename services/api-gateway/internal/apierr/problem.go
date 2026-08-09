@@ -30,7 +30,10 @@ type Problem struct {
 	Status int                 `json:"status,omitempty" doc:"HTTP status code"`
 	Detail string              `json:"detail,omitempty" doc:"Explanation specific to this occurrence"`
 	Code   errcode.Code        `json:"code" doc:"Stable domain error code — switch on THIS, not on detail" example:"NOT_FOUND"`
-	Errors []*huma.ErrorDetail `json:"errors,omitempty" doc:"Field-level detail; empty for downstream failures"`
+	// NOT omitempty: FS-0002 R16 requires errors[] to be PRESENT and empty for
+	// downstream failures, so the FE never has to null-check it. omitempty would
+	// drop a zero-length slice entirely.
+	Errors []*huma.ErrorDetail `json:"errors" doc:"Field-level detail; empty for downstream failures"`
 }
 
 func (p *Problem) Error() string  { return p.Detail }

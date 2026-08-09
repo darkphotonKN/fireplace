@@ -1,6 +1,6 @@
 ---
 id: I-0006
-status: open
+status: done
 implements: FS-0002
 blocked_by: [I-0004, I-0005]
 labels: [enhancement]

@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/darkphotonKN/fireplace/common/errcode"
@@ -47,19 +49,29 @@ func UserIDFromCtx(ctx context.Context) (uuid.UUID, bool) {
 // byte-identical — this is a fork, not a replacement.
 func ProblemMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		AuthMiddleware()(c)
-		if !c.IsAborted() {
+		userID, reason, err := authenticate(c)
+		if reason != "" {
+			// Same server-side logging as the legacy path; the client still
+			// only ever learns "unauthorized".
+			slog.WarnContext(c.Request.Context(), "auth middleware: request rejected",
+				"reason", reason, "err", err, "method", c.Request.Method, "path", c.FullPath())
+
+			body, _ := json.Marshal(map[string]any{
+				"type":   "about:blank",
+				"title":  http.StatusText(http.StatusUnauthorized),
+				"status": http.StatusUnauthorized,
+				"detail": "unauthorized",
+				"code":   errcode.Unauthenticated,
+				"errors": []any{},
+			})
+			c.Abort()
+			// c.Data, not c.JSON — c.JSON forces application/json and would
+			// silently drop the RFC 9457 media type.
+			c.Data(http.StatusUnauthorized, "application/problem+json", body)
 			return
 		}
-		// Replace the legacy body the middleware just wrote.
-		c.Writer.Header().Set("Content-Type", "application/problem+json")
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"type":   "about:blank",
-			"title":  http.StatusText(http.StatusUnauthorized),
-			"status": http.StatusUnauthorized,
-			"detail": "unauthorized",
-			"code":   errcode.Unauthenticated,
-			"errors": []any{},
-		})
+
+		c.Set("userId", userID)
+		c.Next()
 	}
 }

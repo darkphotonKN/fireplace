@@ -1,6 +1,6 @@
 # FS-0002: Profile view and edit as a serialized (typed) surface
 
-> Status: work-order · SPECIFICATION.md: services/api-gateway/SPECIFICATION.md "## Users → Typed (serialized) profile surface" → this FS · Related ADRs: docs/adr/0002-contract-planes-code-first-openapi.md (as amended), docs/adr/0003-serialized-transport-types.md, docs/adr/0004-error-representation-rfc9457.md, docs/adr/0001-grpc-identity-via-metadata-rs256.md (identity seam)
+> Status: shipped · SPECIFICATION.md: services/api-gateway/SPECIFICATION.md "## Users → Typed (serialized) profile surface" → this FS · Related ADRs: docs/adr/0002-contract-planes-code-first-openapi.md (as amended), docs/adr/0003-serialized-transport-types.md, docs/adr/0004-error-representation-rfc9457.md, docs/adr/0001-grpc-identity-via-metadata-rs256.md (identity seam)
 
 ## Summary
 
@@ -49,10 +49,12 @@ validation run, because profile is small, owned end-to-end, and crosses both con
 10. An empty request body (`{}`) is a valid no-op returning `200` with the unchanged profile.
 11. Setting a field to `""` sets it to the empty string. This is distinct from `null` and is
     existing behavior.
-12. **No edge validation constraints are declared in the schema.** The schema pins shape
-    only; validation remains in `auth-service`, per the standing principle in
-    `services/api-gateway/docs/api-conventions.md`. Consequence: `name: ""` travels
-    downstream and returns **400**, not Huma's 422.
+12. **Two validation layers, two statuses (ADR-0005).** SHAPE is validated at the boundary
+    by huma from the type — an undeclared or ill-typed member is **422**
+    `VALIDATION_FAILED` and never reaches auth-service. DOMAIN rules stay in the owning
+    service — `name: ""` travels downstream and returns **400** `PROFILE_NAME_EMPTY`. The
+    gateway never restates a downstream rule. No length/format constraints are declared
+    here, because those are auth-service's to own.
 
 **Errors**
 
@@ -61,9 +63,10 @@ validation run, because profile is small, owned end-to-end, and crosses both con
 14. `code` values come from the platform-wide vocabulary in **`common/errcode`**, introduced
     by this feature. Initial members: `UNAUTHENTICATED`, `VALIDATION_FAILED`, `NOT_FOUND`,
     `ALREADY_EXISTS`, `FORBIDDEN`, `INTERNAL_ERROR`, plus `PROFILE_NAME_EMPTY`.
-15. `apierr.StatusFor` grows a domain-code dimension, returning a code alongside the status
-    and client-safe message. This is the gateway-wide error boundary; the change is
-    structural, not local to these endpoints.
+15. The gateway-wide error boundary grows a domain-code dimension. Implemented as
+    `apierr.CodeFor` alongside the existing `StatusFor` rather than by changing
+    `StatusFor`'s signature, so the ~20 legacy call sites keep compiling — same boundary,
+    same precedence, no behavioural difference.
 16. **`errors[]` will be empty for downstream validation failures.** gRPC statuses carry only
     a string message, so field-level detail cannot be reconstructed from `auth-service`
     without structured error details on plane 2. This is why `PROFILE_NAME_EMPTY` exists as
@@ -171,6 +174,31 @@ validation run, because profile is small, owned end-to-end, and crosses both con
 - [ ] Spectral passes: descriptions, examples, and error schemas present on both operations.
 - [ ] The full api-gateway test suite passes on the bumped gin/Go versions.
 
+### Verification status at lock
+
+Recorded because a shipped FS is frozen and an unstated gap becomes permanent.
+
+**Proven** — 25 tests in `services/api-gateway/config/`, exercising the real registration
+path (`MountSerialized` → `RegisterAPI`), not a lookalike harness: mount inherits auth ·
+401 is problem+json with `UNAUTHENTICATED` · legacy 401 byte-identical (the fork did not
+leak) · doc surface public · bare resource with exactly 7 fields, no `password`/`$schema` ·
+identity resolved from `context.Context` · full PATCH semantics table · `name:""` → 400
+`PROFILE_NAME_EMPTY`, not 422 · unknown member → 422, never forwarded · `id` cannot be set
+from the body · no downstream error text leaked. `openapi.yaml` is derived by `cmd/openapi`
+without infrastructure; `§API surface` and the derived spec agree in both directions;
+Spectral passes; the generated TS client is not stale and `tsc` rejects a stale shape.
+
+**Not proven at lock** — the three gate-dependent criteria above. `oasdiff` has no baseline
+until this branch merges to `main`, so the deliberate breaks (envelope removal, problem+json
+errors, `created_at` → `createdAt`) are **not yet allowlisted** in `.oasdiff-ignore`. The
+CI workflow has never executed. These protect the *second* change to this contract, not the
+first, and close on first merge.
+
+**Deviation from scope** — this feature was the contract layer's validation run. The
+remaining `## Users` routes (`signup`, `signin`, `GET /users/:id`, `GET /users`) stay legacy
+and enveloped per serialize-on-touch, so the FE handles two shapes within one domain until
+they are themselves touched.
+
 ## Edge States
 
 | Situation                                | Behavior                                                                                                      |
@@ -181,7 +209,7 @@ validation run, because profile is small, owned end-to-end, and crosses both con
 | Empty PATCH body `{}`                    | `200`, profile unchanged                                                                                      |
 | PATCH with all fields `null`             | `200`, profile unchanged — identical to `{}` by design                                                        |
 | PATCH with `name: ""`                    | `400`, `PROFILE_NAME_EMPTY`, `errors[]` empty (see Requirement 16)                                            |
-| PATCH with unknown fields                | Ignored; not an error. Huma does not reject unknown members by default and this feature does not change that  |
+| PATCH with unknown fields                | `422`, `VALIDATION_FAILED`. Strict by decision (ADR-0005): silently ignoring a member turns a typo into a 200 that changes nothing. The request never reaches auth-service |
 | Malformed JSON body                      | `400`, `VALIDATION_FAILED`                                                                                    |
 | `auth-service` unreachable               | `500`, `INTERNAL_ERROR` — `codes.Unavailable` maps to 500 today and this feature does not change that mapping |
 | Concurrent PATCHes                       | Last write wins per field; no optimistic concurrency. Existing behavior, explicitly unchanged                 |
@@ -201,7 +229,7 @@ validation run, because profile is small, owned end-to-end, and crosses both con
 | Op              | Method + Path              | Query/Params | Request body           | Response                | Errors (status · code)                                                                                                        |
 | --------------- | -------------------------- | ------------ | ---------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `getProfile`    | `GET /api/users/profile`   | none         | none                   | `200` `ProfileResponse` | `401 · UNAUTHENTICATED` · `404 · NOT_FOUND` · `500 · INTERNAL_ERROR`                                                          |
-| `updateProfile` | `PATCH /api/users/profile` | none         | `UpdateProfileRequest` | `200` `ProfileResponse` | `400 · PROFILE_NAME_EMPTY` · `400 · VALIDATION_FAILED` · `401 · UNAUTHENTICATED` · `404 · NOT_FOUND` · `500 · INTERNAL_ERROR` |
+| `updateProfile` | `PATCH /api/users/profile` | none         | `UpdateProfileRequest` | `200` `ProfileResponse` | `400 · PROFILE_NAME_EMPTY` · `401 · UNAUTHENTICATED` · `404 · NOT_FOUND` · `422 · VALIDATION_FAILED` · `500 · INTERNAL_ERROR` |
 
 All error responses are `application/problem+json` (RFC 9457) with members `type`, `title`,
 `status`, `detail`, plus extensions `code` and `errors[]`. Prose semantics for each operation

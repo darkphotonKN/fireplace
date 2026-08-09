@@ -11,7 +11,7 @@ The api-gateway is the **only HTTP surface** in the Fireplace platform — the e
 ## Users
 
 - [x] Profile view and edit → FS-none
-- [ ] Typed (serialized) profile surface → FS-0002
+- [x] Typed (serialized) profile surface → FS-0002
 
 <!--
 LEGACY BELOW: every section from here down predates the thin format and still carries

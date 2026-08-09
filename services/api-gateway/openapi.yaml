@@ -42,6 +42,7 @@ components:
           type: string
       required:
         - code
+        - errors
       type: object
     ProfileResponse:
       additionalProperties: false
@@ -92,21 +93,11 @@ components:
       additionalProperties: false
       properties:
         bio:
-          type:
-            - string
-            - "null"
+          type: string
         displayName:
-          type:
-            - string
-            - "null"
+          type: string
         name:
-          type:
-            - string
-            - "null"
-      required:
-        - name
-        - displayName
-        - bio
+          type: string
       type: object
 info:
   description: The serialized HTTP surface of the Fireplace api-gateway. Endpoints not listed here are still described by the legacy OpenAPI 2.0 document at /swagger and are migrated on touch (ADR-0002).

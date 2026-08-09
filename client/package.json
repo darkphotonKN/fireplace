@@ -18,6 +18,7 @@
     "date-fns": "^4.1.0",
     "lucide-react": "^0.506.0",
     "next": "15.3.1",
+    "openapi-fetch": "^0.13.8",
     "react": "^19.0.0",
     "react-datepicker": "^8.3.0",
     "react-dom": "^19.0.0",

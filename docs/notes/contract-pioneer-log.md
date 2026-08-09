@@ -309,3 +309,211 @@ across 8 modules). Un-ignored and committed. A regenerate-and-diff gate assumes 
 module graph; a monorepo where no module is pinned cannot make that promise, so this was
 blocking rather than adjacent. `go mod tidy` also reclassified one dependency
 (insights-service protobuf, indirect → direct, same version) — a correction, not a bump.
+
+---
+
+## 2026-08-07 — Validation policy: the rule that generalises
+
+Implementing FS-0002 forced a decision ADR-0002 never anticipated, and the reasoning is the
+most portable thing this run has produced. Recorded as **ADR-0005**.
+
+### The rule
+
+> **Reject unknown input when the consumer ships with you. Tolerate it when it does not.**
+
+Strictness is not a taste question, it is a function of the **deployment model**. That single
+sentence resolves what looked like an inconsistency between the two planes:
+
+| Plane | Consumer | Policy | Enforced by |
+|---|---|---|---|
+| 1 — HTTP | first-party web client, same release | **strict** (`additionalProperties:false`, 422) | huma, at the boundary |
+| 2 — gRPC | services, independently deployed | **tolerant** (protobuf ignores unknown fields) | `buf breaking`, at CI |
+
+Same goal — no silent drift — enforced where each plane can actually enforce it. Plane 2 gets
+protobuf's rolling-upgrade property, which is the reason to use protobuf at all.
+
+### The argument that decided it
+
+We tried tolerant-on-plane-1 first, on forward-compatibility grounds, and reverted. The
+deciding case:
+
+```
+PATCH {"biio": "my new bio"}   ->  200 OK, profile unchanged
+```
+
+On a PATCH, ignoring an unknown member turns a client typo into a **silent no-op**. The user
+believes they saved something they did not. Forward compatibility is the stronger concern only
+when clients and servers deploy separately — for a client that ships in the same release and
+consumes generated types, it is near-worthless, because that client *cannot* emit an
+undeclared field by accident.
+
+**Generalisable form: strictness moved left.** Once a repo generates a typed client, runtime
+strictness stops being the typo-catcher (the compiler is) and becomes purely a drift alarm.
+That changes the cost/benefit, and it only holds in repos that actually generate a client — so
+it belongs in the template as a *conditional* rule, not an absolute one.
+
+### The other half: two layers, two statuses
+
+| Layer | Question | Where | Status |
+|---|---|---|---|
+| shape | is this a well-formed request for this op? | boundary (huma, from the type) | **422** |
+| domain | is it allowed by the domain's rules? | the **owning** service | **400** + domain code |
+
+The gateway never restates a downstream rule — one place per rule, so neither can drift. A
+client can tell "you sent garbage" from "you sent something valid that we refused", which the
+usual single-400-for-everything cannot express.
+
+### Request-type design rules (learned, not assumed)
+
+- **Read-only fields never appear in a request type.** `id`/`createdAt`/`updatedAt` are real
+  profile fields, but a request type is not a resource — it is the set of *writable* fields.
+  This makes a class of mass-assignment bug unrepresentable rather than defended against.
+- **Identity is never a body field** (ADR-0001). `id` absent from `UpdateProfileRequest` is a
+  security property, not an omission.
+- **`omitempty` is load-bearing in huma.** A field is REQUIRED unless its json tag has it. We
+  shipped `required: [name, displayName, bio]` by accident, which would have rejected the empty
+  `{}` body the spec calls a valid no-op. Any extracted template must call this out — it is
+  invisible until something rejects a legal request.
+
+### Extraction targets
+
+- `docs/agents/contract.md` now carries `plane1_request_strictness` / `plane2_request_strictness`
+  plus the request-type rules, so a generic skill can read the policy instead of assuming one.
+- `docs/specs/README.md` needs a third outstanding edit: the `§API surface` guidance should say
+  that request-body rows list **writable fields only**, and that 422-vs-400 is the shape/domain
+  split rather than a free choice per endpoint.
+- **Ship the revisit trigger with the rule.** "Strict" is correct only while the client ships
+  with the server; a template that states the rule without its precondition will be
+  cargo-culted into a repo with third-party consumers, where it is wrong.
+
+---
+
+## 2026-08-09 — Pre-extraction verification: the alarm check, and what it broke
+
+Ran the full mesh verification before extracting anything to the SSOT. Most of it is green.
+The two failures are both in the **breaking-change gate**, and one of them invalidates a file
+that was about to be templated.
+
+### The break-test had never been run — and the allowlist does not work
+
+This is the finding. `.oasdiff-ignore` documents its own format as:
+
+> "Each line is matched (lowercased, substring) against the breaking-change message oasdiff
+> prints. Run `oasdiff breaking <base> <revision>` to see the exact text, then paste it here."
+
+**Following that instruction produces an allowlist that suppresses nothing.** Observed
+directly: base = committed `openapi.yaml`, revision = same spec with `displayName` renamed.
+
+```
+oasdiff breaking base.yaml rev.yaml --err-ignore .oasdiff-ignore --fail-on ERR
+→ 2 errors, exit 1     [response-required-property-removed]
+    "removed the required property `displayName` from the response with the `200` status"
+```
+
+Pasting that message verbatim into the ignore file, exactly as the file instructs — **still
+exit 1**. The gate stays red. The working format requires the ignore line to carry the
+**method and path as well as the message**, all lowercased, on one line:
+
+```
+in api get /users/profile removed the required property `displayname` from the response with the `200` status
+in api patch /users/profile removed the required property `displayname` from the response with the `200` status
+→ 0 errors, exit 0
+```
+
+One line per **(method, path, message) triple** — not one per message. A break affecting two
+operations needs two lines.
+
+> **This is "ADRs guess tool interfaces" recurring one level down.** The 2026-08-06 entry
+> caught ADR-0002 guessing the *filename*. The implementation that corrected it then guessed
+> the *matching semantics* — and wrote the guess into the file as authoritative documentation.
+> A correction is not automatically verified just because it corrected something.
+
+The failure mode is at least **fail-closed**: an unrecognised entry blocks a deliberate break
+rather than admitting an accidental one. But the practical consequence is worse than it looks —
+the first engineer with a legitimate break finds the documented escape hatch doesn't work, and
+the tempting fix is to weaken `--fail-on` or drop the gate.
+
+**Extraction consequence: the `.oasdiff-ignore` starter is NOT extractable as written.** It
+must ship with the verified triple format and, per the rule below, with a fixture proving a
+listed break is actually suppressed.
+
+### The gate has never run against a real baseline
+
+`make openapi-breaking` resolves its baseline from `origin/main:services/api-gateway/openapi.yaml`.
+That file does not exist on `origin/main` — the whole contract layer is still on
+`feat/46-contract-gate-tooling`. So the target takes its skip branch:
+
+```
+SKIPPED: no baseline spec on origin/main yet (first serialization)   rc=0
+```
+
+Correct behaviour, honestly reported (the no-silent-skips criterion working as designed), but
+it means **the CI breaking gate has never executed a real comparison** — only the synthetic
+one above, run by hand. It cannot until this branch merges.
+
+### The first serialization's breaks are invisible to oasdiff — by construction
+
+`.oasdiff-ignore` predicted two entries would be needed once slices 3–4 landed: envelope
+removal and the error-shape change. The slices landed; **neither entry is needed, and adding
+them would be wrong.**
+
+oasdiff compares `openapi.yaml` against its own previous revision. Both of those breaks are
+relative to the *legacy swaggo `docs/swagger.json`* — a different document, in a different
+OpenAPI version, that oasdiff never sees. They are **cross-document** breaks, and plane-1
+breaking detection is structurally blind to them.
+
+> **Generalisable, and it belongs in the template.** Under serialize-on-touch, an endpoint's
+> *first* serialization is the one change whose breaks the breaking-change gate cannot catch.
+> The gate governs everything after. Whatever ships must say this out loud, or every adopting
+> repo will believe slice ⓪ was checked when it was not — and slice ⓪ is exactly where the
+> deliberate breaks live.
+
+The empty allowlist is therefore **correct as-is**, but for a reason its own comment gets
+wrong: not "the endpoints aren't serialized yet" (they are), but "these breaks are not of a
+kind oasdiff can see."
+
+### `oasdiff@latest` is not reproducible, and moves the Go floor
+
+`OASDIFF = go run github.com/oasdiff/oasdiff@latest`. Resolved today to **v1.28.0, which
+requires go >= 1.26** and silently triggered `switching to go1.26.5` — against a service whose
+`go.mod` directive is 1.25.0 and whose CI pins `go-version-file: go.mod`. A gate whose tool
+version floats is a gate that can turn red on a day nobody changed the contract. Pin it.
+
+### Everything else verified green
+
+- **Spec is genuinely derived.** `make openapi` is deterministic and reproduces the working-tree
+  `openapi.yaml` byte-for-byte (hash-compared across two runs). *Caveat: derived-and-current is
+  proven for the **working tree**; the round is still uncommitted, so "committed = derived"
+  is not yet true on any branch.*
+- **Spectral passes** on the committed yaml (`rc=0`, no errors).
+- **Client is derived and sole.** `make client` reproduces `schema.d.ts` identically. Every
+  `/users/profile` call routes through `src/api/profile.ts` on the generated client; the only
+  remaining hand-written `fetch` calls are signin/signup, which are unserialized. `tsc` is
+  clean across all contract-touched paths (26 pre-existing errors survive in `Todo.tsx`,
+  `NotesContext.tsx`, `notesService.ts` — untouched by this run, unrelated debt).
+- **Docs cohere.** FS-0002 is `Status: shipped`; `SPECIFICATION.md ## Users` carries the
+  two-line split with the `FS-none` line intact and the serialization line now `[x] → FS-0002`.
+  ADR-0002/3/4 are present and uncontradicted: no `@`-annotations on the typed handlers, no
+  `models.User` in the transport path, error model matches ADR-0004.
+- **`errors` required is deliberate, not the `omitempty` trap recurring.** `Problem.Errors`
+  drops `omitempty` on purpose (FS-0002 R16: present-and-empty so the FE never null-checks),
+  and the schema's `required: [code, errors]` is the faithful consequence. Worth naming because
+  it looks identical to the bug the 2026-08-07 entry documented, and is its exact inverse.
+
+### Two rules this run made, that the log had already written down and the repo did not follow
+
+1. **"Ship rulesets with their fixtures."** The 2026-08-06 entry established this after
+   Spectral failed to load an invented rule. **The fixtures were never committed** — no
+   fixture file exists anywhere in the repo or its history. The rule was recorded and then
+   not applied to the very ruleset that produced it.
+2. **The three flagged skill patches were never made.** `Implements ADR-NNNN` as an anchor
+   type (`develop` entry gate, `code-review` spec axis), the brownfield two-line rule with
+   `FS-none`, and the `status · code` Errors-column format are all still absent from the SSOT —
+   verified by grep across `.claude/skills/`. Only `walk-it` was added during this run, and it
+   carries no fireplace-specific wording, so no leakage occurred. Nothing leaked *because
+   nothing was patched.*
+
+> The pattern worth extracting is the meta one: **a pioneer log records findings but does not
+> apply them.** Both gaps above are places where the finding was written down correctly and
+> the follow-through silently didn't happen. Extraction is where that debt comes due — which
+> is an argument for running this verification pass *before* every extraction, not once.

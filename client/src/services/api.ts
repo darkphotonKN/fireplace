@@ -597,52 +597,10 @@ export const signUp = async (
 
 // --- User Profile ---
 
-export interface UserProfile {
-  id: string;
-  name: string;
-  email: string;
-  displayName: string | null;
-  bio: string | null;
-  created_at: string;
-}
+// Profile types come from the generated schema now — not restated by hand.
+export type { UserProfile, UpdateProfileRequest } from "@/api/profile";
 
-export interface UserProfileResponse {
-  statusCode: number;
-  message: string;
-  result: UserProfile;
-}
-
-export interface UpdateProfileRequest {
-  name?: string;
-  displayName?: string;
-  bio?: string;
-}
-
-export const getProfile = async (): Promise<UserProfileResponse> => {
-  const response = await authFetch(`${API_BASE_URL}/api/users/profile`);
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch profile: ${response.statusText}`);
-  }
-
-  return await response.json();
-};
-
-export const updateProfile = async (
-  updates: UpdateProfileRequest,
-): Promise<UserProfileResponse> => {
-  const response = await authFetch(`${API_BASE_URL}/api/users/profile`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(updates),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to update profile: ${response.statusText}`);
-  }
-
-  return await response.json();
-};
+export { getProfile, updateProfile } from "@/api/profile";
 
 export const fetchPlanDetails = async (
   planId: string,

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getProfile, updateProfile, type UserProfile } from '@/services/api';
+import { ApiError } from '@/api/profile';
+import { messageFor, fieldFor } from '@/api/client';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -35,7 +37,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     getProfile()
-      .then((res) => setProfile(res.result))
+      .then((res) => setProfile(res))
       .catch((err) => setError(err.message || 'Failed to load profile'))
       .finally(() => setLoading(false));
   }, []);
@@ -80,11 +82,20 @@ export default function ProfilePage() {
     setSaving(true);
     try {
       const res = await updateProfile({ [editingField]: trimmed });
-      setProfile(res.result);
+      setProfile(res);
       toast({ title: 'Profile updated' });
       cancelEdit();
-    } catch {
-      toast({ title: 'Save failed', description: 'Could not update profile', variant: 'destructive' });
+    } catch (err) {
+      // Branch on the RFC 9457 domain code (ADR-0004), never on the message —
+      // `detail` is prose and is allowed to change between releases.
+      // errors[] is empty for downstream failures, so the CODE carries the
+      // field-level precision: PROFILE_NAME_EMPTY is field-specific by itself.
+      const problem = err instanceof ApiError ? err.problem : undefined;
+      toast({
+        title: fieldFor(problem) ? 'Check that field' : 'Save failed',
+        description: messageFor(problem),
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
@@ -184,7 +195,7 @@ export default function ProfilePage() {
         {/* Member since */}
         <div className="pt-4 border-t border-foreground/10">
           <span className="text-sm text-foreground/30">
-            Member since {new Date(profile.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
+            Member since {new Date(profile.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
           </span>
         </div>
       </div>
