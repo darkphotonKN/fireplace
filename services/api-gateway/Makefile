@@ -140,7 +140,43 @@ OPENAPI_SPEC   = openapi.yaml
 CLIENT_DIR     = ../../client/src/api/generated
 SPECTRAL_RULES = ../../.spectral.yaml
 OASDIFF_IGNORE = ../../.oasdiff-ignore
-OASDIFF        = go run github.com/oasdiff/oasdiff@latest
+
+# oasdiff is PINNED and installed as a prebuilt binary rather than run via `go run`.
+#
+# Two reasons, both load-bearing:
+#   1. `@latest` inside a gate is not reproducible — the gate can turn red on a day
+#      nobody touched the contract.
+#   2. EVERY oasdiff release requires go >= 1.26, while this module's directive is
+#      1.25.0. `go run` bridges that silently by downloading a second toolchain
+#      ("switching to go1.26.5"), which makes the gate depend on a network toolchain
+#      fetch and breaks under GOTOOLCHAIN=off.
+#
+# A pinned binary keeps the GATE's toolchain independent of the SERVICE's — which is
+# also what lets repos on different Go versions share this Makefile unchanged.
+OASDIFF_VERSION = 1.28.0
+TOOLS_DIR       = .tools
+OASDIFF         = $(TOOLS_DIR)/oasdiff
+
+# ONE shell block, not one line per step: make runs each recipe LINE in its own shell,
+# so a multi-line guard would exit only its own line and let the rest proceed. That
+# exact mistake produced two false greens here once already.
+$(OASDIFF):
+	@mkdir -p $(TOOLS_DIR)
+	@set -e; \
+	os=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
+	case "$$os" in \
+	  darwin) asset="darwin_all" ;; \
+	  linux) \
+	    case "$$(uname -m)" in \
+	      aarch64|arm64) asset="linux_arm64" ;; \
+	      *)             asset="linux_amd64" ;; \
+	    esac ;; \
+	  *) echo "❌ unsupported OS '$$os' — install oasdiff v$(OASDIFF_VERSION) into $(TOOLS_DIR)/ by hand"; exit 1 ;; \
+	esac; \
+	echo "installing oasdiff v$(OASDIFF_VERSION) ($$asset)..."; \
+	curl -sSL "https://github.com/oasdiff/oasdiff/releases/download/v$(OASDIFF_VERSION)/oasdiff_$(OASDIFF_VERSION)_$$asset.tar.gz" \
+	  | tar -xz -C $(TOOLS_DIR) oasdiff
+	@$(OASDIFF) --version
 
 # Regenerate the OpenAPI 3.x spec FROM the typed Huma handler signatures.
 # Types, not comments — this is what makes drift structurally impossible.
@@ -186,7 +222,7 @@ openapi-diff:
 
 # Breaking-change detection against the spec as committed on the base branch.
 # Deliberate breaks pass ONLY via an entry in .oasdiff-ignore with a stated reason.
-openapi-breaking:
+openapi-breaking: $(OASDIFF)
 	@if [ ! -f $(OPENAPI_SPEC) ]; then \
 		echo "SKIPPED: $(OPENAPI_SPEC) does not exist yet (expected until FS-0002 slice 3)"; \
 	elif ! git show origin/main:services/api-gateway/$(OPENAPI_SPEC) > /tmp/openapi.base.yaml 2>/dev/null; then \

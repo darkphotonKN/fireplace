@@ -4,29 +4,57 @@
 # fails CI. Listing one is an explicit, reviewed act: a break must be CHOSEN, not
 # discovered by a client (ADR-0002).
 #
-# FORMAT: oasdiff's native ignore file is PLAIN TEXT, one entry per line. Each line is
-# matched (lowercased, substring) against the breaking-change message oasdiff prints.
-# Run `oasdiff breaking <base> <revision>` to see the exact text, then paste it here.
-#
 #   NOTE: ADR-0002 names this file `.oasdiff.yaml`. That was written before the tool's
 #   interface was checked — oasdiff has no YAML allowlist format. The mechanism the ADR
 #   mandates (a reviewed allowlist gating deliberate breaks) is unchanged; only the
 #   filename and syntax differ. Recorded in docs/notes/contract-pioneer-log.md.
 #
+# ---------------------------------------------------------------------------
+# FORMAT — verified 2026-08-09 against oasdiff v1.28.0. Do not guess at this.
+#
+# One line per (METHOD, PATH, MESSAGE) triple, all lowercased. oasdiff suppresses a
+# breaking change only when an ignore line contains ALL THREE of the method, the path,
+# and the change text.
+#
+#   A line carrying the printed message ALONE matches nothing. It does not error —
+#   it silently fails to suppress, and the gate stays red with no explanation.
+#
+# To derive a line, run the diff and read the two indented lines of the error:
+#
+#   error   [response-required-property-removed] at openapi.yaml
+#           in API GET /users/profile                                     <- method + path
+#             removed the required property `displayName` from the ...    <- message
+#
+# Concatenate them and lowercase the result:
+#
+#   in api get /users/profile removed the required property `displayname` from the ...
+#
+# A break affecting two operations needs TWO lines — one per operation.
+#
+# A WORKING EXAMPLE, exercised against real fixtures, lives at
+# contract-fixtures/oasdiff-allowlist.txt. Copy its shape, not oasdiff's output.
+#
 # EVERY ENTRY MUST CARRY: the FS or ADR that authorised the break, and why.
 # An entry with no reason is a bug, not an allowance.
-
 # ---------------------------------------------------------------------------
-# (empty)
 #
-# Two breaks are EXPECTED to land here when FS-0002 slices 3-4 serialize the profile
-# endpoints. They are not listed yet because the endpoints are not serialized yet, and
-# an allowlist entry that matches nothing is worse than no entry — it silently rots.
+# ---------------------------------------------------------------------------
+# (empty — and correctly so)
 #
-#   1. Success envelope removal ({statusCode,message,result} -> bare resource).
-#      Authorised by: FS-0002 §Requirements 5, ADR-0003.
-#   2. Error body shape change (legacy {statusCode,message} -> RFC 9457 problem+json).
-#      Authorised by: FS-0002 §Requirements 13/17, ADR-0004.
+# An earlier revision of this file predicted two entries would be needed once FS-0002
+# serialized the profile endpoints: the success-envelope removal and the error-body
+# change to problem+json. Those slices have now shipped and NEITHER entry is required.
 #
-# Add each with its exact oasdiff message text when the slice that causes it lands.
+# oasdiff compares openapi.yaml against its OWN previous revision. Both of those breaks
+# are relative to the legacy swaggo document (docs/swagger.json) — a different file, in a
+# different OpenAPI version, that oasdiff never sees. They are CROSS-DOCUMENT breaks and
+# plane-1 breaking detection is structurally blind to them.
+#
+#   Consequence worth internalising: under serialize-on-touch, an endpoint's FIRST
+#   serialization is the one change this gate cannot check. The ratchet guards every
+#   revision AFTER the spec first lands on the base branch. Slice ⓪ is verified by
+#   review and by the before/after behavioural checks in its FS — not by oasdiff.
+#
+# An allowlist entry that matches nothing is worse than no entry: it looks like coverage
+# and silently rots. Add entries only when a real diff produces a real error message.
 # ---------------------------------------------------------------------------

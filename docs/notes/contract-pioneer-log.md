@@ -517,3 +517,101 @@ version floats is a gate that can turn red on a day nobody changed the contract.
 > apply them.** Both gaps above are places where the finding was written down correctly and
 > the follow-through silently didn't happen. Extraction is where that debt comes due — which
 > is an argument for running this verification pass *before* every extraction, not once.
+
+---
+
+## 2026-08-09 — Fixes, re-verification, and extraction. This log's job is done.
+
+The failures from the entry above are closed, Phase 1 re-ran green, and the layer is extracted
+to the SSOT. Final entry: fireplace's role as the test bed ends here.
+
+### The go-floor decision (surfaced, not assumed)
+
+Pinning oasdiff forced a real choice. **Every oasdiff release back to v1.18.6 declares
+`go 1.26`** — checked against the module proxy, not assumed — while this module's directive is
+`1.25.0` and `go.work` pins all eight modules to it. There was no "pin to an older compatible
+version" option; that path does not exist.
+
+Resolved by **installing a pinned prebuilt binary** (`oasdiff_1.28.0_<os>_<arch>` from GitHub
+releases) into a gitignored `.tools/`, rather than `go run`. `go.mod` and `go.work` are
+untouched.
+
+> **The generalisable form, and why it beat the alternatives:** gate tooling moves faster than
+> the service it guards. Running it via `go run` silently drags in a second toolchain whenever
+> its floor exceeds yours — making a *gate* depend on a network toolchain fetch, and breaking
+> under `GOTOOLCHAIN=off`. Bumping the whole monorepo to 1.26 to satisfy a lint tool is the
+> tail wagging the dog. **A pinned binary keeps the gate's toolchain independent of the
+> service's** — which is also the property that lets repos on different Go versions share one
+> gate config, and therefore the property the template needed.
+
+### Fixtures: minimum viable, and they earned their keep immediately
+
+`contract-fixtures/` now holds one known-bad Spectral spec (trips three custom rules at once —
+`3 errors, rc=1`) and one oasdiff break pair with a worked allowlist.
+
+The allowlist file does double duty: it is the fixture's expected-pass input **and** the
+reference for the entry format. That matters because the format is the thing the previous
+entry proved was wrong. Verified in both directions against the pinned binary:
+
+```
+unallowlisted break  → rc=1     (the gate can still reject)
+allowlisted break    → rc=0     (the escape hatch actually works)
+```
+
+`.oasdiff-ignore` now documents the **verified triple format** — one line per
+(method, path, message), lowercased — with a pointer to the working example, and explains why
+it is **correctly empty**: the first serialization's breaks are cross-document and invisible to
+oasdiff, so pre-populating it would create entries that match nothing and rot.
+
+**Deferred deliberately** (not forgotten, and recorded here as the scope trim it was): a
+per-rule fixture suite, and a `make gates-selftest` target wired into CI. Today the fixtures
+verify the gates at *adoption* time, not continuously. That is the next hardening step, and it
+was left out of the template too — so the template matches what has actually been exercised
+rather than what would be nice.
+
+### What extracted, and the one rule that decided each case
+
+The rule from the 2026-08-06 entry held up under contact: **if the deliverable is a file every
+repo needs identically, it is a template; feature specs are for what differs per repo.** Nine
+template files, one interview question, four skill patches.
+
+What stayed fireplace-local is as informative as what left: the gin/humagin adapter choice,
+swaggo coexistence, the `go.sum` un-ignoring, `PROFILE_NAME_EMPTY`, and the ADR files
+themselves. **Fireplace's ADRs were not moved or edited** — they are immutable records of what
+*this* repo decided. The template ADR is a fresh document a future repo fills and commits as
+its own; it merges what fireplace learned across four ADRs into one decision, because a repo
+adopting the whole layer at once decided it at once, and the record should not imitate a
+history it did not have.
+
+The stack-specific patterns (error adapter, identity bridge, the problem-emitting auth fork,
+`ContentType()`, `omitempty`) extracted as **pattern notes, not copy-paste code** — each names
+the seam and the trap, and says explicitly to re-derive the code. Every one of them cost real
+debugging time here; that is the entire reason they are worth carrying.
+
+### The honest closing state
+
+- **Everything is still uncommitted** on `feat/46-contract-gate-tooling`. "Committed = derived"
+  is proven for the working tree, not for any branch. It becomes true on commit.
+- **The breaking gate has still never run against a real baseline** and cannot until this
+  branch merges — `SKIPPED: no baseline` is correct, not broken. The synthetic proof above is
+  what stands in until then.
+- **Plane 2 remains unwired.** `docs/agents/contract.md` lists it explicitly as a gap rather
+  than omitting it, so it stays auditable.
+
+### Why this log ends here
+
+Fireplace was the test bed, and the test is over: the layer shipped, was verified against
+evidence rather than memory, and the generalizable part is in the SSOT. Anything learned from
+here on is **fireplace's own maintenance**, not pioneering — it belongs in the ADRs and the
+commit history like any other work.
+
+The real validation is no longer in this repo. **quanta adopting the layer through `setup` is
+the template's first consumer test** — the first time this content meets a codebase that did
+not grow it, and the only way to find what is still accidentally fireplace-shaped. Extraction
+from the originating repo cannot reveal that, by construction.
+
+One last finding, from the run rather than the code: **the log recorded findings faithfully and
+applied none of them.** Every gap the verification pass found — missing fixtures, unmade skill
+patches, an unverified allowlist format — had already been written down here, correctly, and
+then not done. A log is a memory, not a mechanism. The mechanism is running the verification
+pass *before* extraction, every time, and treating "we wrote that down" as evidence of nothing.

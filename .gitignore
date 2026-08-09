@@ -8,6 +8,11 @@
 bin/
 build/
 dist/
+
+# Pinned contract-gate tooling, installed by `make -C services/api-gateway .tools/oasdiff`.
+# The VERSION is pinned in the Makefile (which is tracked); the binary itself is a build
+# artifact and is not — same reasoning as bin/.
+.tools/
 *.out
 *.prof
 *.coverprofile
