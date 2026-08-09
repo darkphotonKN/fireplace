@@ -1,0 +1,32 @@
+# oasdiff breaking-change ALLOWLIST — deliberate breaks only.
+#
+# Passed to `oasdiff breaking` via --err-ignore. Any breaking change NOT listed here
+# fails CI. Listing one is an explicit, reviewed act: a break must be CHOSEN, not
+# discovered by a client (ADR-0002).
+#
+# FORMAT: oasdiff's native ignore file is PLAIN TEXT, one entry per line. Each line is
+# matched (lowercased, substring) against the breaking-change message oasdiff prints.
+# Run `oasdiff breaking <base> <revision>` to see the exact text, then paste it here.
+#
+#   NOTE: ADR-0002 names this file `.oasdiff.yaml`. That was written before the tool's
+#   interface was checked — oasdiff has no YAML allowlist format. The mechanism the ADR
+#   mandates (a reviewed allowlist gating deliberate breaks) is unchanged; only the
+#   filename and syntax differ. Recorded in docs/notes/contract-pioneer-log.md.
+#
+# EVERY ENTRY MUST CARRY: the FS or ADR that authorised the break, and why.
+# An entry with no reason is a bug, not an allowance.
+
+# ---------------------------------------------------------------------------
+# (empty)
+#
+# Two breaks are EXPECTED to land here when FS-0002 slices 3-4 serialize the profile
+# endpoints. They are not listed yet because the endpoints are not serialized yet, and
+# an allowlist entry that matches nothing is worse than no entry — it silently rots.
+#
+#   1. Success envelope removal ({statusCode,message,result} -> bare resource).
+#      Authorised by: FS-0002 §Requirements 5, ADR-0003.
+#   2. Error body shape change (legacy {statusCode,message} -> RFC 9457 problem+json).
+#      Authorised by: FS-0002 §Requirements 13/17, ADR-0004.
+#
+# Add each with its exact oasdiff message text when the slice that causes it lands.
+# ---------------------------------------------------------------------------

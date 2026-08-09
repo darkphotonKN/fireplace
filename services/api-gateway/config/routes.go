@@ -111,10 +111,19 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	protected := api.Group("")
 	protected.Use(auth.AuthMiddleware())
 
+	// --- SERIALIZED (typed) SURFACE — ADR-0002 plane 1, FS-0002 ---
+	//
+	// GET/PATCH /api/users/profile are served by typed huma handlers, NOT by the
+	// legacy gin handlers below. They were removed from protectedUsers rather
+	// than left alongside: gin panics on duplicate route registration, and the
+	// whole point of serialize-on-touch is replacement, not coexistence per path.
+	//
+	// Everything else on this group is untouched and stays enveloped until it is
+	// itself touched (ADR-0002 §7, grandfather clause).
+	MountSerialized(router, api, api.Group(""), APIDeps{Profile: authClient})
+
 	// -- User Routes (proxied to auth-service via gRPC) --
 	protectedUsers := protected.Group("/users")
-	protectedUsers.GET("/profile", authHandler.GetProfile)
-	protectedUsers.PATCH("/profile", authHandler.UpdateProfile)
 	protectedUsers.GET("/:id", authHandler.GetById)
 	protectedUsers.GET("", authHandler.GetAll)
 

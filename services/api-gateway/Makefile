@@ -125,7 +125,83 @@ lint:
 docs:
 	@npx --yes @redocly/cli@latest preview-docs --port 8089 docs/swagger.json
 
-.PHONY: run test migrate-up migrate-down migrate-status migrate-down-to migrate-reset migrate-create migrate-fix db-force-clean db-drop db-create db-drop-create gen lint docs
+# ---------------------------------------------------------------------------
+# SERIALIZED contract (OpenAPI 3.x via Huma) — ADR-0002 plane 1.
+#
+# Distinct from the legacy `gen`/`lint`/`docs` targets above, which serve the
+# swaggo OpenAPI 2.0 surface. Both surfaces coexist until the last endpoint
+# serializes (ADR-0002 §8); these targets govern the new one.
+#
+# Command paths are declared in docs/agents/contract.md so generic skills can
+# find them without hardcoding a toolchain.
+# ---------------------------------------------------------------------------
+
+OPENAPI_SPEC   = openapi.yaml
+CLIENT_DIR     = ../../client/src/api/generated
+SPECTRAL_RULES = ../../.spectral.yaml
+OASDIFF_IGNORE = ../../.oasdiff-ignore
+OASDIFF        = go run github.com/oasdiff/oasdiff@latest
+
+# Regenerate the OpenAPI 3.x spec FROM the typed Huma handler signatures.
+# Types, not comments — this is what makes drift structurally impossible.
+openapi:
+	@if [ ! -d ./cmd/openapi ]; then \
+		echo "SKIPPED: no ./cmd/openapi generator yet (expected until FS-0002 slice 3)"; \
+	else \
+		go run ./cmd/openapi > $(OPENAPI_SPEC) && echo "✅ wrote $(OPENAPI_SPEC)"; \
+	fi
+
+# Regenerate the TypeScript client FROM the committed spec. The generated client
+# is the FE's ONLY import path for serialized endpoints (ADR-0002 §4).
+client:
+	@if [ ! -f $(OPENAPI_SPEC) ]; then \
+		echo "SKIPPED: $(OPENAPI_SPEC) does not exist yet (expected until FS-0002 slice 3)"; \
+	else \
+		mkdir -p $(CLIENT_DIR) && \
+		npx --yes openapi-typescript@7 $(OPENAPI_SPEC) -o $(CLIENT_DIR)/schema.d.ts && \
+		echo "✅ wrote $(CLIENT_DIR)/schema.d.ts"; \
+	fi
+
+# Lint the SERIALIZED spec for contract depth (descriptions, examples, error schemas).
+# The legacy `lint` target above still governs docs/swagger.json — do not merge them.
+lint-contract:
+	@if [ ! -f $(OPENAPI_SPEC) ]; then \
+		echo "SKIPPED: $(OPENAPI_SPEC) does not exist yet (expected until FS-0002 slice 3)"; \
+	else \
+		npx --yes @stoplight/spectral-cli@6 lint --ruleset $(SPECTRAL_RULES) $(OPENAPI_SPEC); \
+	fi
+
+# Fail if the committed spec differs from the regenerated one. This is the gate
+# that makes "committed openapi.yaml" trustworthy rather than aspirational.
+openapi-diff:
+	@if [ ! -f $(OPENAPI_SPEC) ]; then \
+		echo "SKIPPED: $(OPENAPI_SPEC) does not exist yet (expected until FS-0002 slice 3)"; \
+	else \
+		cp $(OPENAPI_SPEC) /tmp/openapi.committed.yaml && \
+		$(MAKE) --no-print-directory openapi && \
+		{ diff -u /tmp/openapi.committed.yaml $(OPENAPI_SPEC) \
+			|| { echo "❌ committed spec != regenerated — run 'make openapi' and commit"; exit 1; }; } && \
+		echo "✅ committed spec matches regenerated"; \
+	fi
+
+# Breaking-change detection against the spec as committed on the base branch.
+# Deliberate breaks pass ONLY via an entry in .oasdiff-ignore with a stated reason.
+openapi-breaking:
+	@if [ ! -f $(OPENAPI_SPEC) ]; then \
+		echo "SKIPPED: $(OPENAPI_SPEC) does not exist yet (expected until FS-0002 slice 3)"; \
+	elif ! git show origin/main:services/api-gateway/$(OPENAPI_SPEC) > /tmp/openapi.base.yaml 2>/dev/null; then \
+		rm -f /tmp/openapi.base.yaml; \
+		echo "SKIPPED: no baseline spec on origin/main yet (first serialization)"; \
+	else \
+		$(OASDIFF) breaking /tmp/openapi.base.yaml $(OPENAPI_SPEC) \
+			--err-ignore $(OASDIFF_IGNORE) --fail-on ERR; \
+	fi
+
+# Every plane-1 gate, in the order CI runs them.
+gates: openapi-diff lint-contract openapi-breaking
+	@echo "✅ contract gates complete"
+
+.PHONY: run test migrate-up migrate-down migrate-status migrate-down-to migrate-reset migrate-create migrate-fix db-force-clean db-drop db-create db-drop-create gen lint docs openapi client lint-contract openapi-diff openapi-breaking gates
 
 
 

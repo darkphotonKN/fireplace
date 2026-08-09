@@ -29,7 +29,7 @@ export default function UserProfile() {
   useEffect(() => {
     getProfile()
       .then((res) => {
-        setUserName(res.result.displayName || res.result.name);
+        setUserName(res.displayName || res.name);
       })
       .catch(() => {
         setUserName('User');
