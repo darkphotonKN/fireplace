@@ -642,3 +642,144 @@ The slice-⓪ blind spot is **not** closed by this and never will be: it is stru
 breaks FS-0002 actually shipped (envelope removal, error-shape change) were relative to the
 legacy swaggo document and remain invisible to this gate. What just became guarded is
 everything *after* this point.
+
+---
+
+## 2026-08-10 — The extraction was endpoint-complete and middle-empty
+
+The entry above declared this log finished. It was wrong, and the way it was wrong is the
+finding.
+
+### What was actually extracted
+
+Auditing the fleet for the concepts this run produced showed them landing in exactly two
+places: where work is **judged** (`develop`, `code-review`, `spec-audit`) and where repos are
+**scaffolded** (`setup` + templates). Every skill in the middle — where work is **planned** —
+knew nothing:
+
+| Skill | Missing |
+|---|---|
+| `scope-it` | no notion of an API surface at all; nothing about serialize-on-touch |
+| `spec-to-issues` | required `§API surface` in slice references, but had no concept of **slice ⓪** |
+| `spec-update` | writes thin lines and flips `shipped` — the exact place retrofit pairs are authored — with no two-line rule |
+| `spec-bootstrap` | reverse-engineers lines from built code and never mentioned `FS-none` |
+
+`write-a-spec` was the exception, and instructively so: it **points at `docs/specs/README.md`
+as format authority** rather than restating the table rules, so the three authority edits
+reached it for free. That is the "point at the authority, never embed it" rule paying for
+itself — one edit to the authority updated a skill nobody touched.
+
+### Why it happened, and why it was invisible
+
+**The planning knowledge lived in the humans during the run.** Nobody needed a skill to say
+"wrap the endpoint first" — we were the ones who decided it, in this repo, in this thread. The
+gates got patched because gates *fail loudly* when they lack a rule; planning skills fail
+**silently**, by simply not raising something. An unasked question leaves no trace.
+
+That is the generalisable trap: **extraction naturally follows the failures you felt.** Every
+gap found here was in a skill that had never blocked us, because it could not. A verification
+pass that only re-runs the gates will never surface it — the gates were green the whole time.
+
+### The four patches
+
+Each is 2–4 lines and **points at an authority** (the contract ADR, `docs/specs/README.md`)
+rather than restating it — same discipline that saved `write-a-spec`:
+
+- **`scope-it`** — an *API surface* exploration area (does this add/change endpoints; if they
+  exist unserialized, flag serialize-on-touch in the draft notes), plus the two-line brownfield
+  invariant in the locking rules.
+- **`spec-to-issues`** — legacy endpoints ⇒ the first slice is **slice ⓪**, the wrap. The FE
+  cutover is its **own late slice** (where the grandfather clause executes). Deliberate shape
+  breaks ride ⓪ or the cutover and are **verified manually**, because the ratchet cannot see
+  breaks against the pre-serialization world.
+- **`spec-update`** — author the retrofit **pair**; the new line's checkbox flips only on its
+  own acceptance criteria, and live legacy behavior never checks it.
+- **`spec-bootstrap`** — `FS-none` is now its **default pointer**, and its lines are `[x]`:
+  these capabilities ship today, which is the entire premise of reverse-engineering them.
+
+The last one closed an orphan nobody had noticed: `spec-bootstrap` had been emitting `FS-TBD`,
+a placeholder **no other skill in the fleet consumed or resolved** — not `write-a-spec`, which
+was supposed to, and not `spec-audit`, which would have flagged it. One term, one writer, zero
+readers, quietly rotting in the one skill that runs on repos with no specs yet.
+
+### The rule this run leaves behind
+
+> **Extraction is not done when the gates are green. It is done when every verb in the
+> lifecycle can state the rule without a human in the room.**
+
+Judging skills are the *easy* half — they are exercised constantly and complain when
+underspecified. Planning skills are where tacit knowledge hides, because their failure mode is
+an absence. Audit them by concept, not by whether anything broke: for each idea the run
+produced, grep the fleet and ask *which verb raises this, and when?* A concept that resolves
+only to skills that **check** work is a concept the system cannot **plan** with.
+
+Verified after patching: `slice ⓪`, `serialize-on-touch`, `FS-none`, and the two-line pair each
+now resolve to at least one planning skill, not only to the gates.
+
+---
+
+## 2026-08-10 — First fleet-adoption pass: the new machinery caught things on its first outing
+
+Ran the upgrade against barrowspire and quanta — both older-vintage repos, both pre-contract-layer.
+The interesting part is not the upgrade; it is that two pieces of machinery added *during* this
+run earned their keep immediately, on the first repo they touched.
+
+### The Class column caught its first false positive
+
+`setup`'s manifest gained a permanent column splitting every piece into **tracked copy**
+(canonical content the repo never edits — byte-matches its template, safe to re-copy) versus
+**copy-once** (forks at birth and diverges on purpose — additive patches only, never re-copy).
+
+The audit immediately flagged `docs/agents/tracker.md` as `STALE (7 vs 15 lines)`. It is not
+stale. It is **copy-once**, and it forked correctly at birth when one mode block was uncommented
+and the rest deleted. A line-count diff cannot tell "behind the template" from "correctly
+diverged" — only the classification can.
+
+> **The rule that generalises: staleness is only a meaningful question for files that were
+> supposed to stay identical.** Ask it of a living file and you get a false positive every time,
+> which trains people to ignore the check. This is why the column had to be *permanent manifest
+> metadata* rather than a judgement call at audit time.
+
+The test for the column is **not** "does it have placeholders." `tracker.md` and `.oasdiff-ignore`
+contain no `{PLACEHOLDER}` at all, yet both accumulate repo state — a chosen mode, reviewed
+allowlist entries. The real test is: **does repo-specific state accumulate in this file after it
+is copied?**
+
+### The STOP rule caught three template gaps before a live run hit them
+
+`setup`'s "template missing → STOP, do not invent" rule fired on three manifest pieces that had
+**no template at all**: `docs/adr/README.md`, `docs/issues/README.md`, `.audit/README.md`.
+
+All three already existed in consumer repos — which means they had been **hand-authored**, at
+different times, in different words. Exactly the drift the copier rewrite was built to prevent,
+sitting in the blind spot where the manifest listed a piece the templates could not supply.
+
+Authoring them revealed the cost of having let it run: the three hand-written ADR READMEs had
+each independently grown something the others lacked — one had the capability-vs-decision
+tiebreaker, one had "check ADRs before architectural changes," one had named itself the schema
+authority. **No single copy was the best copy.** The template merges all three rather than
+picking a winner, because picking one would have silently discarded two good rules.
+
+> Conventions do not drift loudly. They drift by each repo's copy being *slightly better* at
+> something and slightly worse at everything else, until no two agree and none is canonical.
+
+### What the pass actually did
+
+Both authorities re-copied into barrowspire and quanta (`docs/specs/README.md` 63 → 137,
+`docs/agents/README.md` 43 → 75, `docs/adr/README.md` → 43), plus the newly-authored issues and
+audit READMEs. Verified in both directions before writing: **zero sections existed only in the
+repo copies**, so the re-copy was provably additive in effect — which is the whole justification
+for the tracked class.
+
+The upgrade reached the repos *because the skills are symlinked and the docs are not*. All three
+repos already had every skill patch from this run, live, with no action — and none of the doc
+changes. That asymmetry is the thing to remember: **skills propagate, authorities do not.** A
+repo can be running rules its own documents have never heard of, which is precisely the state
+barrowspire was in.
+
+### Still open, and honest about it
+
+Fireplace itself is now the **most** stale repo in the fleet on `docs/agents/README.md` — the one
+document that carries `contract.md`'s schema — because this run edited the template without
+re-copying it here. The pass covered barrowspire and quanta by explicit scope. Fireplace is due
+the same treatment and has the strongest claim to it.

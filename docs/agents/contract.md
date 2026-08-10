@@ -13,8 +13,19 @@ plane1_client_regen: make -C services/api-gateway client
 plane1_client_dir: client/src/api/generated
 plane1_lint: .spectral.yaml
 plane1_breaking: oasdiff
+plane1_breaking_version: 1.28.0        # pinned prebuilt binary in services/api-gateway/.tools/
+                                       # NOT `go run @latest`: unpinned gates turn red on days
+                                       # nobody touched the contract, and every oasdiff release
+                                       # requires go >= 1.26 while this module is on 1.25.0
 plane1_breaking_allowlist: .oasdiff-ignore
 plane1_gates: make -C services/api-gateway gates
+plane1_fixtures: contract-fixtures/    # known-bad inputs the gates must reject + the worked
+                                       # allowlist example; run them after any gate config change
+
+# --- Error vocabulary ---
+errcode_pkg: common/errcode
+# `code` is contract: removing or repurposing one is breaking, adding one is not.
+# Domain codes are added when a real failure needs distinguishing — never speculatively.
 
 # --- Plane 2: service <-> service (gRPC) ---
 plane2_proto: common/api/proto
