@@ -163,3 +163,33 @@ breaking-change gate happily diffed two empty specs and reported "no changes".
 
 → Write each recipe as a **single `if/else` shell block**, and verify targets **by exit code**,
 never by reading their output.
+
+## 9. A downstream outage is 503, not 500 — and the gateway will flatten it
+
+The first error-mapping seam anyone writes has a catch-all: everything unrecognised becomes
+`500 INTERNAL_ERROR`. That is correct for unrecognised failures and **wrong for a downstream
+being unreachable**, which is the single most common production failure a gateway sees.
+
+The two statuses instruct the client differently:
+
+- **500** — "your request broke us." A client must **not** retry: the same request will break us
+  again. Retrying is at best waste, at worst an amplification loop against a struggling service.
+- **503** — "we are temporarily unable to serve this." The request was fine. Retry **is** the
+  correct behavior, backoff applies, and the response can carry `Retry-After`.
+
+Flattening a dial failure, a circuit-breaker trip, or a gRPC `Unavailable` into 500 tells every
+client to give up on a request that would have succeeded a second later. It also hides real
+outages inside the same bucket as genuine bugs, so the 500 rate stops meaning anything.
+
+**In the reference adoption this was caught by the code, not the spec.** One hand-written
+handler already mapped `Unavailable → 503` correctly. The feature spec — written later,
+generalising from the *other* handlers — specified `Unavailable → 500`, so migrating faithfully
+would have **downgraded** the one endpoint that got it right. The spec was amended instead.
+
+→ Seed `SERVICE_UNAVAILABLE` in the starter vocabulary and map the transport's
+"downstream unreachable" signal (gRPC `Unavailable`, a dial error, a breaker trip) to **503**
+before the catch-all runs. The catch-all keeps 500 for everything genuinely unrecognised.
+
+→ When writing the FS's mapping table, **read the existing handlers first**. A spec that
+generalises from the majority will quietly specify away the minority that were already right —
+and the migration will look faithful while losing behavior.
