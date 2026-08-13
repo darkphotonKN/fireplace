@@ -29,7 +29,7 @@ function LandingPage() {
         <div className="flex items-center justify-center gap-4 pt-4">
           <Link
             href="/auth"
-            className="px-8 py-3 rounded-md text-white font-medium transition-colors bg-[rgb(247,111,83)] hover:bg-[rgb(237,101,73)]"
+            className="px-8 py-3 rounded-md text-primary-foreground font-medium transition-colors bg-[rgb(247,111,83)] hover:bg-[rgb(237,101,73)]"
           >
             Sign In
           </Link>

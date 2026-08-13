@@ -1,5 +1,15 @@
 # client — Specification
 
+> **Format note:** the thin capability sections below are the living tier-1 index
+> (see `docs/specs/README.md`). Everything from `## Project Overview` down is
+> monolith-era prose that predates the two-tier spec system and has not yet been
+> converted — run `/spec-bootstrap client` to reverse-engineer the rest.
+
+## Onboarding
+
+- [x] Logged-out landing page → FS-none
+- [ ] Product tour on the logged-out landing → FS-0003
+
 ## Project Overview
 
 **Name**: Flow Client

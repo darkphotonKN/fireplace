@@ -7,6 +7,14 @@
   --background: 55 43% 92%; /* rgb(242, 240, 227) */
   --foreground: 0 0% 18%; /* rgb(46, 46, 46) */
   --primary: 12 92% 65%; /* rgb(247, 111, 83) */
+  /*
+   * On-coral text. Warm dark rather than the cream the design guideline
+   * suggests: cream on #F76F53 measures 2.50:1 and white 2.86:1, both well under
+   * the 4.5:1 WCAG AA needs for normal text. This is 4.76:1, which meets the
+   * guideline's *stated* goal ("a guaranteed contrast pair") where its proposed
+   * value did not. Identical in both themes because --primary is.
+   */
+  --primary-foreground: 0 0% 18%; /* rgb(46, 46, 46) */
 
   /* shadcn component variables */
   --card: 55 43% 92%;
@@ -44,6 +52,25 @@
   --muted-foreground: 43 10% 60%;
   --accent: 12 92% 15%;
   --accent-foreground: 43 10% 90%;
+  /* --primary is identical in dark, so its text pair is too. */
+  --primary-foreground: 0 0% 18%;
+}
+
+/*
+ * Respect a reduced-motion preference globally. The landing's motion primitives
+ * also switch themselves off in JS; this is the backstop for CSS-driven motion
+ * anywhere in the app. Durations are near-zero rather than `none` so animations
+ * still fire their completion events and nothing waits forever on one.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* apply background color based on light/dark mode */

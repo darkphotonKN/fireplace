@@ -1,0 +1,110 @@
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, act } from '@testing-library/react';
+import { mockMatchMedia, mockIntersectionObserver, removeIntersectionObserver } from '@/test/motion';
+import RevealOnEnter from './RevealOnEnter';
+
+/** Place the next-rendered element at a given viewport-relative top. */
+function stubElementTop(top: number) {
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+    top,
+    bottom: top + 200,
+    left: 0,
+    right: 0,
+    width: 0,
+    height: 200,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
+  } as DOMRect);
+}
+
+const BELOW_FOLD = 2000;
+
+describe('RevealOnEnter', () => {
+  it('should render its children visible when there is no IntersectionObserver', () => {
+    mockMatchMedia({ wide: true });
+    removeIntersectionObserver();
+    stubElementTop(BELOW_FOLD);
+
+    render(
+      <RevealOnEnter data-testid="section">
+        <p>Every arc gets a plan.</p>
+      </RevealOnEnter>
+    );
+
+    expect(screen.getByText('Every arc gets a plan.')).toBeVisible();
+    expect(screen.getByTestId('section').className).not.toMatch(/opacity-0/);
+  });
+
+  it('should hide below-fold content and reveal it on entry', () => {
+    mockMatchMedia({ wide: true });
+    const observer = mockIntersectionObserver();
+    stubElementTop(BELOW_FOLD);
+
+    render(
+      <RevealOnEnter data-testid="section">
+        <p>Every arc gets a plan.</p>
+      </RevealOnEnter>
+    );
+    expect(screen.getByTestId('section').className).toMatch(/opacity-0/);
+
+    act(() => observer.enter());
+
+    const section = screen.getByTestId('section');
+    expect(section.className).not.toMatch(/opacity-0/);
+    expect(section.className).toMatch(/animate-riseIn/);
+  });
+
+  it('should reveal content flung past without ever intersecting', () => {
+    mockMatchMedia({ wide: true });
+    const observer = mockIntersectionObserver();
+    stubElementTop(BELOW_FOLD);
+
+    render(
+      <RevealOnEnter data-testid="section">
+        <p>Every arc gets a plan.</p>
+      </RevealOnEnter>
+    );
+    expect(screen.getByTestId('section').className).toMatch(/opacity-0/);
+
+    // Fling to the bottom: the section is now ABOVE the viewport and was never
+    // reported as intersecting. It must not stay invisible.
+    act(() => observer.flungPast());
+
+    expect(screen.getByTestId('section').className).not.toMatch(/opacity-0/);
+    expect(screen.getByText('Every arc gets a plan.')).toBeVisible();
+  });
+
+  it('should stay revealed once revealed', () => {
+    mockMatchMedia({ wide: true });
+    const observer = mockIntersectionObserver();
+    stubElementTop(BELOW_FOLD);
+
+    render(
+      <RevealOnEnter data-testid="section">
+        <p>Every arc gets a plan.</p>
+      </RevealOnEnter>
+    );
+    act(() => observer.enter());
+    act(() => observer.exitBelow());
+
+    expect(screen.getByTestId('section').className).not.toMatch(/opacity-0/);
+  });
+
+  it('should never hide content when the user prefers reduced motion', () => {
+    mockMatchMedia({ wide: true, reducedMotion: true });
+    mockIntersectionObserver();
+    stubElementTop(BELOW_FOLD);
+
+    render(
+      <RevealOnEnter data-testid="section">
+        <p>Every arc gets a plan.</p>
+      </RevealOnEnter>
+    );
+
+    const section = screen.getByTestId('section');
+    expect(section.className).not.toMatch(/opacity-0/);
+    expect(section.className).not.toMatch(/animate-riseIn/);
+    expect(screen.getByText('Every arc gets a plan.')).toBeVisible();
+  });
+});
