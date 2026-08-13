@@ -1,6 +1,6 @@
 ---
 id: I-0009
-status: open
+status: done
 blocked_by: [I-0008]
 implements: FS-0003
 labels: [enhancement]
@@ -59,3 +59,37 @@ FS-0003 §Requirements R4 (chrome bar), R14 (coral discipline), R20 (accessibili
 - RED: assert no bar element is rendered at scroll offset 0; assert it is rendered past the
   hero's height.
 - GREEN: gate the bar on scroll offset via the I-0007 primitives.
+
+---
+
+## Implementation notes
+
+**Hidden means inert, not just invisible.** Same reasoning as the sections: an invisible bar
+must not hand a keyboard visitor an invisible CTA. The bar carries `inert` +
+`pointer-events-none` + `opacity-0` until the page scrolls past `0.8 × viewport height`, and a
+test asserts both states.
+
+**`fixed`, so arrival and departure never reflow** the sections behind it — the "no layout
+shift" criterion is structural rather than something to eyeball.
+
+**`useScrolledPast(fraction)`** follows the same discipline as `ParallaxLayer`: rAF-scheduled,
+reads only `window.scrollY`, never touches layout, cleans up its listeners. Starts `false` so
+the server render and first client render agree and nothing flashes over the hero.
+
+**`LayoutContent` untouched**, as required. It short-circuits for the logged-out home route and
+supplies no chrome at all; this bar is the landing's own.
+
+**Reduced motion is handled by the global CSS backstop**, not component logic: the
+`prefers-reduced-motion` block added in I-0007 forces `transition-duration: 0.01ms`, so the
+bar appears without a fade. Worth stating plainly — it is *not* asserted by a component test,
+because jsdom does not apply the stylesheet.
+
+**Consequence worth recording:** reusing the app's `ThemeToggle` means the tour now depends on
+`ThemeProvider`. The mocks and sections still render provider-free — that property is intact —
+but `LandingTour` as a whole no longer does, and `page.test.tsx` had to mock the theme context.
+That is the cost of reuse the issue asked for, not a defect.
+
+**Verified server-side** (dev server, Node 22): the bar is present with `inert=""` and
+`opacity-0` at first paint, `text-white` is zero, and the signup target now appears **3** times
+(hero, bar, closing section). A no-JS visitor loses nothing: the bar is an enhancement and the
+same CTA is reachable in two always-visible sections.

@@ -1,5 +1,6 @@
 'use client';
 
+import ChromeBar from './ChromeBar';
 import HeroSection from './sections/HeroSection';
 import PlanSection from './sections/PlanSection';
 import DailySection from './sections/DailySection';
@@ -22,6 +23,7 @@ export default function LandingTour() {
   // the same colour in both themes.
   return (
     <main className="min-h-screen bg-background text-foreground">
+      <ChromeBar />
       <HeroSection />
       <PlanSection />
       <DailySection />

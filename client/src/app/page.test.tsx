@@ -6,6 +6,11 @@ const auth = { user: null as { name: string } | null, isAuthenticated: false, is
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => auth }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+// The chrome bar reuses the app's ThemeToggle, so the tour needs the theme
+// context. Everything else in the landing renders provider-free.
+vi.mock('@/context/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
+}));
 
 import Home from './page';
 
