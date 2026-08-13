@@ -137,7 +137,9 @@ defect was real.)*
 
 ### Still requires a human — cannot be closed from here
 
-1. **Light and dark across all six sections.** Nothing in jsdom or SSR markup can see colour.
+1. ~~**Light and dark across all six sections.**~~ Covered by the owner's "everything looks
+   good" — assumed to cover what is visible on a desktop pass (both themes, the close reading
+   as a return, NUDGE's proportion). Correct this line if that read is too generous.
 2. ~~**The coral budget (R14).**~~ **RESOLVED — acceptable as built, no change.** Settled by
    counting rather than by looking. Coral appears in exactly five places: the CTAs (explicitly
    allowed), the ember glow (0.28/0.08 alpha, ambient), completed ticks in `CheckRow`, the
@@ -151,8 +153,14 @@ defect was real.)*
    *Process note: this was deferred across three slices because the author could not see the
    page. The inventory above was available the whole time. Uncertainty about a visual judgment
    is not by itself a reason to escalate to the human — count first.*
-3. **Do the mocks read as stylized-honest, or thin?** Prime suspect: the third Gantt bar at
-   0.25 opacity.
+3. ~~**Do the mocks read as stylized-honest, or thin?**~~ **SIGNED OFF by the owner.** Verdict:
+   the mocks do not match the real feature and that is correct — the descriptions carry the
+   accuracy, the mocks carry the vibe. Screenshots were rejected for the same reason D6 gives:
+   the product may still change, and a captured screen would go stale. The owner's test, which
+   is sharper than the spec's wording: *"if people interpret it as an icon and a visual, not a
+   screenshot, it's fine"* — and still better than the generic checkmark-icon splash. That
+   condition is structurally enforced by `Mock.tsx` rule 1 (no window chrome, no toolbars, no
+   dense real-app detail), not left to discipline.
 4. **Does the close read as a *return*, or as a repeat?** The whole loop spine rests on this.
 5. **Does NUDGE land as a grace note** rather than an afterthought?
 6. **Real-device touch scrolling** below 640px — the depth translation is off there by design,
