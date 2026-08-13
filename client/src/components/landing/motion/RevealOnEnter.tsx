@@ -61,12 +61,20 @@ export default function RevealOnEnter({ children, className, ...domProps }: Moti
     return () => observer.disconnect();
   }, [prefersReducedMotion]);
 
+  const hidden = state === 'hidden';
+
   return (
     <div
       ref={ref}
+      // Hiding with opacity alone is a trap: the content stays in the tab order
+      // and the accessibility tree, so a keyboard visitor tabbing before they
+      // scroll lands on an invisible link. `inert` removes the subtree from both;
+      // `invisible` (visibility: hidden) does the same in browsers without inert,
+      // and neither one shifts layout.
+      inert={hidden}
       className={cn(
         className,
-        state === 'hidden' && 'opacity-0',
+        hidden && 'invisible opacity-0',
         state === 'revealed' && 'animate-riseIn'
       )}
       {...domProps}

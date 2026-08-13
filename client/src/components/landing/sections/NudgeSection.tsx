@@ -2,6 +2,7 @@
 
 import Section from '../Section';
 import ParallaxLayer from '../motion/ParallaxLayer';
+import { ART_SPEED } from '../motion/speeds';
 import SuggestionMock from '../mocks/SuggestionMock';
 
 /**
@@ -14,7 +15,7 @@ export default function NudgeSection() {
     <Section size="compact" contentClassName="max-w-2xl text-center">
       <h2 className="text-2xl font-bold md:text-3xl">It notices what you keep skipping.</h2>
 
-      <ParallaxLayer speed={0.6} className="mt-8 flex justify-center">
+      <ParallaxLayer speed={ART_SPEED} className="mt-8 flex justify-center">
         <SuggestionMock />
       </ParallaxLayer>
     </Section>

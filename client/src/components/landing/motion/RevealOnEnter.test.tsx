@@ -75,6 +75,41 @@ describe('RevealOnEnter', () => {
     expect(screen.getByText('Every arc gets a plan.')).toBeVisible();
   });
 
+  it('should take hidden content out of the tab order and the a11y tree', () => {
+    mockMatchMedia({ wide: true });
+    mockIntersectionObserver();
+    stubElementTop(BELOW_FOLD);
+
+    render(
+      <RevealOnEnter data-testid="section">
+        <a href="/auth">Start your plan</a>
+      </RevealOnEnter>
+    );
+
+    // `opacity-0` alone would leave this link focusable and announced: a keyboard
+    // visitor tabbing before scrolling would land on an invisible button.
+    const section = screen.getByTestId('section');
+    expect(section).toHaveAttribute('inert');
+    expect(section.className).toMatch(/invisible/);
+  });
+
+  it('should restore interactivity when revealed', () => {
+    mockMatchMedia({ wide: true });
+    const observer = mockIntersectionObserver();
+    stubElementTop(BELOW_FOLD);
+
+    render(
+      <RevealOnEnter data-testid="section">
+        <a href="/auth">Start your plan</a>
+      </RevealOnEnter>
+    );
+    act(() => observer.enter());
+
+    const section = screen.getByTestId('section');
+    expect(section).not.toHaveAttribute('inert');
+    expect(section.className).not.toMatch(/invisible/);
+  });
+
   it('should stay revealed once revealed', () => {
     mockMatchMedia({ wide: true });
     const observer = mockIntersectionObserver();

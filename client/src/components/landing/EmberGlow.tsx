@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import ParallaxLayer from './motion/ParallaxLayer';
+import { GLOW_SPEED } from './motion/speeds';
 
 /**
  * The hearth light. Purely decorative and the slowest thing on the page, so the
@@ -13,7 +14,7 @@ import ParallaxLayer from './motion/ParallaxLayer';
 export default function EmberGlow({ className }: { className?: string }) {
   return (
     <ParallaxLayer
-      speed={0.2}
+      speed={GLOW_SPEED}
       aria-hidden="true"
       className={cn('pointer-events-none absolute inset-0 select-none', className)}
     >
