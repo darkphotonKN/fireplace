@@ -20,10 +20,9 @@ import (
 func main() {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
-	api := engine.Group("/api")
 
 	// nil deps: registration reads type signatures, it never invokes handlers.
-	spec := config.RegisterAPI(engine, api.Group(""), api.Group(""), config.APIDeps{})
+	spec := config.RegisterAPI(engine, config.APIDeps{}, config.Protected(nil))
 
 	out, err := spec.OpenAPI().YAML()
 	if err != nil {

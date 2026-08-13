@@ -105,7 +105,7 @@ info:
   version: 1.0.0
 openapi: 3.1.0
 paths:
-  /users/profile:
+  /api/users/profile:
     get:
       description: Returns the profile of the user identified by the bearer token's `sub` claim.
       operationId: getProfile
@@ -182,6 +182,3 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: Internal Server Error
       summary: Update the authenticated user's profile
-servers:
-  - description: Gateway base path
-    url: /api

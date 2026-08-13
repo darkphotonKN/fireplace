@@ -58,3 +58,23 @@
 # An allowlist entry that matches nothing is worse than no entry: it looks like coverage
 # and silently rots. Add entries only when a real diff produces a real error message.
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# 2026-08-14 — paths became absolute; the SERVED URL did not change.
+#
+# The document used to declare `servers: [/api]` plus the relative path
+# `/users/profile`. It now declares the absolute path `/api/users/profile` and no
+# servers block. Both describe the identical URL — oasdiff cannot see that,
+# because it compares path strings and a servers prefix is invisible to that
+# comparison.
+#
+# Why the representation changed: huma used to mount via NewWithGroup scoped to
+# the protected gin group, which made paths relative to that group AND made a
+# public operation impossible to express in the same document. It now mounts on
+# the engine with per-operation auth middleware, so one document can hold public
+# and protected operations — which is the point of having a browsable contract.
+#
+# Verified unchanged by config/api_test.go, which asserts GET and PATCH on
+# /api/users/profile and passes before and after.
+get /users/profile api path removed without deprecation
+patch /users/profile api path removed without deprecation

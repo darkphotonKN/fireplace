@@ -79,7 +79,7 @@ func buildEngine(c authgw.ProfileClient) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"statusCode": 200, "message": "ok", "result": []string{}})
 	})
 
-	MountSerialized(engine, api, api.Group(""), APIDeps{Profile: c})
+	MountSerialized(engine, APIDeps{Profile: c})
 	return engine
 }
 

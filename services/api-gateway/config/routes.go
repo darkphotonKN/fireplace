@@ -120,7 +120,7 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	//
 	// Everything else on this group is untouched and stays enveloped until it is
 	// itself touched (ADR-0002 §7, grandfather clause).
-	MountSerialized(router, api, api.Group(""), APIDeps{Profile: authClient})
+	MountSerialized(router, APIDeps{Profile: authClient})
 
 	// -- User Routes (proxied to auth-service via gRPC) --
 	protectedUsers := protected.Group("/users")

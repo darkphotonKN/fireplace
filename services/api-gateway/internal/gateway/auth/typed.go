@@ -33,11 +33,16 @@ type ProfileClient interface {
 	UpdateProfileProto(ctx context.Context, id uuid.UUID, req UpdateProfileRequest) (*pb.User, error)
 }
 
-func RegisterOperations(api huma.API, c ProfileClient) {
+func RegisterOperations(api huma.API, c ProfileClient,
+	protect func(huma.Context, func(huma.Context)),
+) {
+	mw := huma.Middlewares{protect}
+
 	huma.Register(api, huma.Operation{
 		OperationID: "getProfile",
 		Method:      http.MethodGet,
-		Path:        "/users/profile",
+		Path:        "/api/users/profile",
+		Middlewares: mw,
 		Summary:     "Get the authenticated user's profile",
 		Description: "Returns the profile of the user identified by the bearer token's `sub` claim.",
 		Errors:      []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
@@ -56,7 +61,8 @@ func RegisterOperations(api huma.API, c ProfileClient) {
 	huma.Register(api, huma.Operation{
 		OperationID: "updateProfile",
 		Method:      http.MethodPatch,
-		Path:        "/users/profile",
+		Path:        "/api/users/profile",
+		Middlewares: mw,
 		Summary:     "Update the authenticated user's profile",
 		Description: "Partial update. An absent field and a null field both mean " +
 			"\"leave unchanged\"; an empty string sets the field to empty. An empty " +
