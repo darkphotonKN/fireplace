@@ -106,12 +106,21 @@ module.exports = {
             boxShadow: '0 0 0 0 rgba(247, 111, 83, 0)',
           },
         },
+        // Section entrance for the logged-out landing tour. Deliberately NOT
+        // `fadeIn` above: that one communicates *where a new task landed* and
+        // carries a coral halo for exactly that reason. This one is ambient —
+        // it rises the section into place and says nothing.
+        riseIn: {
+          '0%': { opacity: '0', transform: 'translateY(16px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
         // ease-out-quint curve for a modern, snappy settle
         fadeIn: 'fadeIn 600ms cubic-bezier(0.22, 1, 0.36, 1) both',
+        riseIn: 'riseIn 400ms cubic-bezier(0.16, 1, 0.3, 1) both',
       },
     },
   },

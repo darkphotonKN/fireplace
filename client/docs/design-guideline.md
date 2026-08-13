@@ -87,11 +87,18 @@ authoritative**; hex values below are for reference/approximation.
 | Border | `--border` | `12 15% 20%` | `#3B2E2B` (warm) |
 | Input | `--input` | `0 0% 20%` | `#333333` |
 
-> **Token gap to close:** `--primary-foreground` is consumed by Tailwind (`primary.foreground`)
-> but is **not defined** in `globals.css`, so `text-primary-foreground` currently resolves to
-> nothing. Define it as the on-coral text colour — the cream `#F2F0E3` (light) / near-white — so
-> text on coral surfaces has a guaranteed contrast pair. Any new `--primary` usage should assume
-> this exists.
+> **Token gap — closed (FS-0003 / I-0007).** `--primary-foreground` is now defined in
+> `globals.css` for both themes as the **warm dark `#2E2E2E`** (`0 0% 18%`), identical in light
+> and dark because `--primary` is.
+>
+> This is **not** the cream `#F2F0E3` this note originally prescribed. Measured against coral
+> `#F76F53`, cream gives **2.50:1** and pure white **2.86:1** — both far below the **4.5:1** WCAG
+> AA requires for normal text, and CTA labels at `text-base`/`font-medium` are normal text
+> (large text needs ≥24px, or ≥18.66px **bold**). Warm dark measures **4.76:1** and passes.
+>
+> The original wording asked for "a guaranteed contrast pair"; the value it named could not
+> deliver one. The goal was kept and the value corrected. **Coral surfaces therefore carry dark
+> text, not light** — assume that for any new `--primary` usage.
 
 ### Usage rules
 - Text on `background`/`card` → `foreground`; secondary text → `muted-foreground`.
