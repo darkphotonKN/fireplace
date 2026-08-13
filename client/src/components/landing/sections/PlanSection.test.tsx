@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { mockMatchMedia, mockIntersectionObserver } from '@/test/motion';
+import { expectMockContract } from '@/test/mockContract';
 import PlanSection from './PlanSection';
 
 describe('PlanSection', () => {
@@ -18,22 +19,10 @@ describe('PlanSection', () => {
     expect(heading.tagName).toBe('H2');
   });
 
-  it('should hide its mock art from assistive tech', () => {
+  it('should honour the mock contract', () => {
     const { container } = render(<PlanSection />);
 
-    const mock = container.querySelector('[data-landing-mock]');
-    expect(mock).not.toBeNull();
-    expect(mock).toHaveAttribute('aria-hidden', 'true');
-  });
-
-  it('should expose nothing interactive inside the mock', () => {
-    const { container } = render(<PlanSection />);
-    const mock = container.querySelector('[data-landing-mock]') as HTMLElement;
-
-    // Fake checkboxes must not be real inputs, and nothing decorative may be
-    // focusable or announced as a control — a screen reader should hear the
-    // section's copy, not a recital of invented task labels.
-    expect(mock.querySelectorAll('input, button, a, [tabindex], [role]')).toHaveLength(0);
+    expectMockContract(container);
   });
 
   it('should drift the mock art while leaving the copy at native speed', () => {

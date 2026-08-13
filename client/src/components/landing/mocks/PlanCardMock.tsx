@@ -1,6 +1,7 @@
 'use client';
 
 import Mock from './Mock';
+import CheckRow from './CheckRow';
 
 /** Invented content. Concrete enough to be recognisable, vague enough to age well. */
 const PLAN_TITLE = 'Learn microservices';
@@ -25,38 +26,7 @@ export default function PlanCardMock() {
 
       <ul className="mt-4 space-y-2">
         {TASKS.map((task) => (
-          <li key={task.label} className="flex items-center gap-3">
-            {/* A square div, deliberately not an <input type="checkbox">. */}
-            <span
-              className={
-                task.done
-                  ? 'flex h-4 w-4 items-center justify-center rounded-sm bg-primary'
-                  : 'h-4 w-4 rounded-sm border border-border'
-              }
-            >
-              {task.done && (
-                <svg viewBox="0 0 12 12" className="h-3 w-3 text-primary-foreground">
-                  <path
-                    d="M2.5 6.2 4.8 8.5 9.5 3.8"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              )}
-            </span>
-            <span
-              className={
-                task.done
-                  ? 'text-sm text-muted-foreground line-through'
-                  : 'text-sm text-foreground'
-              }
-            >
-              {task.label}
-            </span>
-          </li>
+          <CheckRow key={task.label} {...task} />
         ))}
       </ul>
 

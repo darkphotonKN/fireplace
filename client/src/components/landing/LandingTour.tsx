@@ -2,6 +2,7 @@
 
 import HeroSection from './sections/HeroSection';
 import PlanSection from './sections/PlanSection';
+import DailySection from './sections/DailySection';
 
 /**
  * The logged-out product tour.
@@ -20,6 +21,7 @@ export default function LandingTour() {
     <main className="min-h-screen bg-background text-foreground">
       <HeroSection />
       <PlanSection />
+      <DailySection />
     </main>
   );
 }
