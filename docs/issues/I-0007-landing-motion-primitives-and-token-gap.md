@@ -1,6 +1,6 @@
 ---
 id: I-0007
-status: in-progress
+status: done
 implements: FS-0003
 blocked_by: []
 labels: [enhancement]
@@ -111,13 +111,23 @@ motion**. Fixed by actively resetting to `idle` rather than returning early.
 **The fling guard is mutation-verified.** Reverting `isIntersecting || boundingClientRect.top < 0`
 to the naive `isIntersecting` fails the fling test and only that test, so the test is not vacuous.
 
-**`npm run lint` / `npm run build` could not be run — pre-existing, not caused by this slice.**
-Node is 18.17.1; Next 15 requires `^18.18.0 || ^19.8.0 || >= 20.0.0`, so both commands refuse to
-start. Independently, `npx tsc --noEmit` reports **27 pre-existing type errors** (Todo.tsx,
-NotesContainer.tsx, NoteCard.tsx, NotesContext.tsx, plans/[planId]/page.tsx) and
-`next.config.ts` does not set `ignoreBuildErrors`, so `next build` would fail on those anyway.
-**Zero** errors are in files this slice touched. Substitutes actually run: full vitest suite
-green (11/11), `tsc --noEmit` clean for all touched files, and a direct Tailwind CLI compile
-confirming `--primary-foreground` emits in both themes, `.text-primary-foreground` resolves,
-`@keyframes riseIn` + `.animate-riseIn` are generated, and the `prefers-reduced-motion` block
-is present.
+**`npm run lint` / `npm run build`: the toolchain runs, the repo does not pass — pre-existing.**
+The default shell's Node is 18.17.1, below Next 15's `^18.18.0` floor, which initially looked
+like a hard block. It is not: **nvm has v22.13.1 installed** (`~/.nvm/versions/node/v22.13.1`),
+and every gate runs there. Use it.
+
+On Node 22 the true state is:
+
+- `npm run lint` → **68 pre-existing errors** (unused vars, empty interfaces) across
+  `ui/*`, `NotesContext.tsx`, `notesService.ts`, and others. **Zero in new code.**
+- `npm run build` → fails at the lint stage. With `--no-lint` it reports
+  **`✓ Compiled successfully`**, then fails typecheck on a pre-existing Next 15 migration miss:
+  `src/app/plans/[planId]/page.tsx` still types `params` as a plain object where Next 15 requires
+  a `Promise`.
+
+So the client cannot build today for reasons that predate FS-0003, and the `lint`/`build`
+acceptance criterion is unsatisfiable repo-wide until that debt is cleared. New code compiles,
+lints, and typechecks clean. Also verified: full vitest suite green, and a direct Tailwind CLI
+compile confirming `--primary-foreground` emits in both themes, `.text-primary-foreground`
+resolves, `@keyframes riseIn` + `.animate-riseIn` are generated, and the
+`prefers-reduced-motion` block is present.

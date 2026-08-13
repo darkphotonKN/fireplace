@@ -4,46 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-
-function LandingPage() {
-  return (
-    <main className="flex flex-col items-center justify-center min-h-screen bg-layout px-6">
-      <div className="max-w-2xl text-center space-y-8">
-        <h1
-          className="text-5xl md:text-6xl font-bold tracking-tight"
-          style={{ color: "rgb(247, 111, 83)" }}
-        >
-          Fireplace
-        </h1>
-
-        <p className="text-xl md:text-2xl font-light leading-relaxed text-[#2e2e2e]/80 dark:text-[#d1cfc0]">
-          Sit down by the fire. <br />
-          Start your plan now.
-        </p>
-
-        <p className="text-sm max-w-md mx-auto text-[#2e2e2e]/50 dark:text-[#d1cfc0]/50">
-          A developer and learning platform that houses your checklists, daily
-          reviews, learning tracks, and AI-powered suggestions.
-        </p>
-
-        <div className="flex items-center justify-center gap-4 pt-4">
-          <Link
-            href="/auth"
-            className="px-8 py-3 rounded-md text-primary-foreground font-medium transition-colors bg-[rgb(247,111,83)] hover:bg-[rgb(237,101,73)]"
-          >
-            Sign In
-          </Link>
-          <Link
-            href="/auth?tab=signup"
-            className="px-8 py-3 rounded-md font-medium transition-colors text-[rgb(247,111,83)] border border-[rgb(247,111,83)] hover:bg-[rgba(247,111,83,0.1)]"
-          >
-            Sign Up
-          </Link>
-        </div>
-      </div>
-    </main>
-  );
-}
+import LandingTour from "@/components/landing/LandingTour";
 
 function Dashboard() {
   const { user } = useAuth();
@@ -168,21 +129,16 @@ function Dashboard() {
 }
 
 export default function Home() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated } = useAuth();
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-layout">
-        <div className="text-base text-[#2e2e2e]/50 dark:text-[#d1cfc0]/50">
-          Loading...
-        </div>
-      </div>
-    );
+  // Deliberately does NOT wait on `isLoading`. The tour is static and identical
+  // for everyone, so it paints immediately rather than showing a loading string
+  // on the page that is both first impression and SEO surface. An authenticated
+  // visitor may see a brief flash of the hero before the dashboard replaces it —
+  // that is accepted (FS-0003 R19), not a bug to gate away.
+  if (isAuthenticated) {
+    return <Dashboard />;
   }
 
-  if (!isAuthenticated) {
-    return <LandingPage />;
-  }
-
-  return <Dashboard />;
+  return <LandingTour />;
 }

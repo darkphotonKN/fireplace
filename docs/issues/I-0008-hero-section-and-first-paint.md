@@ -1,6 +1,6 @@
 ---
 id: I-0008
-status: open
+status: done
 blocked_by: [I-0007]
 implements: FS-0003
 labels: [enhancement]
@@ -79,3 +79,43 @@ authenticated visitor, slow network, crawler) · Covers user stories 1, 2, 12, 2
 - RED: assert the hero renders with `isLoading: true` and no `"Loading..."` text is present;
   assert the anchor phrase string matches verbatim; assert no chrome-bar element at scroll 0.
 - GREEN: render the hero outside the `isLoading` branch; build the section.
+
+---
+
+## Implementation notes
+
+**Sub-line (the HITL copy call).** Replaced the jargon sentence with:
+*"The long arc of a project and the short list for today, in one place — with an honest look
+back when the day closes."* It names the three beats the tour then shows (plan / daily /
+review) without using a single product noun, and the hero closes on a scroll cue,
+*"See how a day here runs ↓"*, so the page announces that it continues.
+
+**CTA hierarchy flipped.** The old landing made *Sign In* the filled coral button and *Sign Up*
+the outline. On a landing that is backwards, so the primary is now **Start your plan** →
+`/auth?tab=signup`, with **Sign in** → `/auth` as the outline. Targets are unchanged (R6);
+only which one is primary changed.
+
+**`<br />` contributes nothing to `textContent`.** Without an explicit space the anchor phrase
+is announced as `"…now.Sit down…"` — one run-on sentence. Fixed in the markup, not by
+loosening the test.
+
+**`bg-background`, not `.bg-layout`.** The app's `.bg-layout` helper is declared with raw hex
+in `globals.css`; the tour is token-only (R13). Both resolve to the same colour in both themes.
+
+**Scaffolding created for later slices:** `Section` (vertical rhythm, container width,
+reveal-on-enter, plus a `backdrop` slot rendered *outside* the reveal so ambient light is never
+animated in), `EmberGlow` (decorative, `aria-hidden`, colour from `--primary` at low alpha so it
+warms correctly in both themes), and `LandingTour` as the single sealed entry point.
+
+**Verified against a running dev server** (Node 22 via nvm), not only in jsdom: the anchor
+phrase, the sub-line, and both CTA hrefs are present in **server-rendered markup**, and
+`"Loading..."` appears zero times — which is the real proof for both the first-paint and the
+crawler criteria.
+
+**Known item deferred to I-0014:** the hero uses `min-h-[92vh]`. On mobile browsers `vh` shifts
+as the URL bar hides, so the hero height jumps mid-scroll. `svh` would fix it but silently drops
+the rule on older browsers. Decide it against a real device during the page-level gate.
+
+**`npm run lint` / `npm run build`:** unchanged from I-0007 — 68 pre-existing lint errors and a
+pre-existing Next 15 `params` migration miss in `plans/[planId]/page.tsx` block the repo-wide
+gate. Zero lint or type errors in new code.
