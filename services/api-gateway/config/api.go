@@ -47,6 +47,9 @@ type APIDeps struct {
 // Doc surface paths. Public by design: the contract is browsable without a
 // token, and every operation appears whether or not it needs one.
 const (
+	// BearerAuth names the security scheme protected operations reference.
+	BearerAuth = "bearerAuth"
+
 	OpenAPIPath = "/api/openapi"
 	DocsPath    = "/api/docs"
 )
@@ -80,6 +83,11 @@ func Protected(mws ...gin.HandlerFunc) func(huma.Context, func(huma.Context)) {
 	}
 }
 
+// Secured is the Security value every protected operation must carry. Kept next
+// to Protected: an operation that runs the middleware but omits this publishes a
+// contract saying it is public, then answers 401.
+var Secured = []map[string][]string{{BearerAuth: {}}}
+
 // RegisterAPI mounts a huma API on the ENGINE and registers every serialized
 // operation. Handlers may be nil: registration never invokes them.
 func RegisterAPI(engine *gin.Engine, deps APIDeps, protect func(huma.Context, func(huma.Context))) huma.API {
@@ -104,8 +112,21 @@ func RegisterAPI(engine *gin.Engine, deps APIDeps, protect func(huma.Context, fu
 	// The contract is a designed artifact; the framework does not get to add to it.
 	cfg.CreateHooks = nil
 
+	// Declare HOW to authenticate, in the document itself. Without this the
+	// contract lists protected operations but never says they need a token — no
+	// padlock in the docs, nowhere to paste credentials in try-it, and a
+	// generated client unaware auth exists.
+	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+		BearerAuth: {
+			Type:         "http",
+			Scheme:       "bearer",
+			BearerFormat: "JWT",
+			Description:  "Access token sent as `Authorization: Bearer <token>`.",
+		},
+	}
+
 	api := humagin.New(engine, cfg)
-	authgw.RegisterOperations(api, deps.Profile, protect)
+	authgw.RegisterOperations(api, deps.Profile, protect, Secured)
 	return api
 }
 
@@ -132,4 +153,3 @@ func statusTitle(status int) string {
 		return "Internal Server Error"
 	}
 }
-

@@ -99,6 +99,12 @@ components:
         name:
           type: string
       type: object
+  securitySchemes:
+    bearerAuth:
+      bearerFormat: JWT
+      description: "Access token sent as `Authorization: Bearer <token>`."
+      scheme: bearer
+      type: http
 info:
   description: The serialized HTTP surface of the Fireplace api-gateway. Endpoints not listed here are still described by the legacy OpenAPI 2.0 document at /swagger and are migrated on touch (ADR-0002).
   title: Fireplace API
@@ -134,6 +140,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Internal Server Error
+      security:
+        - bearerAuth: []
       summary: Get the authenticated user's profile
     patch:
       description: Partial update. An absent field and a null field both mean "leave unchanged"; an empty string sets the field to empty. An empty body is a valid no-op. Validation lives in auth-service, so an empty name is rejected with 400, not 422.
@@ -181,4 +189,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Internal Server Error
+      security:
+        - bearerAuth: []
       summary: Update the authenticated user's profile

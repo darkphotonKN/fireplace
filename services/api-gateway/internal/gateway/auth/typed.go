@@ -34,7 +34,7 @@ type ProfileClient interface {
 }
 
 func RegisterOperations(api huma.API, c ProfileClient,
-	protect func(huma.Context, func(huma.Context)),
+	protect func(huma.Context, func(huma.Context)), secured []map[string][]string,
 ) {
 	mw := huma.Middlewares{protect}
 
@@ -43,6 +43,7 @@ func RegisterOperations(api huma.API, c ProfileClient,
 		Method:      http.MethodGet,
 		Path:        "/api/users/profile",
 		Middlewares: mw,
+		Security:    secured,
 		Summary:     "Get the authenticated user's profile",
 		Description: "Returns the profile of the user identified by the bearer token's `sub` claim.",
 		Errors:      []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError},
@@ -63,6 +64,7 @@ func RegisterOperations(api huma.API, c ProfileClient,
 		Method:      http.MethodPatch,
 		Path:        "/api/users/profile",
 		Middlewares: mw,
+		Security:    secured,
 		Summary:     "Update the authenticated user's profile",
 		Description: "Partial update. An absent field and a null field both mean " +
 			"\"leave unchanged\"; an empty string sets the field to empty. An empty " +
