@@ -8,7 +8,7 @@
 ## Onboarding
 
 - [x] Logged-out landing page → FS-none
-- [ ] Product tour on the logged-out landing → FS-0003
+- [x] Product tour on the logged-out landing → FS-0003
 
 ## Project Overview
 

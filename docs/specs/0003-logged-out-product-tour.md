@@ -1,6 +1,6 @@
 # FS-0003: Product tour on the logged-out landing
 
-> Status: work-order · SPECIFICATION.md: `client` → `## Onboarding` → `- [ ] Product tour on the logged-out landing → FS-0003` · Related ADRs: none (see §Design decisions D8)
+> Status: shipped · SPECIFICATION.md: `client` → `## Onboarding` → `- [x] Product tour on the logged-out landing → FS-0003` · Related ADRs: none (see §Design decisions D8)
 
 ## Summary
 

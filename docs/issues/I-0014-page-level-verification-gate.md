@@ -1,6 +1,6 @@
 ---
 id: I-0014
-status: open
+status: done
 blocked_by: [I-0009, I-0010, I-0011, I-0012, I-0013]
 implements: FS-0003
 labels: [enhancement]
@@ -172,3 +172,28 @@ defect was real.)*
    older browsers. Needs a device to choose.
 9. **No horizontal overflow at any breakpoint.** Reasoned (transforms are vertical-only,
    glows are clipped) but **not measured** — no headless browser is installed.
+
+---
+
+## Close-out
+
+Closed on owner sign-off ("everything looks good"), with the mock question settled explicitly
+above. Every mechanical check passed and the two review findings were fixed here.
+
+**Walked:** six beats in order · heading discipline (1 `h1`, 5 `h2`) · mocks decorative · no real
+controls · on-coral token never hardcoded white · clipping confined to backdrop sections · chrome
+bar hidden at first paint · all copy present without JS · 42 tests · zero lint/type errors in new
+code · both themes and the overall read, by the owner.
+
+**NOT walked — closed anyway, deliberately:** the device-dependent edge states. 200% zoom, print
+/ reader mode, back-navigation from `/auth`, ultrawide and very short viewports, real-device
+touch scrolling, and fling-to-bottom in a browser (unit-tested at the primitive, never observed
+live). No specific defect is suspected in any of them; they are unobserved, not verified.
+
+**One known concrete behaviour, accepted rather than fixed:** the hero's `min-h-[92vh]`. Mobile
+URL bars resize `vh`, so the hero height will shift mid-scroll on a phone. `svh` fixes it but
+silently drops the rule on older browsers. Left as-is; revisit if it proves annoying in use.
+
+**Repo-wide gate still red, unrelated to this feature:** `npm run lint` (68 errors) and
+`npm run build` (26 type errors, incl. the Next 15 `params` migration miss in
+`plans/[planId]/page.tsx`) fail on pre-existing debt. The tour adds none of it.
