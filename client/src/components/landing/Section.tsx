@@ -14,6 +14,13 @@ interface SectionProps {
   backdrop?: ReactNode;
   className?: string;
   contentClassName?: string;
+  /**
+   * `compact` gives a section noticeably less vertical room. NUDGE uses it so
+   * the beat lands as a grace note rather than padding — the proportion between
+   * it and REVIEW is a requirement, not a styling whim, so it lives in the
+   * shared wrapper where it can be asserted.
+   */
+  size?: 'default' | 'compact';
 }
 
 /**
@@ -25,9 +32,17 @@ export default function Section({
   backdrop,
   className,
   contentClassName,
+  size = 'default',
 }: SectionProps) {
   return (
-    <section className={cn('relative w-full overflow-hidden px-6 py-24 md:py-32', className)}>
+    <section
+      data-section-size={size}
+      className={cn(
+        'relative w-full overflow-hidden px-6',
+        size === 'compact' ? 'py-12 md:py-16' : 'py-24 md:py-32',
+        className
+      )}
+    >
       {backdrop}
       <RevealOnEnter className={cn('relative mx-auto w-full max-w-5xl', contentClassName)}>
         {children}

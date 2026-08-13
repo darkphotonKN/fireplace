@@ -2,14 +2,12 @@
 
 import Mock from './Mock';
 import CheckRow from './CheckRow';
-
-/** Invented content. Concrete enough to be recognisable, vague enough to age well. */
-const PLAN_TITLE = 'Learn microservices';
+import { PLAN_TITLE, GATEWAY_TASK } from './content';
 
 const TASKS = [
   { label: 'read ch.1', done: true },
   { label: 'sketch the diagram', done: true },
-  { label: 'wire up the gateway', done: false },
+  { label: GATEWAY_TASK, done: false },
 ] as const;
 
 /** Soft Gantt bars: [left offset %, width %]. Staggered to read as a sequence. */

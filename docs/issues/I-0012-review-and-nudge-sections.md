@@ -1,6 +1,6 @@
 ---
 id: I-0012
-status: open
+status: done
 blocked_by: [I-0010]
 implements: FS-0003
 labels: [enhancement]
@@ -56,3 +56,35 @@ Covers user stories 5, 6, 8, 9, 19, 27.
 - RED: assert section 5's rendered height is less than section 4's at a desktop viewport;
   assert exactly one suggestion card is present.
 - GREEN: build both sections, sizing NUDGE deliberately.
+
+---
+
+## Implementation notes
+
+**The proportion requirement is structural, not eyeballed.** `Section` gained a
+`size?: 'default' | 'compact'` prop that emits `data-section-size`. NUDGE uses `compact`
+(`py-12 md:py-16` vs `py-24 md:py-32`), and both sections assert their size in tests. Rendered
+height cannot be measured in jsdom, so this is a **proxy** for the "visibly less vertical space"
+criterion — an honest one, since the mechanism *is* the padding, but final confirmation is
+eyes-on at desktop width.
+
+**The nudge is grounded, and that is now enforced.** `mocks/content.ts` holds the tour's
+invented content in one place, and `GATEWAY_TASK` is referenced by the plan card, the daily
+list, and the suggestion — so the six sections tell one story rather than showing six unrelated
+screenshots. `NudgeSection`'s test asserts the suggestion contains that shared constant, so a
+future edit that makes the nudge generic fails. Verified in SSR markup: the task appears **3
+times** across the page.
+
+**REVIEW leads with the written note, not the tally.** `DailyReviewMock` shows "3 of 4 done"
+and a streak, but the element given the most weight is a quoted sentence about what actually
+happened ("Gateway took longer than I thought"). The beat is reflection over box-ticking, and
+the mock's own hierarchy has to say that or the copy is doing it alone. The note also sets up
+the nudge that follows.
+
+**Verified server-side** (dev server, Node 22): five headings in the specified order, **4**
+mocks all `aria-hidden`, **4** default-size sections and **1** compact, and **zero** `<input>`
+elements on the page.
+
+**Not machine-verified:** light/dark appearance, whether NUDGE reads as a grace note rather than
+an afterthought, and the aggregate coral budget flagged in I-0011 — now with four mocks on the
+page, that judgment is due at I-0014.

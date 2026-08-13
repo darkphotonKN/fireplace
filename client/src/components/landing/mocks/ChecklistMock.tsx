@@ -2,6 +2,7 @@
 
 import Mock from './Mock';
 import CheckRow from './CheckRow';
+import { GATEWAY_TASK } from './content';
 
 /**
  * The dual-scope checklist. The two groups are the point of this mock: today's
@@ -10,7 +11,7 @@ import CheckRow from './CheckRow';
 const TODAY = [
   { label: 'read ch.1', done: true },
   { label: 'stand-up notes', done: true },
-  { label: '30 min on the gateway', done: false },
+  { label: GATEWAY_TASK, done: false },
 ] as const;
 
 const LONG_TERM = [
