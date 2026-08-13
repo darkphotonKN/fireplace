@@ -44,7 +44,10 @@ export default function Section({
       )}
     >
       {backdrop}
-      <RevealOnEnter className={cn('relative mx-auto w-full max-w-5xl', contentClassName)}>
+      <RevealOnEnter
+        data-landing-reveal="true"
+        className={cn('relative mx-auto w-full max-w-5xl', contentClassName)}
+      >
         {children}
       </RevealOnEnter>
     </section>

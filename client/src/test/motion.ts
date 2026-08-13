@@ -69,6 +69,29 @@ export function mockIntersectionObserver() {
   };
 }
 
+/**
+ * Places every subsequently-rendered element at a given viewport-relative top.
+ *
+ * jsdom reports all-zero rects, which reads as "already on screen" — so without
+ * this a test can never exercise the below-the-fold path at all.
+ */
+export function stubElementTop(top: number) {
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+    top,
+    bottom: top + 200,
+    left: 0,
+    right: 0,
+    width: 0,
+    height: 200,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
+  } as DOMRect);
+}
+
+/** A top far enough down that nothing considers it visible. */
+export const BELOW_FOLD = 2000;
+
 /** Remove `IntersectionObserver` entirely, as on an old browser. */
 export function removeIntersectionObserver() {
   vi.stubGlobal('IntersectionObserver', undefined);

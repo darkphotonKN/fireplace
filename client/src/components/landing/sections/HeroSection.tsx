@@ -1,8 +1,8 @@
 'use client';
 
-import Link from 'next/link';
 import Section from '../Section';
 import EmberGlow from '../EmberGlow';
+import CtaLink, { SIGN_IN_HREF, SIGN_UP_HREF } from '../CtaLink';
 
 /**
  * Documented product voice (see `docs/design-guideline.md`). Rendered verbatim —
@@ -36,18 +36,10 @@ export default function HeroSection() {
       </p>
 
       <div className="mt-10 flex items-center justify-center gap-4">
-        <Link
-          href="/auth?tab=signup"
-          className="rounded-md bg-primary px-8 py-3 font-medium text-primary-foreground transition-opacity hover:opacity-90"
-        >
-          Start your plan
-        </Link>
-        <Link
-          href="/auth"
-          className="rounded-md border border-primary px-8 py-3 font-medium text-primary transition-colors hover:bg-primary/10"
-        >
+        <CtaLink href={SIGN_UP_HREF}>Start your plan</CtaLink>
+        <CtaLink href={SIGN_IN_HREF} variant="outline">
           Sign in
-        </Link>
+        </CtaLink>
       </div>
 
       <p className="mt-16 text-sm text-muted-foreground">See how a day here runs ↓</p>

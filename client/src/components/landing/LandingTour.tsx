@@ -5,6 +5,7 @@ import PlanSection from './sections/PlanSection';
 import DailySection from './sections/DailySection';
 import ReviewSection from './sections/ReviewSection';
 import NudgeSection from './sections/NudgeSection';
+import ReturnSection from './sections/ReturnSection';
 
 /**
  * The logged-out product tour.
@@ -26,6 +27,7 @@ export default function LandingTour() {
       <DailySection />
       <ReviewSection />
       <NudgeSection />
+      <ReturnSection />
     </main>
   );
 }

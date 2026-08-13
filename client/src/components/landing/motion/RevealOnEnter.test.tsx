@@ -1,24 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
-import { mockMatchMedia, mockIntersectionObserver, removeIntersectionObserver } from '@/test/motion';
+import {
+  mockMatchMedia,
+  mockIntersectionObserver,
+  removeIntersectionObserver,
+  stubElementTop,
+  BELOW_FOLD,
+} from '@/test/motion';
 import RevealOnEnter from './RevealOnEnter';
-
-/** Place the next-rendered element at a given viewport-relative top. */
-function stubElementTop(top: number) {
-  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
-    top,
-    bottom: top + 200,
-    left: 0,
-    right: 0,
-    width: 0,
-    height: 200,
-    x: 0,
-    y: top,
-    toJSON: () => ({}),
-  } as DOMRect);
-}
-
-const BELOW_FOLD = 2000;
 
 describe('RevealOnEnter', () => {
   it('should render its children visible when there is no IntersectionObserver', () => {

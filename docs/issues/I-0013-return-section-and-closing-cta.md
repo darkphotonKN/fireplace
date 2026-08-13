@@ -1,6 +1,6 @@
 ---
 id: I-0013
-status: open
+status: done
 blocked_by: [I-0008]
 implements: FS-0003
 labels: [enhancement]
@@ -56,3 +56,39 @@ FS-0003 §Requirements R2.2 (loop closure), R5 (closing CTA), R14 (coral discipl
 - RED: assert section 6 renders exactly one `<button>`/button-styled CTA plus one text link, and
   that the link targets `/auth`.
 - GREEN: build the section with the asymmetric CTA pairing.
+
+---
+
+## Implementation notes
+
+**The reprise is literal, not thematic.** `ReturnSection` renders the same `EmberGlow`
+component the hero does, on the same `GLOW_SPEED` layer — verified as **2** radial-gradient
+layers in SSR markup. The loop has to *look* like it returns, not merely say so.
+
+**Asymmetric CTAs, as specified.** One filled primary (`Start your plan` → `/auth?tab=signup`)
+and one quiet text link (`Sign in` → `/auth`). The test asserts exactly two links, that the
+primary carries `bg-primary` and the quiet one does not, and that the primary uses
+`text-primary-foreground` and never `text-white`.
+
+**`CtaLink` extracted** (`primary` / `outline` / `quiet` variants, plus the two auth hrefs as
+constants). The coral button now has one definition instead of a second copy here and a third
+in I-0009's chrome bar. It is also the single place the on-coral token is applied, which is
+what keeps the 2.86:1 `text-white` regression from creeping back per-CTA.
+
+**The section that justified the earlier accessibility fix.** RETURN is below the fold and
+carries the page's closing CTAs, so it is precisely where hiding-by-opacity would have stranded
+a keyboard visitor on an invisible button. A test asserts the reveal wrapper is `inert` before
+entry and not after — the scenario, not just the mechanism.
+
+**Shared test helpers.** `stubElementTop` / `BELOW_FOLD` moved into `src/test/motion.ts`. jsdom
+reports all-zero rects, which reads as "already on screen", so without the stub a test cannot
+exercise the below-the-fold path at all — a trap worth having in one documented place rather
+than rediscovered per test file. `Section` now emits `data-landing-reveal` so any section's
+wrapper is addressable.
+
+**Verified server-side** (dev server, Node 22): all six beats in order, 1 `<h1>` and 5 `<h2>`,
+4 mocks, both auth targets present twice each, `text-primary-foreground` present, `text-white`
+**zero**, `inert` **zero** in SSR, and 2 glow layers.
+
+**Not machine-verified:** whether the close actually *reads* as a return rather than a repeat,
+and light/dark appearance. Both need eyes.
