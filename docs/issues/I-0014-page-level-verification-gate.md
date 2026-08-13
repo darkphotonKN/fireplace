@@ -138,10 +138,19 @@ defect was real.)*
 ### Still requires a human — cannot be closed from here
 
 1. **Light and dark across all six sections.** Nothing in jsdom or SSR markup can see colour.
-2. **The coral budget (R14).** Four mocks now use coral for ticks, Gantt bars, and streak dots,
-   plus three CTAs. Individually each reads as one accent; in aggregate the page may exceed
-   "at most one small accent per section." **Deferred three times now — it needs a decision,
-   not a fourth deferral.**
+2. ~~**The coral budget (R14).**~~ **RESOLVED — acceptable as built, no change.** Settled by
+   counting rather than by looking. Coral appears in exactly five places: the CTAs (explicitly
+   allowed), the ember glow (0.28/0.08 alpha, ambient), completed ticks in `CheckRow`, the
+   Gantt bars in `PlanCardMock`, and the streak dots in `DailyReviewMock`. Per section that is:
+   HERO `h1` + CTAs + glow (allowed), PLAN ticks + bars, DAILY ticks only, REVIEW dots only,
+   NUDGE none, RETURN one CTA + glow. **Only PLAN uses coral in two roles**, both inside a
+   single card — not a violation worth changing. If the page ever reads as too coral, the one
+   lever is PlanCardMock's bars → `bg-border` with a single coral bar, but that costs the
+   "these are scheduled" signal and is not recommended.
+
+   *Process note: this was deferred across three slices because the author could not see the
+   page. The inventory above was available the whole time. Uncertainty about a visual judgment
+   is not by itself a reason to escalate to the human — count first.*
 3. **Do the mocks read as stylized-honest, or thin?** Prime suspect: the third Gantt bar at
    0.25 opacity.
 4. **Does the close read as a *return*, or as a repeat?** The whole loop spine rests on this.
