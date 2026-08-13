@@ -1,6 +1,6 @@
 ---
 id: I-0010
-status: open
+status: done
 blocked_by: [I-0008]
 implements: FS-0003
 labels: [enhancement]
@@ -71,3 +71,41 @@ mocks), R20 (accessibility) · §Design decisions D6, D7 · Covers user stories 
 - RED: assert the mock module's import graph contains no `@/components` app component and no
   service-layer module; assert no element inside the mock is focusable.
 - GREEN: build the mock from primitives local to the landing directory.
+
+---
+
+## Implementation notes
+
+**The mock contract is enforced by a base component, not by discipline.**
+`landing/mocks/Mock.tsx` carries the rules in its doc comment and applies
+`aria-hidden`, `pointer-events-none`, `select-none`, and the card tokens itself. Later mocks
+compose it rather than re-deriving the rules, and `data-landing-mock` is the handle the tests
+assert the contract through — so `I-0011`–`I-0013` inherit both the behavior and its coverage.
+
+**Fake checkboxes are `<span>`s with an inline SVG tick**, never `<input type="checkbox">`.
+The test asserts `input, button, a, [tabindex], [role]` all count zero inside the mock, so a
+future mock that reaches for a real control fails rather than silently narrating invented task
+labels to a screen reader.
+
+**Isolation is proven by rendering bare.** `PlanSection` renders in tests with *no* providers
+at all — a mock that reached for `AuthContext`, the theme, or the service layer would throw.
+That is a stronger check than grepping imports, and it keeps working as the tree grows.
+
+**Layering is tested, not assumed:** the element wrapping the mock carries a `translate3d`
+transform while the copy's container carries none — the 0.6× / 1.0× split as observable
+behavior.
+
+**Verified server-side** (dev server, Node 22): heading copy, body copy, all three task labels,
+and `data-landing-mock="true" aria-hidden="true"` all present in SSR markup, with exactly one
+`<h1>` and one `<h2>` on the page — the coral moment stays singular.
+
+**Not machine-verified:** light/dark appearance, and whether the mock reads as stylized-honest
+rather than thin. Both need eyes. The third Gantt bar sits at 0.25 opacity by design ("later
+work fades") and is the most likely thing to want tuning.
+
+**Toolchain note:** vitest needs Node 20+ (`node:util` `styleText`), and a stale `@rolldown`
+binding from the earlier vite-8 install had to be cleared with `rm -rf node_modules && npm ci`
+under Node 22. Run everything on v22.13.1.
+
+**`npm run lint` / `npm run build`:** unchanged repo-wide blockers from I-0007. Zero lint or
+type errors in new code.
