@@ -69,9 +69,21 @@ export default function ParallaxLayer({
     window.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', onResize);
 
+    // A `resize` listener alone is not enough. The page reflows for reasons the
+    // window never hears about — most reliably the web font swapping in, which
+    // shifts every section below it and silently invalidates the cached centre
+    // for the rest of the session. Watch the document itself instead.
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(onResize);
+      observer.observe(document.documentElement);
+    }
+    document.fonts?.ready.then(onResize).catch(() => {});
+
     return () => {
       window.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', onResize);
+      observer?.disconnect();
       if (frame) cancelAnimationFrame(frame);
       el.style.transform = '';
     };

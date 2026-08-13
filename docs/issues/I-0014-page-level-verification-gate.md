@@ -94,3 +94,64 @@ R18, R20 · Covers user stories 10, 15, 16, 17, 18, 20, 23, 25, 29.
 Largely manual and device-dependent by nature. Where automatable: assert document scroll width
 never exceeds viewport width across breakpoints; assert all six sections' copy is present in the
 server-rendered HTML; run the grep gates as a scripted check.
+
+---
+
+## Progress — machine half complete, human half outstanding
+
+**Status stays `in-progress` deliberately.** This gate is half automatable and half visual
+judgment. Claiming `done` while the visual half is unwalked would be exactly the "green check
+that cannot tell *passed* from *did not run*" this issue exists to prevent.
+
+### Review findings fixed here
+
+**Parallax clipping in the compact section.** `Section` applied `overflow-hidden`
+unconditionally, so a 0.6× art layer (up to ±80px) could be cut off against a section's own
+edge — guaranteed at NUDGE's `py-12` (48px). `overflow-hidden` now applies **only when a
+`backdrop` is present**, which is the only reason it existed (containing the ember glow).
+Transforms are vertical-only, so not clipping cannot introduce horizontal overflow. Verified:
+exactly **2** sections clip — the hero and the close, the two with glows.
+
+**Stale cached geometry.** `ParallaxLayer` measured at mount and on `resize` only. The page
+reflows for reasons `window` never reports — most reliably the web font swapping in, which
+shifts every section below it and silently invalidates every cached centre for the rest of the
+session. Now also watches `ResizeObserver(document.documentElement)` and `document.fonts.ready`,
+both feature-guarded. *(Correction to the review that raised this: the font loads via
+`next/font/google` with `display: 'swap'`, not an `@import` — the mechanism was misstated, the
+defect was real.)*
+
+### Verified mechanically (dev server, Node 22)
+
+| Check | Result |
+|---|---|
+| Six beats, in the specified order | ✅ hero → plan → daily → review → nudge → return |
+| Heading discipline | ✅ 1 `<h1>`, 5 `<h2>`, 0 `<h3>` — one coral heading |
+| Mocks decorative | ✅ 4 mocks, 4 carrying `aria-hidden="true"` |
+| No real controls anywhere on the page | ✅ 0 `<input>` |
+| On-coral token, never hardcoded white | ✅ `text-white` 0, `text-primary-foreground` 7 |
+| Clipping confined to backdrop sections | ✅ 2 |
+| Chrome bar hidden at first paint | ✅ `inert=""` present |
+| All copy present without JS (crawler / pre-hydration) | ✅ all 5 section headings + hero |
+| Full suite green | ✅ 42 tests, 10 files |
+| Lint / typecheck in new code | ✅ 0 errors (repo-wide: 68 lint + 26 tsc, all pre-existing) |
+
+### Still requires a human — cannot be closed from here
+
+1. **Light and dark across all six sections.** Nothing in jsdom or SSR markup can see colour.
+2. **The coral budget (R14).** Four mocks now use coral for ticks, Gantt bars, and streak dots,
+   plus three CTAs. Individually each reads as one accent; in aggregate the page may exceed
+   "at most one small accent per section." **Deferred three times now — it needs a decision,
+   not a fourth deferral.**
+3. **Do the mocks read as stylized-honest, or thin?** Prime suspect: the third Gantt bar at
+   0.25 opacity.
+4. **Does the close read as a *return*, or as a repeat?** The whole loop spine rests on this.
+5. **Does NUDGE land as a grace note** rather than an afterthought?
+6. **Real-device touch scrolling** below 640px — the depth translation is off there by design,
+   so this is about whether the entrance transitions feel right on a phone.
+7. **200% zoom, print/reader mode, back-navigation from `/auth`, fling-to-bottom on a real
+   device.** The fling case is unit-tested at the primitive, but never observed in a browser.
+8. **`min-h-[92vh]` on the hero** (carried over from I-0008): `vh` shifts as mobile URL bars
+   hide, so the hero height jumps mid-scroll. `svh` fixes it but silently drops the rule on
+   older browsers. Needs a device to choose.
+9. **No horizontal overflow at any breakpoint.** Reasoned (transforms are vertical-only,
+   glows are clipped) but **not measured** — no headless browser is installed.

@@ -38,7 +38,13 @@ export default function Section({
     <section
       data-section-size={size}
       className={cn(
-        'relative w-full overflow-hidden px-6',
+        'relative w-full px-6',
+        // Clip ONLY when there is a backdrop to contain. Clipping unconditionally
+        // meant a 0.6x art layer (up to ±80px) could be cut off against a
+        // section's own edge — which the compact section, at py-12, would have
+        // done. Transforms are vertical-only, so not clipping cannot introduce
+        // horizontal overflow.
+        backdrop && 'overflow-hidden',
         size === 'compact' ? 'py-12 md:py-16' : 'py-24 md:py-32',
         className
       )}
