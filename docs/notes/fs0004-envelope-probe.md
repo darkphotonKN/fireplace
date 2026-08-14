@@ -88,3 +88,55 @@ The baseline gateway was stopped, the worktree removed, and the probe plan delet
 **user account was left in place** — the API exposes no user-deletion endpoint, so removing it
 would mean touching the auth database directly, which is not this feature's business. It is
 inert: `fs0004-probe@example.test` in the dev auth DB.
+
+---
+
+# I-0017 — checklists
+
+**Run:** 2026-08-14 · baseline `6c92a23` on :6061 vs serialized HEAD on :6060, same infrastructure.
+
+## Envelope removal
+
+```
+GET /api/plans/{id}/checklists?scope=daily
+BEFORE: {statusCode, result: [...]}          AFTER: bare array
+1 item before, 1 after
+before keys: archived, created_at, description, done, id, planId, scope, sequence, type, updated_at
+after  keys: archived, createdAt,  description, done, id, planId, scope, sequence, type, updatedAt
+verdict: identical apart from the declared date rename
+```
+
+## The three-state `parentId`, end to end
+
+This is the part of I-0017 that most needed live proof. The schema hook changes how the field
+is *expressed* in the contract, and JSON Schema cannot represent "omitted" at all — so a
+document that looks right is not evidence that all three states still work.
+
+| Sent | Expected | Observed |
+|---|---|---|
+| `{"parentId":"<uuid>"}` | re-parent | `parentId` = that uuid ✓ |
+| `{"description":"…"}` (parentId omitted) | parent unchanged | `parentId` still the uuid, description updated ✓ |
+| `{"parentId":null}` | clear to top level | `parentId` absent ✓ |
+
+Omit and null are distinguishable through the published schema, which is what the
+`huma.SchemaProvider` hook exists to preserve.
+
+## The one behaviour change, confirmed live
+
+```
+GET /api/plans/{id}/checklists?scope=bogus
+-> 422  code: VALIDATION_FAILED
+```
+
+The legacy handler forwarded any non-empty scope to plan-service. The declared enum now
+rejects it at the boundary. Correct per ADR-0005 — scope is shape, shape is validated at the
+edge — but a change, not a transcription.
+
+**Asymmetry worth a decision:** the same value inside a request BODY is still forwarded
+downstream, because the request types keep their (huma-ignored) `enums:` tags. Making the two
+consistent means adding boundary validation to bodies, which is a further behaviour change
+rather than a cleanup.
+
+## Cleanup
+
+Probe plan deleted via the serialized `DELETE` (204). Baseline stopped, worktree removed.
