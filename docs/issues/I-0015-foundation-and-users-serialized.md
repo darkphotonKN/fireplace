@@ -14,11 +14,10 @@ labels: [ready-for-agent]
 > `docs/notes/fs0004-envelope-probe.md`: the envelope is gone and every payload
 > is byte-identical apart from the declared date rename.
 >
-> Everything else was proved without infrastructure: the document, the gates, the Go suite, the
-> transport equivalence tests (mutation-checked), and the client typecheck.
-> The envelope removal itself is verified only by construction and by the
-> transport tests — **the ratchet structurally cannot see it**, so this probe is
-> the only end-to-end evidence and it is still outstanding.
+> Everything else was proved without infrastructure: the document, the gates, the
+> Go suite, the transport equivalence tests (mutation-checked), and the client
+> typecheck. The probe matters specifically because **the ratchet structurally
+> cannot see envelope removal**, so it is the only end-to-end evidence there is.
 >
 > **Found and fixed en route, not in the original scope:** `schema.d.ts` had
 > been stale since huma moved onto the engine. The document dropped its
@@ -27,6 +26,7 @@ labels: [ready-for-agent]
 > and a `/api`-suffixed baseUrl cancelled out. `make gates` has no
 > client-staleness check, so nothing caught it and nothing would have. Owed to
 > I-0020.
+
 Implements FS-0004 §Requirements, §API surface, §Edge States
 
 ## What to Build
@@ -89,22 +89,22 @@ last.
 
 ## Acceptance Criteria
 
-- [ ] The 4 users operations appear in `openapi.yaml` with correct methods, paths, and params
-- [ ] `signup` and `signin` carry no `security:`; `getUser` and `listUsers` carry `bearerAuth`
-- [ ] `cmd/openapi` generates the document with no DB and no network
-- [ ] No `models.*` type and no protobuf message appears in `components.schemas`
-- [ ] **R15, adapted to this repo:** a **populated** fixture proves the legacy body and the new
+- [x] The 4 users operations appear in `openapi.yaml` with correct methods, paths, and params
+- [x] `signup` and `signin` carry no `security:`; `getUser` and `listUsers` carry `bearerAuth`
+- [x] `cmd/openapi` generates the document with no DB and no network
+- [x] No `models.*` type and no protobuf message appears in `components.schemas`
+- [x] **R15, adapted to this repo:** a **populated** fixture proves the legacy body and the new
       body are JSON-equal — marshal `userFromProto(pb)` (what `result` holds today) and the new
       `UserResponse`, assert equality. The literal wording of R15 compares the proto's JSON to
       the mirror's; here the assertion that matters is legacy-vs-new, because that is what the
       frontend actually observes. A zero-valued fixture compares `{}` to `{}` and proves nothing
-- [ ] `password` appears in no users response, proven by a test
-- [ ] A downstream `codes.Unavailable` maps to 503, proven by a test
-- [ ] Before/after probe recorded against a running gateway showing the envelope removed and
-      the payload otherwise unchanged (R14) — the ratchet structurally cannot see this break
-- [ ] `make openapi-diff` and `make lint-contract` green
-- [ ] FE calls to these four endpoints go through the generated client; client typecheck green
-- [ ] Full Go test suite green
+- [x] `password` appears in no users response, proven by a test
+- [x] A downstream `codes.Unavailable` maps to 503, proven by a test
+- [x] Before/after probe recorded against a running gateway showing the envelope removed and
+      the payload otherwise unchanged (R14) — `docs/notes/fs0004-envelope-probe.md`
+- [x] `make openapi-diff` and `make lint-contract` green
+- [x] FE calls to these four endpoints go through the generated client; client typecheck green
+- [x] Full Go test suite green
 
 ## Blocked By
 

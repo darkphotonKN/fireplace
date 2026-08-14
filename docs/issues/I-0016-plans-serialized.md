@@ -51,18 +51,18 @@ Notes specific to this group:
 
 ## Acceptance Criteria
 
-- [ ] All 8 operations appear in `openapi.yaml` with correct methods, paths, params, and
+- [x] All 8 operations appear in `openapi.yaml` with correct methods, paths, params, and
       status codes (201 on create, 204 on delete)
-- [ ] `limit`/`offset` defaults are declared in the document and behave identically
-- [ ] All 8 declare `Security: bearerAuth`
-- [ ] Transport mirrors transcribed field-for-field including `omitempty`; no proto message or
+- [x] `limit`/`offset` defaults are declared in the document and behave identically
+- [x] All 8 declare `Security: bearerAuth`
+- [x] Transport mirrors transcribed field-for-field including `omitempty`; no proto message or
       `models.*` type in `components.schemas`
-- [ ] Round-trip test over a **populated** fixture asserts JSON equality
-- [ ] List responses marshal to `[]` and never `null`
+- [x] Round-trip test over a **populated** fixture asserts JSON equality
+- [x] List responses marshal to `[]` and never `null`
 - [x] Before/after probe recorded showing the envelope removed, payload otherwise unchanged — `docs/notes/fs0004-envelope-probe.md`
-- [ ] `make openapi-diff`, `make lint-contract`, `make openapi-breaking` green
-- [ ] FE plan call sites cut over to the generated client; client typecheck green
-- [ ] Full Go test suite green
+- [x] `make openapi-diff`, `make lint-contract`, `make openapi-breaking` green
+- [x] FE plan call sites cut over to the generated client; client typecheck green
+- [x] Full Go test suite green
 
 ## Blocked By
 
