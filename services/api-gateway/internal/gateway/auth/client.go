@@ -182,12 +182,59 @@ func authRespToHTTP(r *pb.AuthResponse) *LoginResponse {
 // was dropped in migration 000020. Serialized handlers map straight from the
 // proto to their transport type instead, deleting that hop (ADR-0003).
 
-func (c *Client) GetProfileProto(ctx context.Context, id uuid.UUID) (*pb.User, error) {
+// GetUserProto fetches one user by id. "My profile" is the same call with the
+// id taken from the token rather than the path, so GetProfileProto delegates
+// here instead of duplicating the round trip.
+func (c *Client) GetUserProto(ctx context.Context, id uuid.UUID) (*pb.User, error) {
 	client, err := c.connClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return client.GetUser(ctx, &pb.GetUserRequest{Id: id.String()})
+}
+
+func (c *Client) GetProfileProto(ctx context.Context, id uuid.UUID) (*pb.User, error) {
+	return c.GetUserProto(ctx, id)
+}
+
+func (c *Client) ListUsersProto(ctx context.Context) ([]*pb.User, error) {
+	client, err := c.connClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.ListUsers(ctx, &pb.ListUsersRequest{})
+	if err != nil {
+		return nil, err
+	}
+	// Non-nil even when empty: the serialized body must marshal to [] and never
+	// null, or a client iterating the result breaks (FS-0004 §Edge States).
+	if resp.Users == nil {
+		return []*pb.User{}, nil
+	}
+	return resp.Users, nil
+}
+
+func (c *Client) SignUpProto(ctx context.Context, req SignupRequest) (*pb.AuthResponse, error) {
+	client, err := c.connClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return client.SignUp(ctx, &pb.SignUpRequest{
+		Email:    req.Email,
+		Password: req.Password,
+		Name:     req.Name,
+	})
+}
+
+func (c *Client) SignInProto(ctx context.Context, req SigninRequest) (*pb.AuthResponse, error) {
+	client, err := c.connClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return client.SignIn(ctx, &pb.SignInRequest{
+		Email:    req.Email,
+		Password: req.Password,
+	})
 }
 
 func (c *Client) UpdateProfileProto(ctx context.Context, id uuid.UUID, req UpdateProfileRequest) (*pb.User, error) {

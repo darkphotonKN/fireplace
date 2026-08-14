@@ -67,7 +67,12 @@ func buildEngine(c authgw.ProfileClient) *gin.Engine {
 	engine := gin.New()
 
 	api := engine.Group("/api")
-	api.POST("/users/signin", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "public"}) })
+
+	// signin used to be stubbed here as a fake legacy public route, to prove
+	// serialized and legacy routes coexist. It is now genuinely serialized, and
+	// the stub collided with the real registration — gin panics on a duplicate
+	// path. The public-surface assertion below now exercises the REAL operation,
+	// which is a stronger check than the stub ever was.
 
 	protected := api.Group("")
 	protected.Use(auth.AuthMiddleware())
@@ -77,8 +82,30 @@ func buildEngine(c authgw.ProfileClient) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"statusCode": 200, "message": "ok", "result": []string{}})
 	})
 
-	MountSerialized(engine, APIDeps{Profile: c})
+	MountSerialized(engine, APIDeps{Profile: c, Users: stubUsersClient{}})
 	return engine
+}
+
+// stubUsersClient satisfies the users seam without a gRPC connection. Every
+// method fails: these tests assert on ROUTING and AUTH, never on downstream
+// behaviour, so a call reaching the client at all means the request got past
+// the middleware — which is exactly what the public/protected tests check.
+type stubUsersClient struct{}
+
+func (stubUsersClient) SignUpProto(context.Context, authgw.SignupRequest) (*pb.AuthResponse, error) {
+	return nil, status.Error(codes.Unavailable, "stub")
+}
+
+func (stubUsersClient) SignInProto(context.Context, authgw.SigninRequest) (*pb.AuthResponse, error) {
+	return nil, status.Error(codes.Unavailable, "stub")
+}
+
+func (stubUsersClient) GetUserProto(context.Context, uuid.UUID) (*pb.User, error) {
+	return nil, status.Error(codes.Unavailable, "stub")
+}
+
+func (stubUsersClient) ListUsersProto(context.Context) ([]*pb.User, error) {
+	return nil, status.Error(codes.Unavailable, "stub")
 }
 
 func token(t *testing.T) string {
@@ -161,9 +188,29 @@ func TestMount_PublicSurfacesUnaffected(t *testing.T) {
 	t.Setenv("JWT_SECRET", testSecret)
 	e := buildEngine(fakeProfileClient{user: sampleUser()})
 
-	t.Run("signin still public", func(t *testing.T) {
-		if rec := do(t, e, http.MethodPost, "/api/users/signin", ""); rec.Code != http.StatusOK {
-			t.Fatalf("want 200, got %d", rec.Code)
+	// signin and signup are the ONLY public operations on the serialized
+	// surface, which is why the users group was retrofitted first — it is the
+	// only group that exercises the public/protected split at all.
+	//
+	// The assertion is "not 401", not "200": the stub client fails every call,
+	// so reaching it at all proves the request was never challenged for a token.
+	// Asserting 200 would require a working downstream and would test
+	// auth-service rather than this registration path.
+	for _, op := range []struct{ name, path string }{
+		{"signin is public", "/api/users/signin"},
+		{"signup is public", "/api/users/signup"},
+	} {
+		t.Run(op.name, func(t *testing.T) {
+			rec := do(t, e, http.MethodPost, op.path, "")
+			if rec.Code == http.StatusUnauthorized {
+				t.Fatalf("%s challenged for a token; it must be callable without one", op.path)
+			}
+		})
+	}
+
+	t.Run("protected users operations still require a token", func(t *testing.T) {
+		if rec := do(t, e, http.MethodGet, "/api/users", ""); rec.Code != http.StatusUnauthorized {
+			t.Errorf("GET /api/users without a token: want 401, got %d", rec.Code)
 		}
 	})
 	t.Run("openapi document reachable WITHOUT a token", func(t *testing.T) {
@@ -246,14 +293,19 @@ func TestGetProfile_IdentityComesFromRequestContext(t *testing.T) {
 func TestGetProfile_DownstreamErrorsBecomeProblems(t *testing.T) {
 	t.Setenv("JWT_SECRET", testSecret)
 	cases := []struct {
-		name       string
-		err        error
-		wantStatus int
-		wantCode   errcode.Code
+		name        string
+		err         error
+		wantStatus  int
+		wantCode    errcode.Code
 		mustNotLeak string
 	}{
 		{"deleted user", status.Error(codes.NotFound, "user 123 gone"), http.StatusNotFound, errcode.NotFound, "user 123 gone"},
-		{"auth-service down", status.Error(codes.Unavailable, "dial tcp refused"), http.StatusInternalServerError, errcode.Internal, "dial tcp refused"},
+		// Changed by FS-0004 R13. This case previously expected 500
+		// INTERNAL_ERROR, because StatusFor had no codes.Unavailable arm and
+		// everything unrecognised fell through to "internal error". That told a
+		// caller the gateway was broken when the truth was that a downstream was
+		// unreachable — a different fault, with a different remedy (retry).
+		{"auth-service down", status.Error(codes.Unavailable, "dial tcp refused"), http.StatusServiceUnavailable, errcode.ServiceUnavailable, "dial tcp refused"},
 		{"internal", status.Error(codes.Internal, "boom"), http.StatusInternalServerError, errcode.Internal, "boom"},
 	}
 	for _, tc := range cases {

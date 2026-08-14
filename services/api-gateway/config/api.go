@@ -42,6 +42,7 @@ func init() {
 // need. Nil is legal — spec generation constructs none of them.
 type APIDeps struct {
 	Profile authgw.ProfileClient
+	Users   authgw.UsersClient
 }
 
 // Doc surface paths. Public by design: the contract is browsable without a
@@ -129,6 +130,7 @@ func RegisterAPI(engine *gin.Engine, deps APIDeps, protect func(huma.Context, fu
 
 	api := humagin.New(engine, cfg)
 	authgw.RegisterOperations(api, deps.Profile, protect, Secured)
+	authgw.RegisterUsersOperations(api, deps.Users, protect, Secured)
 	return api
 }
 

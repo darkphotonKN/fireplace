@@ -51,8 +51,9 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 
 	// auth-service is remote — the gateway calls it via gRPC. Tokens are still
 	// validated locally by auth.AuthMiddleware using the shared JWT_SECRET.
+	// No legacy gin handler is constructed for auth: every users endpoint is
+	// serialized, so the client is consumed directly by the typed operations.
 	authClient := authgw.NewClient(registry)
-	authHandler := authgw.NewHandler(authClient)
 
 	// plan-service is remote — HTTP routes for /plans and /plans/:id/checklists
 	// proxy through plangw via gRPC. The adapter satisfies the in-process
@@ -90,32 +91,23 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	calendarGwClient := calendargw.NewClient(registry)
 	calendarGwHandler := calendargw.NewHandler(calendarGwClient)
 
-	// --- PUBLIC ROUTES (no auth) ---
-
-	publicUsers := api.Group("/users")
-	publicUsers.POST("/signup", authHandler.Create)
-	publicUsers.POST("/signin", authHandler.Login)
-
 	// --- PROTECTED ROUTES (auth middleware) ---
 
 	protected := api.Group("")
 	protected.Use(auth.AuthMiddleware())
 
-	// --- SERIALIZED (typed) SURFACE — ADR-0002 plane 1, FS-0002 ---
+	// --- SERIALIZED (typed) SURFACE — ADR-0002 plane 1 ---
 	//
-	// GET/PATCH /api/users/profile are served by typed huma handlers, NOT by the
-	// legacy gin handlers below. They were removed from protectedUsers rather
-	// than left alongside: gin panics on duplicate route registration, and the
-	// whole point of serialize-on-touch is replacement, not coexistence per path.
+	// The ENTIRE users group — signup, signin, get-by-id, list — plus the profile
+	// pair is served by typed huma handlers. Their legacy gin registrations are
+	// deleted rather than left alongside: gin panics on duplicate route
+	// registration, and serialization is replacement, not coexistence per path.
 	//
-	// Everything else on this group is untouched and stays enveloped until it is
-	// itself touched (ADR-0002 §7, grandfather clause).
-	MountSerialized(router, APIDeps{Profile: authClient})
-
-	// -- User Routes (proxied to auth-service via gRPC) --
-	protectedUsers := protected.Group("/users")
-	protectedUsers.GET("/:id", authHandler.GetById)
-	protectedUsers.GET("", authHandler.GetAll)
+	// Every other group here is still enveloped and is retrofitted group by group
+	// under FS-0004. Until a group lands it is reachable but undocumented — a
+	// stated trade, since the swaggo document that used to describe it was
+	// removed outright (ADR-0006 §5).
+	MountSerialized(router, APIDeps{Profile: authClient, Users: authClient})
 
 	// -- Plan Routes (proxied to plan-service via gRPC) --
 	planRoutes := protected.Group("/plans")
