@@ -72,6 +72,9 @@ components:
           format: uuid
           type: string
         scope:
+          enum:
+            - daily
+            - longterm
           examples:
             - daily
           type: string
@@ -83,6 +86,9 @@ components:
           format: date-time
           type: string
         type:
+          enum:
+            - task
+            - note
           examples:
             - task
           type: string

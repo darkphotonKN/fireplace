@@ -1,3 +1,13 @@
+import {
+  listChecklists,
+  listArchivedChecklists,
+  createChecklistItem as createItem,
+  updateChecklistItem as updateItem,
+  deleteChecklistItem as deleteItem,
+  archiveChecklistItem as archiveItem,
+  updateChecklistDates as updateDates,
+  type ChecklistItem as ApiChecklistItem,
+} from "@/api/checklists";
 import { config } from "@/config/environment";
 
 // API base URL from environment config
@@ -178,120 +188,13 @@ export interface SearchPlansResponse {
 
 
 
-/**
- * Fetch all checklist items for the specified plan
- */
-export const fetchChecklist = async (
-  planId: string,
-  scope: "daily" | "longterm" = "daily",
-  archived: boolean = false,
-  type?: ChecklistItemType,
-): Promise<ChecklistResponse> => {
-  const params = new URLSearchParams({ scope, archived: String(archived) });
-  if (type) params.set("type", type);
-  const response = await authFetch(
-    `${API_BASE_URL}/api/plans/${planId}/checklists?${params.toString()}`,
-  );
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch checklist: ${response.statusText}`);
-  }
 
-  return await response.json();
-};
 
-/**
- * Create a new checklist item
- */
-export const createChecklistItem = async (
-  description: string,
-  planId: string,
-  scope: "daily" | "longterm" = "daily",
-  opts?: { type?: ChecklistItemType; parentId?: string | null },
-): Promise<ChecklistItem> => {
-  const body: Record<string, unknown> = { description, scope };
-  if (opts?.type) body.type = opts.type;
-  if (opts?.parentId !== undefined) body.parentId = opts.parentId;
-  const response = await authFetch(
-    `${API_BASE_URL}/api/plans/${planId}/checklists`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    },
-  );
 
-  if (!response.ok) {
-    throw new Error(`Failed to create checklist item: ${response.statusText}`);
-  }
 
-  const jsonRes = await response.json();
 
-  return await jsonRes.result;
-};
 
-/**
- * Update a checklist item (description and/or done status)
- */
-export const updateChecklistItem = async (
-  id: string,
-  updates: UpdateChecklistItemRequest,
-  planId: string,
-  scope: "daily" | "longterm" = "daily",
-): Promise<UpdateChecklistItemResponse> => {
-  try {
-    const response = await authFetch(
-      `${API_BASE_URL}/api/plans/${planId}/checklists/${id}?scope=${scope}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(updates),
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to update checklist item: ${response.statusText}`,
-      );
-    }
-
-    const data = await response.json();
-    return { result: "success", item: data };
-  } catch (err) {
-    console.error("Failed to update checklist item:", err);
-    return { result: "failure" };
-  }
-};
-
-/**
- * Delete a checklist item
- */
-export const deleteChecklistItem = async (
-  id: string,
-  planId: string,
-  scope: "daily" | "longterm" = "daily",
-): Promise<DeleteChecklistItemResponse> => {
-  try {
-    const response = await authFetch(
-      `${API_BASE_URL}/api/plans/${planId}/checklists/${id}?scope=${scope}`,
-      {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
-
-    return await response.json();
-  } catch (err) {
-    console.log("Failed to delete checklist item, error:", err);
-    return { result: "failure" };
-  }
-};
 
 /**
  * Get an AI-generated checklist item suggestion
@@ -323,58 +226,9 @@ export const getChecklistSuggestion = async (
   }
 };
 
-/**
- * Update startDate / dueDate for a checklist item.
- * Body fields are optional with three-state semantics:
- *   - absent key      → leave column unchanged
- *   - explicit null   → clear column
- *   - "YYYY-MM-DD"    → set column
- * Backend validates start_date <= due_date post-merge with the current row.
- */
-export const updateChecklistDates = async (
-  planId: string,
-  checklistId: string,
-  body: UpdateChecklistDatesRequest,
-): Promise<UpdateChecklistItemResponse> => {
-  try {
-    const response = await authFetch(
-      `${API_BASE_URL}/api/plans/${planId}/checklists/${checklistId}/dates`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      },
-    );
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to update checklist dates: ${response.statusText}`,
-      );
-    }
 
-    const data = await response.json();
-    return { result: "success", item: data.result };
-  } catch (err) {
-    console.error("Failed to update checklist dates:", err);
-    return { result: "failure" };
-  }
-};
 
-/**
- * Legacy schedule call — kept for backwards-compat with Todo's schedule UI.
- * The backend /schedule endpoint was removed; this now PATCHes /dates with
- * a date-only startDate (time-of-day is dropped — known regression).
- */
-export const scheduleChecklistItem = async (
-  id: string,
-  planId: string,
-  scheduleTime: Date,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _scope: "daily" | "longterm" = "daily",
-): Promise<UpdateChecklistItemResponse> => {
-  const startDate = scheduleTime.toISOString().slice(0, 10);
-  return updateChecklistDates(planId, id, { startDate });
-};
 
 /**
  * Fetch the per-plan calendar items for a window.
@@ -423,61 +277,89 @@ export const getDailyInsights = async (
   }
 };
 
-/**
- * Archive a checklist item
- */
+
+
+
+
+
+
+
+// --- Checklists ---
+//
+// SERIALIZED (FS-0004, I-0017). These are thin adapters over @/api/checklists,
+// kept at their original names and ARGUMENT ORDER so the ~22 existing call
+// sites keep compiling. What they no longer do is invent a response shape:
+// each returns the bare resource, because the {statusCode, message, result}
+// envelope is gone.
+//
+// Two parameters the endpoints never honoured were dropped rather than
+// forwarded:
+//   - `archived` on fetchChecklist — the gateway only read scope and type, so
+//     passing true returned NON-archived items. Use fetchArchivedChecklist.
+//   - `scope` on update/delete/archive — never read by those handlers.
+// They stay in these signatures only where a caller still passes them, and are
+// ignored here rather than sent, which is what already happened server-side.
+
+export const fetchChecklist = async (
+  planId: string,
+  scope: "daily" | "longterm" = "daily",
+  _archived: boolean = false,
+  type?: ChecklistItemType,
+): Promise<ApiChecklistItem[]> => listChecklists(planId, scope, type);
+
+export const fetchArchivedChecklist = async (
+  planId: string,
+  _scope: "daily" | "longterm" = "daily",
+): Promise<ApiChecklistItem[]> => listArchivedChecklists(planId);
+
+export const createChecklistItem = async (
+  description: string,
+  planId: string,
+  scope: "daily" | "longterm" = "daily",
+  opts?: { type?: ChecklistItemType; parentId?: string | null },
+): Promise<ApiChecklistItem> =>
+  createItem(planId, {
+    description,
+    scope,
+    ...(opts?.type ? { type: opts.type } : {}),
+    // parentId is a plain optional string on CREATE, not three-state: there is
+    // nothing to clear on an item that does not exist yet. null and undefined
+    // both mean "top level", so only a real id is sent.
+    ...(typeof opts?.parentId === "string" ? { parentId: opts.parentId } : {}),
+  });
+
+export const updateChecklistItem = async (
+  id: string,
+  updates: UpdateChecklistItemRequest,
+  planId: string,
+  _scope: "daily" | "longterm" = "daily",
+): Promise<ApiChecklistItem> => updateItem(planId, id, updates);
+
+export const deleteChecklistItem = async (
+  id: string,
+  planId: string,
+  _scope: "daily" | "longterm" = "daily",
+): Promise<void> => deleteItem(planId, id);
+
 export const archiveChecklistItem = async (
   id: string,
   planId: string,
-  scope: "daily" | "longterm" = "daily",
-): Promise<UpdateChecklistItemResponse> => {
-  try {
-    console.log("planId:", planId, " checklist id:", id);
-    const response = await authFetch(
-      `${API_BASE_URL}/api/plans/${planId}/checklists/${id}/archive?scope=${scope}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
+  _scope: "daily" | "longterm" = "daily",
+): Promise<ApiChecklistItem> => archiveItem(planId, id, true);
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to archive checklist item: ${response.statusText}`,
-      );
-    }
-
-    const data = await response.json();
-    return { result: "success", item: data };
-  } catch (err) {
-    console.error("Failed to archive checklist item:", err);
-    return { result: "failure" };
-  }
-};
-
-/**
- * Fetch archived checklist items for the specified plan
- */
-export const fetchArchivedChecklist = async (
+export const updateChecklistDates = async (
   planId: string,
-  scope: "daily" | "longterm" = "daily",
-): Promise<ChecklistResponse> => {
-  const response = await authFetch(
-    `${API_BASE_URL}/api/plans/${planId}/checklists/archived?scope=${scope}`,
-  );
+  checklistId: string,
+  body: UpdateChecklistDatesRequest,
+): Promise<ApiChecklistItem> => updateDates(planId, checklistId, body);
 
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch archived checklist: ${response.statusText}`,
-    );
-  }
-
-  return await response.json();
-};
-
-
+export const scheduleChecklistItem = async (
+  id: string,
+  planId: string,
+  scheduleTime: Date,
+  _scope: "daily" | "longterm" = "daily",
+): Promise<ApiChecklistItem> =>
+  updateDates(planId, id, { startDate: scheduleTime.toISOString().slice(0, 10) });
 
 // --- Auth ---
 //

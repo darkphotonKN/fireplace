@@ -256,19 +256,20 @@ export default function Todo({
     const loadTodos = async () => {
       try {
         setLoading(true);
-        let response: ChecklistResponse;
+        // Bare array, not {statusCode, message, result} — serialized (FS-0004).
+        let items: ChecklistItem[];
 
         if (taskType === 'archived') {
-          response = await fetchArchivedChecklist(planId, 'daily');
+          items = await fetchArchivedChecklist(planId, 'daily');
         } else {
-          response = await fetchChecklist(
+          items = await fetchChecklist(
             planId,
             taskType as 'daily' | 'longterm'
           );
         }
 
         if (cancelled) return;
-        setTodos(response.result || []);
+        setTodos(items);
         setError(null);
       } catch (error) {
         if (cancelled) return;
@@ -365,15 +366,6 @@ export default function Todo({
         planId,
         taskType as 'daily' | 'longterm'
       );
-      if (response.result !== 'success') {
-        // Revert if failed
-        setTodos(
-          todos?.map((todo) =>
-            todo.id === id ? { ...todo, done: todoToToggle.done } : todo
-          )
-        );
-        setError('Failed to update task status. Please try again.');
-      }
     } catch (error) {
       console.error('Error toggling todo:', error);
       // Revert if exception
@@ -430,17 +422,6 @@ export default function Todo({
         taskType as 'daily' | 'longterm'
       );
 
-      if (response.result !== 'success') {
-        // Revert if failed
-        setTodos(
-          todos?.map((todo) =>
-            todo.id === schedulingId
-              ? { ...todo, scheduledTime: originalScheduledTime }
-              : todo
-          )
-        );
-        setError('Failed to schedule task. Please try again.');
-      }
     } catch (error) {
       console.error('Error scheduling todo:', error);
       // Revert if exception
@@ -556,15 +537,6 @@ export default function Todo({
         taskType as 'daily' | 'longterm'
       );
 
-      if (response.result !== 'success') {
-        // Revert if failed
-        setTodos(
-          todos?.map((todo) =>
-            todo.id === id ? { ...todo, description: originalText } : todo
-          )
-        );
-        setError('Failed to update task. Please try again.');
-      }
     } catch (error) {
       console.error('Error updating todo description:', error);
       // Revert if exception
@@ -678,8 +650,8 @@ export default function Todo({
   const fetchDailyInsights = async () => {
     try {
       // First check if there are any long-term items
-      const longTermResponse = await fetchChecklist(planId, 'longterm');
-      if (!longTermResponse.result || longTermResponse.result.length === 0) {
+      const longTermItems = await fetchChecklist(planId, 'longterm');
+      if (longTermItems.length === 0) {
         // No long-term items, so no need to fetch insights
         setDailyInsights([]);
         setVisibleInsights([]);
@@ -794,12 +766,6 @@ export default function Todo({
         planId,
         taskType as 'daily' | 'longterm'
       );
-      if (response.result !== 'success') {
-        // Restore if archiving failed
-        setTodos((prevTodos) => [...prevTodos, todoToArchive]);
-        setArchivedTodos(archivedTodos?.filter((todo) => todo.id !== id));
-        setError('Failed to archive task. Please try again.');
-      }
     } catch (error) {
       console.error('Error archiving todo:', error);
       // Restore if exception
@@ -834,14 +800,6 @@ export default function Todo({
         planId,
         taskType as 'daily' | 'longterm'
       );
-      if (response.result !== 'success') {
-        setTodos((prev) =>
-          prev.map((t) =>
-            t.id === id ? { ...t, type: previous.type, done: previous.done } : t
-          )
-        );
-        setError('Failed to change item type. Please try again.');
-      }
     } catch (err) {
       console.error('Error toggling item type:', err);
       setTodos((prev) =>
@@ -920,14 +878,6 @@ export default function Todo({
         planId,
         taskType as 'daily' | 'longterm'
       );
-      if (response.result !== 'success') {
-        setTodos((prev) =>
-          prev.map((t) =>
-            t.id === id ? { ...t, parentId: previousParentId } : t
-          )
-        );
-        setError('Failed to indent item. Please try again.');
-      }
     } catch (err) {
       console.error('Error indenting item:', err);
       setTodos((prev) =>
@@ -955,14 +905,6 @@ export default function Todo({
         planId,
         taskType as 'daily' | 'longterm'
       );
-      if (response.result !== 'success') {
-        setTodos((prev) =>
-          prev.map((t) =>
-            t.id === id ? { ...t, parentId: previousParentId } : t
-          )
-        );
-        setError('Failed to outdent item. Please try again.');
-      }
     } catch (err) {
       console.error('Error outdenting item:', err);
       setTodos((prev) =>
@@ -988,8 +930,7 @@ export default function Todo({
   // Load archived todos
   const loadArchivedTodos = async () => {
     try {
-      const response = await fetchArchivedChecklist(planId, 'daily');
-      setArchivedTodos(response.result || []);
+      setArchivedTodos(await fetchArchivedChecklist(planId, 'daily'));
     } catch (error) {
       console.error('Failed to load archived todos:', error);
       setError('Failed to load archived tasks. Please try again.');
@@ -1045,11 +986,11 @@ export default function Todo({
 
       console.log('@DailyReset fetching plan details');
       try {
-        const [checklistResponse, planResponse] = await Promise.all([
+        const [checklistItems, planResponse] = await Promise.all([
           fetchChecklist(planId, 'daily'),
           getPlan(planId),
         ]);
-        setTodos(checklistResponse.result);
+        setTodos(checklistItems);
         // Bare resource, not planResponse.result — serialized (FS-0004).
         setDailyReset(planResponse.dailyReset);
       } catch (error) {

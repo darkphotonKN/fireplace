@@ -188,11 +188,11 @@ type ChecklistResp struct {
 	Description string     `json:"description" example:"Write the integration test plan"`
 	Done        bool       `json:"done" example:"false"`
 	Sequence    string     `json:"sequence" example:"1"`
-	Type        string     `json:"type" enums:"task,note" example:"task"`
+	Type        string     `json:"type" enum:"task,note" example:"task"`
 	ParentID    *uuid.UUID `json:"parentId,omitempty" format:"uuid"`
 	StartDate   *time.Time `json:"startDate,omitempty" format:"date-time"`
 	DueDate     *time.Time `json:"dueDate,omitempty" format:"date-time"`
-	Scope       string     `json:"scope" enums:"daily,longterm" example:"daily"`
+	Scope       string     `json:"scope" enum:"daily,longterm" example:"daily"`
 	Archived    bool       `json:"archived" example:"false"`
 	// camelCase, matching every other published entity. This type already spelled
 	// startDate/dueDate in camelCase, so its own timestamps were the outlier.
