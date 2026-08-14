@@ -9,11 +9,14 @@ serialized, typed, and described by a generated OpenAPI 3.1 document. The other 
 gin handlers returning a `{statusCode, message, result}` envelope, described only by a
 hand-written swaggo OpenAPI 2.0 document.
 
-This feature serializes all 32, retires the swaggo document, moves the frontend onto a
-generated client, and closes three gaps that currently let the gates pass without doing
-anything. Nothing a user can do changes. What changes is that the entire HTTP surface stops
-being implicitly defined by handler code and starts being governed by a contract derived from
-it.
+This feature serializes all 32, moves the frontend onto a generated client, and closes three
+gaps that currently let the gates pass without doing anything. Nothing a user can do changes.
+What changes is that the entire HTTP surface stops being implicitly defined by handler code and
+starts being governed by a contract derived from it.
+
+The swaggo document was removed **first**, ahead of every slice (ADR-0006 §5 as amended), so
+the campaign runs against a single description throughout. Until a group lands, its operations
+are reachable but undocumented — a deliberate, stated trade, not a defect.
 
 This is the discharge of ADR-0002's serialize-on-touch clause, decided in ADR-0006.
 
@@ -82,10 +85,16 @@ This is the discharge of ADR-0002's serialize-on-touch clause, decided in ADR-00
 
 ### Retirement and gates
 
-20. When the last group is serialized: the `/swagger` mount, the `//@` annotations,
-    `services/api-gateway/docs/`, `make gen`, and the `swaggo` + `gin-swagger` dependencies
-    are removed. The generated OpenAPI 3.1 document becomes the only description of the HTTP
-    surface.
+20. **Done up front, ahead of every slice** (ADR-0006 §5 as amended): the `/swagger` mount, the
+    `//@` annotations, `services/api-gateway/docs/`, `make gen`, the `lint`/`docs` targets, the
+    orphaned gateway-local Spectral ruleset, and the `swaggo` + `gin-swagger` dependencies are
+    removed. The generated OpenAPI 3.1 document is the only description of the HTTP surface
+    from the start of this feature, not the end.
+
+    The consequence is deliberate and must not be treated as a defect during the campaign:
+    until a group is serialized, its operations are **reachable but undocumented**. The
+    document's `info.description` says so explicitly, so it understates its coverage rather
+    than misrepresenting it.
 21. `--fail-on ERR` becomes `--fail-on WARN` in the ratchet target. `ERR` alone does not catch
     a field rename.
 22. A `gates-selftest` target runs the existing `contract-fixtures/` and is wired into
@@ -141,7 +150,7 @@ This is the discharge of ADR-0002's serialize-on-touch clause, decided in ADR-00
 - [ ] `client/src/api/generated/` contains a generated client; `make client` reproduces it byte-identically.
 - [ ] No raw `fetch` or `axios` call to a gateway path remains outside the client module.
 - [ ] The lint fence rejects a fixture file and accepts the tree, proven by a recorded run.
-- [ ] `/swagger` is gone, `docs/docs.go` is deleted, `make gen` is removed, and `swaggo`/`gin-swagger` are absent from `go.mod`.
+- [x] `/swagger` is gone, `docs/docs.go` is deleted, `make gen` is removed, and `swaggo`/`gin-swagger` are absent from `go.mod`. *(done up front — build, vet, and the full suite green; `make gates` green)*
 - [ ] `/api/docs` renders all 34 operations with padlocks on the protected ones.
 - [ ] Full Go test suite and the client typecheck are green.
 

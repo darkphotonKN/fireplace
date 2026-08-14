@@ -104,33 +104,14 @@ db-drop-create: db-drop db-create
 	@$(MIGRATE_COMMAND) version
 
 # ---------------------------------------------------------------------------
-# API docs — code-first OpenAPI 2.0 via swaggo/swag. See docs/api-conventions.md.
-# The spec (docs/swagger.{json,yaml}) is a generated build artifact, never
-# hand-edited. `make gen` == `go generate ./...`.
-# ---------------------------------------------------------------------------
-
-# Regenerate the OpenAPI 2.0 spec FROM the annotated handlers + edge DTOs.
-gen:
-	@go run github.com/swaggo/swag/cmd/swag init -g cmd/main.go -o docs --parseDependency --parseInternal
-
-# Lint the generated spec: catches example-vs-schema drift + spec hygiene.
-# Requires Node (npx). For a pure-Go setup, drop this and rely on `make gen`
-# succeeding as the (weaker) net — tradeoff noted in docs/api-conventions.md.
-lint:
-	@npx --yes @stoplight/spectral-cli@6 lint docs/swagger.json
-
-# Serve the generated spec in a local UI (standalone — no DB/Consul needed).
-# The running gateway also serves it at http://localhost:8080/swagger/index.html
-# (gin-swagger).
-docs:
-	@npx --yes @redocly/cli@latest preview-docs --port 8089 docs/swagger.json
-
-# ---------------------------------------------------------------------------
-# SERIALIZED contract (OpenAPI 3.x via Huma) — ADR-0002 plane 1.
+# CONTRACT (OpenAPI 3.x via Huma) — ADR-0002 plane 1.
 #
-# Distinct from the legacy `gen`/`lint`/`docs` targets above, which serve the
-# swaggo OpenAPI 2.0 surface. Both surfaces coexist until the last endpoint
-# serializes (ADR-0002 §8); these targets govern the new one.
+# There is exactly ONE description of the HTTP surface, and it is generated from
+# the typed handlers. The swaggo/gin-swagger OpenAPI 2.0 pipeline that used to
+# live here — `gen`, `lint`, `docs`, the `//@` annotations, and the generated
+# docs/ package — was removed outright rather than retired group-by-group: a
+# hand-annotated second description is the drift this layer exists to prevent,
+# and this is a pre-1.0 service with a single first-party consumer.
 #
 # Command paths are declared in docs/agents/contract.md so generic skills can
 # find them without hardcoding a toolchain.
@@ -198,8 +179,7 @@ client:
 		echo "✅ wrote $(CLIENT_DIR)/schema.d.ts"; \
 	fi
 
-# Lint the SERIALIZED spec for contract depth (descriptions, examples, error schemas).
-# The legacy `lint` target above still governs docs/swagger.json — do not merge them.
+# Lint the contract for depth (descriptions, examples, error schemas).
 lint-contract:
 	@if [ ! -f $(OPENAPI_SPEC) ]; then \
 		echo "SKIPPED: $(OPENAPI_SPEC) does not exist yet (expected until FS-0002 slice 3)"; \
@@ -237,7 +217,7 @@ openapi-breaking: $(OASDIFF)
 gates: openapi-diff lint-contract openapi-breaking
 	@echo "✅ contract gates complete"
 
-.PHONY: run test migrate-up migrate-down migrate-status migrate-down-to migrate-reset migrate-create migrate-fix db-force-clean db-drop db-create db-drop-create gen lint docs openapi client lint-contract openapi-diff openapi-breaking gates
+.PHONY: run test migrate-up migrate-down migrate-status migrate-down-to migrate-reset migrate-create migrate-fix db-force-clean db-drop db-create db-drop-create openapi client lint-contract openapi-diff openapi-breaking gates
 
 
 

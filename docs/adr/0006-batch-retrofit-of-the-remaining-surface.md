@@ -6,6 +6,16 @@ Scope: root — governs the api-gateway HTTP surface and the client's consumptio
 Realized by: FS-0004
 Amends: ADR-0002 §8 (adoption policy) — the grandfather clause is discharged, not deleted
 
+> **Amended before first realization, same day.** §5 originally retired swaggo in the *final*
+> slice, on the reasoning that it remains the only description of whatever is not yet
+> serialized. The owner overrode that: this is a pre-1.0 service with a single first-party
+> consumer, no external integrator, and no long-running deployment, so the interim
+> documentation gap costs nothing that the drift risk does not cost more. swaggo was removed
+> up front instead. §5 and the corresponding rejected alternative are rewritten below to say
+> what was actually done. This edit is recorded rather than silent because the ADR had been
+> committed — but it had not yet been acted on, so amending beat superseding a decision that
+> was never executed.
+
 ## Context
 
 ADR-0002 adopted the contract layer with a **serialize-on-touch** policy: an endpoint gets a
@@ -64,11 +74,25 @@ the previous document. Each group's slice records a before/after probe against a
 gateway as its evidence. Trusting the ratchet here would be trusting a gate to catch something
 structurally outside its input.
 
-**5. `swaggo` is retired in the final slice** — the `/swagger` mount, the `//@` annotations,
-`docs/docs.go`, `make gen`, and the `swaggo`/`gin-swagger` dependencies. Not before: until the
-last group is serialized it is the only description of what remains. After it, the generated
-OpenAPI 3.1 document is the single description of the HTTP surface, and there is no second
-place to edit.
+**5. `swaggo` is removed up front, before any group is serialized** — the `/swagger` mount, the
+`//@` annotations, the generated `docs/` package, `make gen`, the `lint`/`docs` targets, the
+orphaned gateway-local Spectral ruleset, and the `swaggo`/`gin-swagger` dependencies.
+
+The trade this accepts is explicit: the 32 unserialized operations become **reachable but
+undocumented** until their group lands. That is the correct trade *here* — a pre-1.0 service, a
+single first-party consumer that deploys with it, no external integrator reading the document,
+and no long-running deployment whose users would notice. Against that, a hand-annotated second
+description that nobody regenerates is not a safety net; it is a source of confident wrong
+answers, and every day it survives is a day someone can read it and believe it.
+
+The generated OpenAPI 3.1 document is therefore the single description of the HTTP surface from
+now on, and it is honest about its own coverage: its `info.description` states that unlisted
+endpoints exist and are not yet serialized. An incomplete document that says it is incomplete
+beats a complete-looking one that has drifted.
+
+**In a repo where this trade did not hold** — a public API, an external consumer, a long-lived
+deployment — the original sequencing (retire last) would be the right call. The reasoning, not
+the outcome, is what transfers.
 
 **6. The gate gaps found during scoping are closed as part of this campaign**, because a
 retrofit guarded by unproven gates is a retrofit with no guarantee:
@@ -121,8 +145,13 @@ intent, and there is no mechanism by which it finishes.
 contradicts ADR-0003 on day one and require a second breaking pass over the same 32
 operations later — the same cost, paid twice, with a wrong contract published in between.
 
-**Remove swaggo first, to force the issue.** Rejected. It would delete the only description of
-whatever is not yet serialized, trading an incomplete document for no document.
+**Retire swaggo last, after the final group.** Considered and originally decided, then
+overridden by the owner — see the amendment note at the top. The argument for it was that
+swaggo is the only description of whatever is not yet serialized. The argument against, which
+won: a stale hand-annotated document is not documentation, it is a trap, and preserving it for
+the duration of a multi-slice campaign maximizes the window in which someone can read it and
+be wrong. With one first-party consumer and no external integrator, the coverage gap is
+cheap and the drift is not.
 
 **Hand-write OpenAPI 3.1 for the legacy routes to fill the document faster.** Rejected
 outright. This is the exact failure mode — a doc written alongside the code rather than derived

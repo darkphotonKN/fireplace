@@ -92,9 +92,11 @@ var Secured = []map[string][]string{{BearerAuth: {}}}
 // operation. Handlers may be nil: registration never invokes them.
 func RegisterAPI(engine *gin.Engine, deps APIDeps, protect func(huma.Context, func(huma.Context))) huma.API {
 	cfg := huma.DefaultConfig("Fireplace API", "1.0.0")
-	cfg.Info.Description = "The serialized HTTP surface of the Fireplace api-gateway. " +
-		"Endpoints not listed here are still described by the legacy OpenAPI 2.0 " +
-		"document at /swagger and are migrated on touch (ADR-0002)."
+	cfg.Info.Description = "The HTTP surface of the Fireplace api-gateway. " +
+		"This document is generated from the typed handlers and is the only " +
+		"description of the API — there is no second, hand-written one. " +
+		"Endpoints not listed here are not yet serialized (FS-0004); they are " +
+		"reachable but undocumented until their group lands."
 
 	// huma's built-in doc surface, served on the engine and therefore public.
 	// Replaces a hand-rolled HTML page: the renderer is now huma's default

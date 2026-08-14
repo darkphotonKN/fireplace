@@ -198,26 +198,12 @@ func (h *Handler) DeletePlan(c *gin.Context) {
 
 // --- Checklist routes ---
 
-// CreateChecklist creates a checklist item under a plan.
+// CreateChecklist creates a checklist item (task or note) under a plan.
 //
-//	@Summary		Create a checklist item
-//	@Description	Creates a checklist item (task or note) under the given plan.
-//	@Description	`scope` and `type` are optional shape enums. Parent nesting is
-//	@Description	validated downstream by plan-service (a parent must be a
-//	@Description	top-level item in the same plan — two-tier maximum); that rule
-//	@Description	is enforced in code, not in this schema.
-//	@Tags			checklists
-//	@Accept			json
-//	@Produce		json
-//	@Param			id		path		string				true	"Plan ID (UUID)"
-//	@Param			request	body		CreateChecklistReq	true	"Checklist item to create"
-//	@Success		201		{object}	ChecklistResponse
-//	@Failure		400		{object}	ErrorResponse
-//	@Failure		401		{object}	ErrorResponse
-//	@Failure		403		{object}	ErrorResponse
-//	@Failure		500		{object}	ErrorResponse
-//	@Security		BearerAuth
-//	@Router			/plans/{id}/checklists [post]
+// `scope` and `type` are optional shape enums. Parent nesting is validated
+// downstream by plan-service — a parent must be a top-level item in the same
+// plan, two tiers maximum — and that rule is enforced in code, never as a
+// schema constraint.
 func (h *Handler) CreateChecklist(c *gin.Context) {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
@@ -243,20 +229,6 @@ func (h *Handler) CreateChecklist(c *gin.Context) {
 }
 
 // GetChecklist returns a single checklist item.
-//
-//	@Summary		Get a checklist item
-//	@Description	Returns one checklist item by id.
-//	@Tags			checklists
-//	@Produce		json
-//	@Param			id				path		string	true	"Plan ID (UUID)"
-//	@Param			checklist_id	path		string	true	"Checklist item ID (UUID)"
-//	@Success		200				{object}	ChecklistResponse
-//	@Failure		400				{object}	ErrorResponse
-//	@Failure		401				{object}	ErrorResponse
-//	@Failure		404				{object}	ErrorResponse
-//	@Failure		500				{object}	ErrorResponse
-//	@Security		BearerAuth
-//	@Router			/plans/{id}/checklists/{checklist_id} [get]
 func (h *Handler) GetChecklist(c *gin.Context) {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
@@ -276,22 +248,11 @@ func (h *Handler) GetChecklist(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"statusCode": http.StatusOK, "result": item})
 }
 
-// ListChecklists lists non-archived checklist items for a plan.
+// ListChecklists lists non-archived checklist items for a plan, optionally
+// filtered by scope and/or type.
 //
-//	@Summary		List checklist items
-//	@Description	Lists non-archived checklist items for a plan, optionally
-//	@Description	filtered by scope and/or type.
-//	@Tags			checklists
-//	@Produce		json
-//	@Param			id		path		string	true	"Plan ID (UUID)"
-//	@Param			scope	query		string	false	"Filter by scope"	Enums(daily, longterm)
-//	@Param			type	query		string	false	"Filter by type"	Enums(task, note)
-//	@Success		200		{object}	ChecklistListResponse
-//	@Failure		400		{object}	ErrorResponse
-//	@Failure		401		{object}	ErrorResponse
-//	@Failure		500		{object}	ErrorResponse
-//	@Security		BearerAuth
-//	@Router			/plans/{id}/checklists [get]
+// scope is one of daily | longterm; type is one of task | note. Both are
+// optional — an absent filter is not the same as an empty one.
 func (h *Handler) ListChecklists(c *gin.Context) {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
@@ -319,18 +280,6 @@ func (h *Handler) ListChecklists(c *gin.Context) {
 }
 
 // ListArchivedChecklists lists archived checklist items for a plan.
-//
-//	@Summary		List archived checklist items
-//	@Description	Lists archived checklist items for a plan.
-//	@Tags			checklists
-//	@Produce		json
-//	@Param			id	path		string	true	"Plan ID (UUID)"
-//	@Success		200	{object}	ChecklistListResponse
-//	@Failure		400	{object}	ErrorResponse
-//	@Failure		401	{object}	ErrorResponse
-//	@Failure		500	{object}	ErrorResponse
-//	@Security		BearerAuth
-//	@Router			/plans/{id}/checklists/archived [get]
 func (h *Handler) ListArchivedChecklists(c *gin.Context) {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
@@ -351,18 +300,6 @@ func (h *Handler) ListArchivedChecklists(c *gin.Context) {
 }
 
 // ListUpcomingChecklists lists items starting within the next week for a plan.
-//
-//	@Summary		List upcoming checklist items
-//	@Description	Lists checklist items whose start date falls within the next week.
-//	@Tags			checklists
-//	@Produce		json
-//	@Param			id	path		string	true	"Plan ID (UUID)"
-//	@Success		200	{object}	ChecklistListResponse
-//	@Failure		400	{object}	ErrorResponse
-//	@Failure		401	{object}	ErrorResponse
-//	@Failure		500	{object}	ErrorResponse
-//	@Security		BearerAuth
-//	@Router			/plans/{id}/checklists/upcoming [get]
 func (h *Handler) ListUpcomingChecklists(c *gin.Context) {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
@@ -384,25 +321,11 @@ func (h *Handler) ListUpcomingChecklists(c *gin.Context) {
 
 // UpdateChecklist applies a partial update to a checklist item.
 //
-//	@Summary		Update a checklist item
-//	@Description	Partial update. All fields optional; `parentId` is three-state
-//	@Description	(omit = leave, null = clear, value = set). Domain rules
-//	@Description	(task→note conversion blocked when the item has children;
-//	@Description	re-parenting constrained to two tiers within the same plan) are
-//	@Description	enforced downstream, not in this schema.
-//	@Tags			checklists
-//	@Accept			json
-//	@Produce		json
-//	@Param			id				path		string				true	"Plan ID (UUID)"
-//	@Param			checklist_id	path		string				true	"Checklist item ID (UUID)"
-//	@Param			request			body		UpdateChecklistReq	true	"Fields to update"
-//	@Success		200				{object}	ChecklistResponse
-//	@Failure		400				{object}	ErrorResponse
-//	@Failure		401				{object}	ErrorResponse
-//	@Failure		404				{object}	ErrorResponse
-//	@Failure		500				{object}	ErrorResponse
-//	@Security		BearerAuth
-//	@Router			/plans/{id}/checklists/{checklist_id} [patch]
+// All fields are optional, and `parentId` is three-state: omitted leaves it
+// unchanged, null clears it, a value sets it. Domain rules — task→note
+// conversion is blocked when the item has children, and re-parenting is
+// constrained to two tiers within the same plan — are enforced downstream by
+// plan-service, not by this schema.
 func (h *Handler) UpdateChecklist(c *gin.Context) {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
@@ -428,30 +351,6 @@ func (h *Handler) UpdateChecklist(c *gin.Context) {
 }
 
 // UpdateChecklistDates sets/clears the start and/or due dates of an item.
-//
-//	@Summary		Update checklist item dates
-//	@Description	Sets, clears, or leaves the item's start/due dates. Both fields
-//	@Description	are OPTIONAL and three-state (omit = leave, null = clear,
-//	@Description	"YYYY-MM-DD" = set).
-//	@Description
-//	@Description	CONDITIONAL RULE (enforced downstream in plan-service, described
-//	@Description	here in prose and intentionally NOT encoded in the schema): when
-//	@Description	both dates are present, `startDate` must be on or before
-//	@Description	`dueDate`. The spec is a shape contract, not a validator — see
-//	@Description	docs/api-conventions.md.
-//	@Tags			checklists
-//	@Accept			json
-//	@Produce		json
-//	@Param			id				path		string			true	"Plan ID (UUID)"
-//	@Param			checklist_id	path		string			true	"Checklist item ID (UUID)"
-//	@Param			request			body		UpdateDatesReq	true	"Dates to set/clear"
-//	@Success		200				{object}	ChecklistResponse
-//	@Failure		400				{object}	ErrorResponse	"e.g. startDate after dueDate (enforced downstream)"
-//	@Failure		401				{object}	ErrorResponse
-//	@Failure		404				{object}	ErrorResponse
-//	@Failure		500				{object}	ErrorResponse
-//	@Security		BearerAuth
-//	@Router			/plans/{id}/checklists/{checklist_id}/dates [patch]
 func (h *Handler) UpdateChecklistDates(c *gin.Context) {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
@@ -477,21 +376,6 @@ func (h *Handler) UpdateChecklistDates(c *gin.Context) {
 }
 
 // ArchiveChecklist archives a checklist item.
-//
-//	@Summary		Archive a checklist item
-//	@Description	Archives the item (sets archived=true). The request body is
-//	@Description	ignored — this endpoint always archives, mirroring the monolith.
-//	@Tags			checklists
-//	@Produce		json
-//	@Param			id				path		string	true	"Plan ID (UUID)"
-//	@Param			checklist_id	path		string	true	"Checklist item ID (UUID)"
-//	@Success		200				{object}	ChecklistResponse
-//	@Failure		400				{object}	ErrorResponse
-//	@Failure		401				{object}	ErrorResponse
-//	@Failure		404				{object}	ErrorResponse
-//	@Failure		500				{object}	ErrorResponse
-//	@Security		BearerAuth
-//	@Router			/plans/{id}/checklists/{checklist_id}/archive [patch]
 func (h *Handler) ArchiveChecklist(c *gin.Context) {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
@@ -515,20 +399,6 @@ func (h *Handler) ArchiveChecklist(c *gin.Context) {
 }
 
 // DeleteChecklist deletes a checklist item.
-//
-//	@Summary		Delete a checklist item
-//	@Description	Permanently deletes a checklist item.
-//	@Tags			checklists
-//	@Produce		json
-//	@Param			id				path		string	true	"Plan ID (UUID)"
-//	@Param			checklist_id	path		string	true	"Checklist item ID (UUID)"
-//	@Success		200				{object}	MessageResponse
-//	@Failure		400				{object}	ErrorResponse
-//	@Failure		401				{object}	ErrorResponse
-//	@Failure		404				{object}	ErrorResponse
-//	@Failure		500				{object}	ErrorResponse
-//	@Security		BearerAuth
-//	@Router			/plans/{id}/checklists/{checklist_id} [delete]
 func (h *Handler) DeleteChecklist(c *gin.Context) {
 	userID, err := auth.GetUserID(c)
 	if err != nil {

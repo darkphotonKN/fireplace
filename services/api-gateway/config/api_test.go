@@ -66,8 +66,6 @@ func buildEngine(c authgw.ProfileClient) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 
-	engine.GET("/swagger/*any", func(c *gin.Context) { c.String(http.StatusOK, "legacy swagger ui") })
-
 	api := engine.Group("/api")
 	api.POST("/users/signin", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "public"}) })
 
@@ -163,12 +161,6 @@ func TestMount_PublicSurfacesUnaffected(t *testing.T) {
 	t.Setenv("JWT_SECRET", testSecret)
 	e := buildEngine(fakeProfileClient{user: sampleUser()})
 
-	t.Run("swagger still serves", func(t *testing.T) {
-		rec := do(t, e, http.MethodGet, "/swagger/index.html", "")
-		if rec.Code != http.StatusOK || rec.Body.String() != "legacy swagger ui" {
-			t.Fatalf("swagger disturbed: %d %q", rec.Code, rec.Body.String())
-		}
-	})
 	t.Run("signin still public", func(t *testing.T) {
 		if rec := do(t, e, http.MethodPost, "/api/users/signin", ""); rec.Code != http.StatusOK {
 			t.Fatalf("want 200, got %d", rec.Code)

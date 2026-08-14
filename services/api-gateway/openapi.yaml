@@ -106,7 +106,7 @@ components:
       scheme: bearer
       type: http
 info:
-  description: The serialized HTTP surface of the Fireplace api-gateway. Endpoints not listed here are still described by the legacy OpenAPI 2.0 document at /swagger and are migrated on touch (ADR-0002).
+  description: The HTTP surface of the Fireplace api-gateway. This document is generated from the typed handlers and is the only description of the API — there is no second, hand-written one. Endpoints not listed here are not yet serialized (FS-0004); they are reachable but undocumented until their group lands.
   title: Fireplace API
   version: 1.0.0
 openapi: 3.1.0

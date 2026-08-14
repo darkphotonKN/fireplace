@@ -9,17 +9,14 @@ Implements FS-0004 §Requirements, §Acceptance Criteria
 
 ## What to Build
 
-The closing slice. Once every group is serialized, remove the second description of the API
-and make the gates actually guard it.
+The closing slice: make the gates actually guard the surface they now describe.
 
-**Retirement (R20)** — only after the last group lands, because until then swaggo is the only
-description of whatever remains:
-
-1. Remove the `/swagger/*any` mount from `config/routes.go`.
-2. Delete `services/api-gateway/docs/` (`docs.go` and the generated 2.0 document) and the
-   blank import that registers it.
-3. Strip the `//@` annotation blocks from the handlers.
-4. Remove the `make gen` target and the `swaggo`/`gin-swagger` dependencies from `go.mod`.
+> **The retirement half of this issue is already done.** R20 was pulled forward and executed
+> before any group was serialized (ADR-0006 §5 as amended) — the `/swagger` mount, the `//@`
+> annotations, the generated `docs/` package, `make gen`, the `lint`/`docs` targets, the
+> orphaned gateway-local Spectral ruleset, and the `swaggo`/`gin-swagger` dependencies are all
+> gone, with build, vet, the full suite, and `make gates` green. Nothing remains to do for R20;
+> the checklist below covers verification only.
 
 **Gate hardening (R21–R23)** — each of these closes a gap where a gate currently passes
 without doing anything:
@@ -55,9 +52,11 @@ green check either way, which is worse than no gate because it is trusted. Speci
 
 ## Acceptance Criteria
 
-- [ ] `/swagger` returns 404; `docs/docs.go` is deleted; `make gen` is gone
-- [ ] `swaggo` and `gin-swagger` are absent from `go.mod` and `go.sum`
-- [ ] No `//@` annotation blocks remain in the gateway
+- [x] `/swagger` returns 404; `docs/docs.go` is deleted; `make gen` is gone *(done up front)*
+- [x] `swaggo` and `gin-swagger` are absent from `go.mod` and `go.sum` *(done up front)*
+- [x] No `//@` annotation blocks remain in the gateway *(done up front — the genuine contract
+      facts they carried, the `scope`/`type` enums and `parentId`'s three-state semantics, were
+      preserved as ordinary Go doc comments rather than deleted with them)*
 - [ ] The ratchet runs with `--fail-on WARN` and produces no false positives on an unchanged
       document
 - [ ] A field rename is **observed failing** the ratchet, with the recorded run in the
@@ -74,8 +73,8 @@ green check either way, which is worse than no gate because it is trusted. Speci
 
 ## Blocked By
 
-I-0016, I-0017, I-0018, I-0019 — swaggo cannot be removed while it is still the only
-description of an unserialized group.
+I-0016, I-0017, I-0018, I-0019 — the lint fence (R18) can only land once every group has been
+cut over, and `check-contract-auth` is only meaningful once there are operations to check.
 
 ## Spec Reference
 

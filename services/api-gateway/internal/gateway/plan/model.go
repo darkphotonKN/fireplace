@@ -66,8 +66,8 @@ type UpdateChecklistReq struct {
 	Archived    *bool   `json:"archived,omitempty" example:"false"`
 	Type        *string `json:"type,omitempty" enums:"task,note" example:"task"`
 	// Parent item id: send a UUID to re-parent, null to clear, or omit to leave
-	// unchanged. swaggertype renders the three-state OptUUID as a plain string.
-	ParentID OptUUID `json:"parentId" swaggertype:"string" format:"uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	// unchanged. The three-state OptUUID marshals as a plain string.
+	ParentID OptUUID `json:"parentId" format:"uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
 }
 
 // UpdateDatesReq is the body for PATCH /plans/{id}/checklists/{checklist_id}/dates.
@@ -83,10 +83,10 @@ type UpdateChecklistReq struct {
 // docs/api-conventions.md.
 type UpdateDatesReq struct {
 	// New start date "YYYY-MM-DD", null to clear, or omit to leave unchanged.
-	StartDate OptDate `json:"startDate" swaggertype:"string" format:"date" example:"2026-06-01"`
+	StartDate OptDate `json:"startDate" format:"date" example:"2026-06-01"`
 	// New due date "YYYY-MM-DD", null to clear, or omit to leave unchanged. Must
 	// be on or after startDate when both are present (enforced downstream).
-	DueDate OptDate `json:"dueDate" swaggertype:"string" format:"date" example:"2026-06-15"`
+	DueDate OptDate `json:"dueDate" format:"date" example:"2026-06-15"`
 }
 
 type ArchiveReq struct {

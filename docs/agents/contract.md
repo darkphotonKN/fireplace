@@ -55,8 +55,8 @@ plane2_request_strictness: tolerant   # protobuf ignores unknown fields by desig
 #     its own response, so it only documents the exact published shape
 
 # --- Transitional state ---
-# The legacy swaggo/OpenAPI-2.0 surface still describes every unserialized endpoint and
-# is linted separately by `make -C services/api-gateway lint`. Both retire when the last
-# endpoint serializes (ADR-0002 §8).
-legacy_spec: services/api-gateway/docs/swagger.json
-legacy_lint: make -C services/api-gateway lint
+# There is NO legacy spec. The swaggo/OpenAPI-2.0 surface was removed outright
+# (ADR-0006 §5 as amended), so plane1_spec above is the only description of the HTTP
+# surface. Endpoints not yet serialized under FS-0004 are reachable but undocumented —
+# the document's info.description states this, so it understates coverage rather than
+# misrepresenting it. Do not add a second spec path here.

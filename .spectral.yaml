@@ -1,11 +1,11 @@
-# Spectral ruleset for the SERIALIZED contract (services/api-gateway/openapi.yaml).
+# Spectral ruleset for the contract (services/api-gateway/openapi.yaml).
 #
 # Enforces ADR-0002's "contract depth" requirement: a published operation must carry
 # descriptions, examples, and error schemas. A spec that merely parses is not a contract.
 #
-# Scope: this ruleset governs the Huma-generated OpenAPI 3.x document ONLY.
-# The legacy swaggo OpenAPI 2.0 spec is linted separately by `make -C services/api-gateway
-# lint` with Spectral's default rules, and is untouched here (ADR-0002 §8).
+# Scope: the Huma-generated OpenAPI 3.x document, which is now the ONLY description
+# of the HTTP surface. The swaggo OpenAPI 2.0 pipeline it used to coexist with was
+# removed outright (ADR-0006), so there is no second document to lint.
 
 extends: ["spectral:oas"]
 
