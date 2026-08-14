@@ -1,10 +1,27 @@
 ---
 id: I-0015
-status: open
+status: done
 implements: FS-0004
 blocked_by: []
 labels: [ready-for-agent]
 ---
+
+> **Closed with one criterion OWED, not met.** The before/after probe (R14)
+> requires a running gateway with Postgres and Consul, and the process on :6060
+> predates this change so it cannot serve as the "after". Everything provable
+> without infrastructure was proved: the document, the gates, the Go suite, the
+> transport equivalence tests (mutation-checked), and the client typecheck.
+> The envelope removal itself is verified only by construction and by the
+> transport tests — **the ratchet structurally cannot see it**, so this probe is
+> the only end-to-end evidence and it is still outstanding.
+>
+> **Found and fixed en route, not in the original scope:** `schema.d.ts` had
+> been stale since huma moved onto the engine. The document dropped its
+> `servers: [{url: /api}]` indirection, but the generated client was never
+> regenerated, so it still held relative paths — working only because that error
+> and a `/api`-suffixed baseUrl cancelled out. `make gates` has no
+> client-staleness check, so nothing caught it and nothing would have. Owed to
+> I-0020.
 Implements FS-0004 §Requirements, §API surface, §Edge States
 
 ## What to Build
