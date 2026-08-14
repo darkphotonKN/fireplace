@@ -11,8 +11,10 @@ discovered late — and asked for it to be built rather than only recorded.
 
 **The notes half is now done** (commit below): every notes handler asserts plan ownership, and
 a two-account probe confirms a stranger gets 403 on list/create/get/delete while the owner is
-unaffected. **The plans half is still open** — see "What remains". It is recorded here so the evidence below is not re-derived by whoever picks
-it up, and so the contract stops implying a guarantee that does not exist.
+unaffected. **The plans half is still open** — see "What remains".
+
+The evidence below is recorded so it is not re-derived by whoever picks this up, and so the
+contract stops implying a guarantee that does not exist.
 
 Nothing about it is urgent in the current deployment: fireplace has effectively one real user,
 so the exposure is latent rather than live. The severity is real; the exposure today is not.
@@ -49,8 +51,12 @@ answered first; see Open questions.
   calls `auth.GetUserID` or `auth.UserIDFromCtx` — and every repository query is scoped by
   `plan_id` alone. There is no user anywhere in the code path to check against. This is the
   gateway's own domain, so the fix is entirely local.
-- **Plans / checklists (plan-service).** The gateway already forwards `userID` on every call.
-  Enforcement is downstream and inconsistent between operations.
+- **Plans / checklists (the GATEWAY, not plan-service).** This was my first, wrong reading.
+  plan-service does not enforce ownership on direct reads **by design** — it treats the gateway
+  as a trusted caller and exposes `AssertPlanOwnership` for the gateway to call where ownership
+  matters. `plangw.Adapter`'s own comment states this. So the missing check is the gateway's,
+  the same as notes, and `AssertPlanOwnership` is proven to work: it is what returns 403 to a
+  stranger now that notes call it.
 
 ### Decisions taken
 
