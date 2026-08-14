@@ -77,6 +77,8 @@ func CodeFor(err error) errcode.Code {
 			return errcode.Unauthenticated
 		case codes.PermissionDenied:
 			return errcode.Forbidden
+		case codes.Unavailable:
+			return errcode.ServiceUnavailable
 		default:
 			return errcode.Internal
 		}

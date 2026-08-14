@@ -68,6 +68,11 @@ func httpForCode(code codes.Code) (int, string) {
 		return http.StatusUnauthorized, "unauthorized"
 	case codes.PermissionDenied:
 		return http.StatusForbidden, "forbidden"
+	case codes.Unavailable:
+		// A downstream service being unreachable is not a gateway fault, and
+		// unlike a 500 it tells the caller something actionable: retry. Without
+		// this case it fell through to 500 (FS-0004 R13).
+		return http.StatusServiceUnavailable, "temporarily unavailable"
 	default:
 		return http.StatusInternalServerError, "internal error"
 	}

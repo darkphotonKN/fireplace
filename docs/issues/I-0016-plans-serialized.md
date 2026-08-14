@@ -43,7 +43,13 @@ Notes specific to this group:
 
 ## Blocked By
 
-I-0015 (shared transport package and registration path)
+I-0015 (registration path and the frontend client module)
+
+> **This slice now owns the shared transport package.** I-0015 originally carried it, but users
+> needed no shared type — fireplace converts protobuf timestamps to `time.Time` at the
+> boundary, so barrowspire's `Timestamp` collision does not arise there. Plans and checklists
+> both mirror plan-service types, so the first genuine duplicate-type-name risk lands here.
+> Create the shared package when the first shared type actually appears, not before.
 
 ## Spec Reference
 
