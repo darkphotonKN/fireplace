@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
-import { authFetch } from '@/services/api';
+import { createPlan } from '@/api/plans';
 import { toast } from '@/components/ui/use-toast';
 
 // Define plan types for the dropdown
@@ -62,21 +62,11 @@ export default function CreatePlan() {
     setError(null);
 
     try {
-      const response = await authFetch('http://localhost:6060/api/plans', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create plan: ${response.statusText}`);
-      }
-
-      // Parse the response to get the new plan ID
-      const data: ApiResponse = await response.json();
-      const newPlanId = data.result.id;
+      // Bare resource, not data.result — this endpoint is serialized (FS-0004).
+      // The hardcoded http://localhost:6060 goes with it: the generated client
+      // takes its base URL from config.
+      const newPlan = await createPlan(formData);
+      const newPlanId = newPlan.id;
 
       setSuccess(true);
       toast({ title: 'Plan created' });

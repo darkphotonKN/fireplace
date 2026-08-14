@@ -1,10 +1,32 @@
 ---
 id: I-0016
-status: open
+status: done
 implements: FS-0004
 blocked_by: [I-0015]
 labels: [ready-for-agent]
 ---
+
+> **Closed with the before/after probe (R14) OWED, not met** — same as I-0015: it
+> needs a running gateway with Postgres and Consul. Everything provable without
+> infrastructure was proved.
+>
+> **Three defects found and fixed that were not in scope**, all of which would have
+> shipped silently:
+> 1. `CreatePlanReq.Description` would have been published REQUIRED (huma reads
+>    omitempty; gin reads binding:"required" — independent mechanisms, and this
+>    field had neither).
+> 2. `SearchPlans` returned `[]*pb.SearchPlanResult` straight from the client, so a
+>    protobuf would have entered `components.schemas` (ADR-0003 §3).
+> 3. **A live frontend bug**: `myplans` typed search hits as full plans, but search
+>    returns `{id, name, description, similarity}` with no `planType` — so the label
+>    ternary rendered EVERY search result as "Learning". The generated types are what
+>    surfaced it; the hand-written interface had been asserting a shape the API never
+>    returned.
+>
+> The shared transport package this issue inherited from I-0015 was still not needed:
+> plans introduced no type name that collides. I-0017 is where checklists and plans
+> genuinely share, so it lands there.
+
 Implements FS-0004 §Requirements, §API surface, §Edge States
 
 ## What to Build

@@ -3,26 +3,31 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { authFetch, searchPlans } from "@/services/api";
+import { listPlans, searchPlans, deletePlan as apiDeletePlan } from "@/api/plans";
 import { useTheme } from "@/context/ThemeContext";
 
 const PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_MS = 300;
 
-// Interface for plan data from API
-interface Plan {
+/**
+ * What this page renders — which is NOT one API shape.
+ *
+ * GET /api/plans returns full plans; GET /api/plans/search returns search hits
+ * (id, name, description, similarity) with NO planType. The hand-written type
+ * this replaces declared planType as required for both, which was false, and
+ * the generated client is what exposed it.
+ *
+ * The bug it hid: the label below reads `planType === "project" ? … : …`, so
+ * every search result rendered as "Learning" regardless of what it was.
+ * planType is optional here so absence is representable and the render has to
+ * deal with it.
+ */
+interface PlanCard {
   id: string;
   name: string;
-  planType: string;
+  planType?: string;
   focus?: string;
   description?: string;
-}
-
-// Interface for API response
-interface ApiResponse {
-  statusCode: number;
-  message: string;
-  result: Plan[];
 }
 
 export default function MyPlans() {
@@ -30,8 +35,8 @@ export default function MyPlans() {
   // - `allPlans` holds the full list returned by GET /api/plans when not searching.
   //   We paginate it client-side because that endpoint doesn't accept limit/offset.
   // - `searchResults` holds just the current page returned by GET /api/plans/search.
-  const [allPlans, setAllPlans] = useState<Plan[]>([]);
-  const [searchResults, setSearchResults] = useState<Plan[]>([]);
+  const [allPlans, setAllPlans] = useState<PlanCard[]>([]);
+  const [searchResults, setSearchResults] = useState<PlanCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [planToDelete, setPlanToDelete] = useState<string | null>(null);
@@ -79,24 +84,20 @@ export default function MyPlans() {
 
       try {
         if (!debouncedSearch) {
-          // No search term — fetch all plans (existing endpoint, no pagination)
-          const response = await authFetch("http://localhost:6060/api/plans");
-          if (!response.ok) {
-            throw new Error(`Failed to fetch plans: ${response.statusText}`);
-          }
-          const data: ApiResponse = await response.json();
+          // No search term — fetch all plans (this endpoint has no pagination)
+          const plans = await listPlans();
           if (cancelled) return;
-          setAllPlans(data.result || []);
+          setAllPlans(plans);
           setSearchResults([]);
         } else {
           // Search mode — use the paginated search endpoint
-          const data = await searchPlans(
+          const results = await searchPlans(
             debouncedSearch,
             PAGE_SIZE,
             page * PAGE_SIZE,
           );
           if (cancelled) return;
-          setSearchResults(data.result || []);
+          setSearchResults(results);
         }
       } catch (err) {
         if (cancelled) return;
@@ -133,16 +134,7 @@ export default function MyPlans() {
   // Delete plan function
   const deletePlan = async (planId: string) => {
     try {
-      const response = await authFetch(
-        `http://localhost:6060/api/plans/${planId}`,
-        {
-          method: "DELETE",
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete plan: ${response.statusText}`);
-      }
+      await apiDeletePlan(planId);
 
       // Remove the deleted plan from whichever list we're displaying
       if (isSearching) {
@@ -253,11 +245,14 @@ export default function MyPlans() {
                         >
                           {plan.name}
                         </h3>
-                        <div className="text-base font-medium mb-3 opacity-70">
-                          {plan.planType === "project"
-                            ? "Project"
-                            : "Learning"}
-                        </div>
+                        {/* Search hits carry no planType — omit the label
+                            rather than guessing. It previously defaulted to
+                            "Learning", mislabelling every search result. */}
+                        {plan.planType && (
+                          <div className="text-base font-medium mb-3 opacity-70">
+                            {plan.planType === "project" ? "Project" : "Learning"}
+                          </div>
+                        )}
                         <p className="text-base opacity-80 line-clamp-3">
                           {plan.description || "No description available"}
                         </p>

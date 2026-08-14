@@ -17,9 +17,8 @@ import {
   fetchArchivedChecklist,
   ChecklistResponse,
   ChecklistSuggestionResponse,
-  toggleDailyReset,
-  fetchPlanDetails,
 } from '@/services/api';
+import { getPlan, toggleDailyReset } from '@/api/plans';
 import { useParams } from 'next/navigation';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -1048,11 +1047,11 @@ export default function Todo({
       try {
         const [checklistResponse, planResponse] = await Promise.all([
           fetchChecklist(planId, 'daily'),
-          fetchPlanDetails(planId),
+          getPlan(planId),
         ]);
         setTodos(checklistResponse.result);
-        console.log('@DailyReset daily reset with:', planResponse.result);
-        setDailyReset(planResponse.result.dailyReset);
+        // Bare resource, not planResponse.result — serialized (FS-0004).
+        setDailyReset(planResponse.dailyReset);
       } catch (error) {
         console.log('@DailyReset Error fetching plan details');
         console.error('Error fetching plan details:', error);
@@ -1074,13 +1073,11 @@ export default function Todo({
     setDailyReset((prev) => !prev);
 
     try {
-      const response = await toggleDailyReset(planId);
-      // Only revert if we get a non-200 status code
-      if (response.statusCode !== 200) {
-        // Revert on failure
-        setDailyReset((prev) => !prev);
-        throw new Error('Failed to toggle daily reset');
-      }
+      // Serialized: a failure THROWS rather than returning a body with a
+      // statusCode to inspect, so the catch below owns the revert. The old
+      // check also meant a 201/204 would have been treated as a failure.
+      const plan = await toggleDailyReset(planId);
+      setDailyReset(plan.dailyReset);
     } catch (error) {
       console.error('Error toggling daily reset:', error);
       setError('Failed to update daily reset setting');

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { authFetch } from '@/services/api';
+import { listPlans } from '@/api/plans';
 import { useSidebar } from './LayoutWrapper';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -43,14 +43,8 @@ export default function Sidebar() {
       setError(null);
 
       try {
-        const response = await authFetch('http://localhost:6060/api/plans');
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch plans: ${response.statusText}`);
-        }
-
-        const data: ApiResponse = await response.json();
-        setPlans(data.result || []);
+        // Bare list, not data.result — this endpoint is serialized (FS-0004).
+        setPlans(await listPlans());
       } catch (err) {
         console.error('Error fetching plans:', err);
         setError('Failed to load plans');

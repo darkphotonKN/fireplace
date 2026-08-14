@@ -3,7 +3,8 @@
 import { useSearchParams } from 'next/navigation';
 import { Calendar } from '@/components/calendar/Calendar';
 import { useEffect, useState } from 'react';
-import { fetchPlan, PlanDetailData } from '@/services/api';
+import { PlanDetailData } from '@/services/api';
+import { getPlan } from '@/api/plans';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 
@@ -24,10 +25,8 @@ export default function CalendarPage() {
 
     try {
       setLoading(true);
-      const response = await fetchPlan(planId);
-      if (response.result) {
-        setPlan(response.result);
-      }
+      // Bare resource, not response.result — serialized (FS-0004).
+      setPlan(await getPlan(planId));
     } catch (error) {
       console.error('Failed to fetch plan details:', error);
     } finally {

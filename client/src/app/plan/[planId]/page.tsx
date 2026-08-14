@@ -5,7 +5,8 @@ import Todo from "@/components/Todo";
 import { NotesContainer } from "@/components/notes/NotesContainer";
 import { CalendarCard } from "@/components/calendar/CalendarCard";
 import { useEffect, useState, use } from "react";
-import { fetchPlan, PlanDetailData } from "@/services/api";
+import { PlanDetailData } from "@/services/api";
+import { getPlan } from "@/api/plans";
 
 interface VideoSuggestion {
   title: string;
@@ -50,12 +51,10 @@ export default function PlanDetail({
       setError("");
 
       try {
-        const planResponse = await fetchPlan(planId);
-        if (planResponse.result) {
-          setPlan(planResponse.result);
-        } else {
-          setError(planResponse.message || "Failed to load plan");
-        }
+        // Bare resource, not planResponse.result — serialized (FS-0004).
+        // A failure now throws rather than returning a body with a message,
+        // so the catch below is the only error path.
+        setPlan(await getPlan(planId));
       } catch (error) {
         console.error("Error loading plan:", error);
         setError("Failed to load plan data");

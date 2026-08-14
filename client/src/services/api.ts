@@ -174,44 +174,9 @@ export interface SearchPlansResponse {
   result: SearchPlan[];
 }
 
-/**
- * Search plans by term with pagination.
- * Backend requires `term` to be non-empty; limit/offset are passed as strings
- * per the SearchParam struct's `form:"limit"` / `form:"offset"` tags.
- * Response has no total count — caller detects "last page" by checking if
- * the returned array has fewer than `limit` items.
- */
-export const searchPlans = async (
-  term: string,
-  limit: number,
-  offset: number,
-): Promise<SearchPlansResponse> => {
-  const params = new URLSearchParams({
-    term,
-    limit: String(limit),
-    offset: String(offset),
-  });
-  const response = await authFetch(
-    `${API_BASE_URL}/api/plans/search?${params.toString()}`,
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to search plans: ${response.statusText}`);
-  }
-  return await response.json();
-};
 
-/**
- * Fetch Plan Information
- */
-export const fetchPlan = async (id: string): Promise<PlanDetailResponse> => {
-  const response = await authFetch(`${API_BASE_URL}/api/plans/${id}`);
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch checklist: ${response.statusText}`);
-  }
 
-  return await response.json();
-};
 
 /**
  * Fetch all checklist items for the specified plan
@@ -512,22 +477,7 @@ export const fetchArchivedChecklist = async (
   return await response.json();
 };
 
-export const toggleDailyReset = async (
-  planId: string,
-): Promise<ApiResponse> => {
-  const response = await authFetch(
-    `${API_BASE_URL}/api/plans/${planId}/toggle-daily-reset`,
-    {
-      method: "PATCH",
-    },
-  );
 
-  if (!response.ok) {
-    throw new Error("Failed to toggle daily reset");
-  }
-
-  return response.json();
-};
 
 // --- Auth ---
 //
@@ -554,16 +504,4 @@ export type { UserProfile, UpdateProfileRequest } from "@/api/profile";
 
 export { getProfile, updateProfile } from "@/api/profile";
 
-export const fetchPlanDetails = async (
-  planId: string,
-): Promise<PlanResponse> => {
-  const response = await authFetch(
-    `${API_BASE_URL}/api/plans/${planId}`,
-  );
 
-  if (!response.ok) {
-    throw new Error("Failed to fetch plan details");
-  }
-
-  return response.json();
-};
