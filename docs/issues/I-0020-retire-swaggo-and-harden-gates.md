@@ -57,6 +57,11 @@ green check either way, which is worse than no gate because it is trusted. Speci
 - [x] No `//@` annotation blocks remain in the gateway *(done up front — the genuine contract
       facts they carried, the `scope`/`type` enums and `parentId`'s three-state semantics, were
       preserved as ordinary Go doc comments rather than deleted with them)*
+- [x] A client-staleness gate (`client-diff`) is wired into `make gates` and observed rejecting
+      the exact drift that motivated it — relative paths in a committed `schema.d.ts` — exiting
+      non-zero, and restoring the committed file rather than silently auto-fixing it *(pulled
+      forward into I-0015: the drift was found there, and leaving the gate unbuilt while knowing
+      the hole existed would have let the next slice reintroduce it)*
 - [ ] The ratchet runs with `--fail-on WARN` and produces no false positives on an unchanged
       document
 - [ ] A field rename is **observed failing** the ratchet, with the recorded run in the

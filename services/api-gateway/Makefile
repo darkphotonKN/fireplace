@@ -213,11 +213,38 @@ openapi-breaking: $(OASDIFF)
 			--err-ignore $(OASDIFF_IGNORE) --fail-on ERR; \
 	fi
 
+# Fail if the committed TypeScript client differs from one regenerated off the
+# committed spec.
+#
+# This gate exists because its absence caused a real bug. When Huma moved onto
+# the gin engine, the document stopped declaring `servers: [{url: /api}]` and
+# operations began carrying their full path. schema.d.ts was never regenerated,
+# so it kept the relative paths — and the client kept WORKING, because a stale
+# relative path plus a baseUrl ending in /api produced the correct URL. Two
+# errors cancelling is the worst possible failure mode: nothing is red, and the
+# next correct change to either half breaks the app.
+#
+# openapi-diff proves the spec matches the Go code. Without this, nothing proved
+# the client matches the spec — the chain had a gap at its last link.
+client-diff:
+	@if [ ! -f $(OPENAPI_SPEC) ]; then \
+		echo "SKIPPED: $(OPENAPI_SPEC) does not exist yet"; \
+	elif [ ! -f $(CLIENT_DIR)/schema.d.ts ]; then \
+		echo "❌ $(CLIENT_DIR)/schema.d.ts is missing — run 'make client' and commit"; exit 1; \
+	else \
+		cp $(CLIENT_DIR)/schema.d.ts /tmp/schema.committed.d.ts && \
+		$(MAKE) --no-print-directory client >/dev/null && \
+		{ diff -u /tmp/schema.committed.d.ts $(CLIENT_DIR)/schema.d.ts \
+			|| { cp /tmp/schema.committed.d.ts $(CLIENT_DIR)/schema.d.ts; \
+			     echo "❌ committed client != regenerated — run 'make client' and commit"; exit 1; }; } && \
+		echo "✅ committed client matches the spec"; \
+	fi
+
 # Every plane-1 gate, in the order CI runs them.
-gates: openapi-diff lint-contract openapi-breaking
+gates: openapi-diff lint-contract client-diff openapi-breaking
 	@echo "✅ contract gates complete"
 
-.PHONY: run test migrate-up migrate-down migrate-status migrate-down-to migrate-reset migrate-create migrate-fix db-force-clean db-drop db-create db-drop-create openapi client lint-contract openapi-diff openapi-breaking gates
+.PHONY: run test migrate-up migrate-down migrate-status migrate-down-to migrate-reset migrate-create migrate-fix db-force-clean db-drop db-create db-drop-create openapi client lint-contract openapi-diff client-diff openapi-breaking gates
 
 
 

@@ -18,7 +18,7 @@ plane1_breaking_version: 1.28.0        # pinned prebuilt binary in services/api-
                                        # nobody touched the contract, and every oasdiff release
                                        # requires go >= 1.26 while this module is on 1.25.0
 plane1_breaking_allowlist: .oasdiff-ignore
-plane1_gates: make -C services/api-gateway gates
+plane1_gates: make -C services/api-gateway gates   # openapi-diff, lint-contract, client-diff, openapi-breaking
 plane1_fixtures: contract-fixtures/    # known-bad inputs the gates must reject + the worked
                                        # allowlist example; run them after any gate config change
 
