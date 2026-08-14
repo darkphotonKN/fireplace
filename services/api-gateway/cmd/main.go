@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"os"
+	"strings"
 
 	"github.com/darkphotonKN/fireplace/common/discovery/consul"
 	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
@@ -11,10 +11,9 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// The OpenAPI spec is generated FROM this code (code-first) and is a build
-// artifact — never hand-edited. `make gen` (or `go generate ./...`) regenerates
-// default); see docs/api-conventions.md for the governing principle.
-
+// The OpenAPI document is generated FROM this code (code-first) and is a build
+// artifact — never hand-edited. `make openapi` regenerates it from the typed
+// handlers; `make gates` fails if the committed copy has drifted.
 
 /**
 * Main entry point to entire application.
@@ -44,16 +43,25 @@ func main() {
 	// router setup
 	router := config.SetupRouter(db, registry)
 
-	defaultDevPort := ":8080"
+	// The listen address is built with a colon exactly once. The default used to
+	// carry its own (":8080") while the address was also built with one, so an
+	// unset PORT produced "::8080" — which SplitHostPort rejects as too many
+	// colons. It survived because every environment that runs this sets PORT,
+	// so the failure only ever showed up as a bind error logged after a startup
+	// line that had already claimed success.
+	//
+	// TrimPrefix accepts PORT in either form.
+	const defaultDevPort = "8080"
 
-	port := os.Getenv("PORT")
+	port := strings.TrimPrefix(os.Getenv("PORT"), ":")
 	if port == "" {
 		port = defaultDevPort
 	}
+	addr := ":" + port
 
-	// starts server and listen on port
-	logger.Info("Starting server", "port", port)
-	if err := router.Run(fmt.Sprintf(":%s", port)); err != nil {
+	logger.Info("Starting server", "addr", addr)
+	if err := router.Run(addr); err != nil {
 		logger.Error("Failed to start server", "error", err)
+		os.Exit(1)
 	}
 }
