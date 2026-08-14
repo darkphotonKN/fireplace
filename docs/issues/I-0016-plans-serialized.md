@@ -6,9 +6,10 @@ blocked_by: [I-0015]
 labels: [ready-for-agent]
 ---
 
-> **Closed with the before/after probe (R14) OWED, not met** — same as I-0015: it
-> needs a running gateway with Postgres and Consul. Everything provable without
-> infrastructure was proved.
+> **All criteria met**, including the before/after probe (R14) — see
+> `docs/notes/fs0004-envelope-probe.md`. The plans half of that probe initially
+> ran against an EMPTY list, which would have passed vacuously; a plan was
+> created and it was re-run so the record comparison is real.
 >
 > **Three defects found and fixed that were not in scope**, all of which would have
 > shipped silently:
@@ -58,7 +59,7 @@ Notes specific to this group:
       `models.*` type in `components.schemas`
 - [ ] Round-trip test over a **populated** fixture asserts JSON equality
 - [ ] List responses marshal to `[]` and never `null`
-- [ ] Before/after probe recorded showing the envelope removed, payload otherwise unchanged
+- [x] Before/after probe recorded showing the envelope removed, payload otherwise unchanged — `docs/notes/fs0004-envelope-probe.md`
 - [ ] `make openapi-diff`, `make lint-contract`, `make openapi-breaking` green
 - [ ] FE plan call sites cut over to the generated client; client typecheck green
 - [ ] Full Go test suite green

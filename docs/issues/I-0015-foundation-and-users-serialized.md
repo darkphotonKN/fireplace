@@ -6,10 +6,15 @@ blocked_by: []
 labels: [ready-for-agent]
 ---
 
-> **Closed with one criterion OWED, not met.** The before/after probe (R14)
-> requires a running gateway with Postgres and Consul, and the process on :6060
-> predates this change so it cannot serve as the "after". Everything provable
-> without infrastructure was proved: the document, the gates, the Go suite, the
+> **All criteria met.** The before/after probe (R14) was initially recorded as
+> owed on the belief that no infrastructure was available. That was an
+> assumption, not a finding — Consul, both databases, auth-service and
+> plan-service were all running the whole time. The probe has since been run
+> against a baseline built from git at `b56ad32`, and the evidence is in
+> `docs/notes/fs0004-envelope-probe.md`: the envelope is gone and every payload
+> is byte-identical apart from the declared date rename.
+>
+> Everything else was proved without infrastructure: the document, the gates, the Go suite, the
 > transport equivalence tests (mutation-checked), and the client typecheck.
 > The envelope removal itself is verified only by construction and by the
 > transport tests — **the ratchet structurally cannot see it**, so this probe is
