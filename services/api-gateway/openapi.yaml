@@ -27,6 +27,22 @@ components:
         - refreshExpiresIn
         - userInfo
       type: object
+    CreatePlanReq:
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        focus:
+          type: string
+        name:
+          type: string
+        planType:
+          type: string
+      required:
+        - name
+        - focus
+        - planType
+      type: object
     ErrorDetail:
       additionalProperties: false
       properties:
@@ -38,6 +54,40 @@ components:
           type: string
         value:
           description: The value at the given location
+      type: object
+    PlanResp:
+      additionalProperties: false
+      properties:
+        createdAt:
+          format: date-time
+          type: string
+        dailyReset:
+          type: boolean
+        description:
+          type: string
+        focus:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        planType:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        userId:
+          type: string
+      required:
+        - id
+        - userId
+        - name
+        - focus
+        - description
+        - planType
+        - dailyReset
+        - createdAt
+        - updatedAt
       type: object
     Problem:
       additionalProperties: false
@@ -116,6 +166,27 @@ components:
         - createdAt
         - updatedAt
       type: object
+    SearchResult:
+      additionalProperties: false
+      properties:
+        description:
+          description: Plan description
+          type: string
+        id:
+          description: Plan id
+          type: string
+        name:
+          description: Plan name
+          type: string
+        similarity:
+          description: Relevance score for the query term
+          format: float
+          type: number
+      required:
+        - id
+        - name
+        - similarity
+      type: object
     SigninRequest:
       additionalProperties: false
       properties:
@@ -151,6 +222,18 @@ components:
         - email
         - password
         - name
+      type: object
+    UpdatePlanReq:
+      additionalProperties: false
+      properties:
+        dailyReset:
+          type: boolean
+        description:
+          type: string
+        focus:
+          type: string
+        name:
+          type: string
       type: object
     UpdateProfileRequest:
       additionalProperties: false
@@ -219,6 +302,457 @@ info:
   version: 1.0.0
 openapi: 3.1.0
 paths:
+  /api/plans:
+    get:
+      description: Returns every plan owned by the authenticated user.
+      operationId: listPlans
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/PlanResp"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: List the caller's plans
+    post:
+      description: Creates a plan owned by the authenticated user.
+      operationId: createPlan
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanReq"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanResp"
+          description: Created
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Create a plan
+  /api/plans/search:
+    get:
+      description: Full-text search across the caller's plans, ranked by similarity.
+      operationId: searchPlans
+      parameters:
+        - description: Search term
+          explode: false
+          in: query
+          name: term
+          required: true
+          schema:
+            description: Search term
+            type: string
+        - description: Maximum results
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 20
+            description: Maximum results
+            format: int64
+            type: integer
+        - description: Results to skip
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: Results to skip
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/SearchResult"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Search plans
+  /api/plans/shared:
+    get:
+      description: Returns plans other users have shared with the authenticated user.
+      operationId: listSharedPlans
+      parameters:
+        - description: Maximum results
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 20
+            description: Maximum results
+            format: int64
+            type: integer
+        - description: Results to skip
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: Results to skip
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/PlanResp"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: List plans shared with the caller
+  /api/plans/{id}:
+    delete:
+      description: Deletes a plan. Answers 204 with no body.
+      operationId: deletePlan
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Delete a plan
+    get:
+      description: Returns one plan by id. Ownership is enforced by plan-service, which answers 403 when the caller does not own it.
+      operationId: getPlan
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanResp"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Get a plan
+    patch:
+      description: Partial update. Omitted fields are left unchanged.
+      operationId: updatePlan
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlanReq"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanResp"
+          description: OK
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Update a plan
+  /api/plans/{id}/toggle-daily-reset:
+    patch:
+      description: Flips dailyReset and returns the updated plan. Takes no body.
+      operationId: toggleDailyReset
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanResp"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Toggle a plan's daily-reset flag
   /api/users:
     get:
       description: Returns every user. UNBOUNDED — there is no pagination today, and this is transcribed as-is (ADR-0006 §2). Adding pagination later is a breaking change to a shape that arguably should not have been published unbounded.

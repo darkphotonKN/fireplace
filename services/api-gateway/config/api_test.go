@@ -28,6 +28,10 @@ import (
 
 const testSecret = "test-secret"
 
+// legacyProbePath is a stand-in for "some route that is still enveloped".
+// Not a real endpoint, so it never collides with a serialized one.
+const legacyProbePath = "/__legacy_probe"
+
 type fakeProfileClient struct {
 	user *pb.User
 	err  error
@@ -77,8 +81,14 @@ func buildEngine(c authgw.ProfileClient) *gin.Engine {
 	protected := api.Group("")
 	protected.Use(auth.AuthMiddleware())
 	// A legacy protected route, sibling to the serialized ones, using the
-	// untouched middleware and the legacy envelope.
-	protected.GET("/plans", func(c *gin.Context) {
+	// untouched middleware and the legacy envelope. Its job is to prove the
+	// problem+json fork does not leak into unserialized routes.
+	//
+	// The path is deliberately one that will NEVER be a real endpoint. It used to
+	// be /api/plans, which collided the moment plans were serialized and broke a
+	// test that has nothing to do with plans. Pinning a harness stub to a real
+	// path makes it fail once per migrated group, for no signal.
+	protected.GET(legacyProbePath, func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"statusCode": 200, "message": "ok", "result": []string{}})
 	})
 
@@ -168,7 +178,7 @@ func TestMount_LegacyProtectedRouteIsByteIdentical(t *testing.T) {
 	e := buildEngine(fakeProfileClient{user: sampleUser()})
 
 	// The fork must NOT leak: legacy 401 keeps the old envelope exactly.
-	rec := do(t, e, http.MethodGet, "/api/plans", "")
+	rec := do(t, e, http.MethodGet, "/api"+legacyProbePath, "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401, got %d", rec.Code)
 	}
@@ -179,7 +189,7 @@ func TestMount_LegacyProtectedRouteIsByteIdentical(t *testing.T) {
 		t.Errorf("legacy 401 content-type changed: %q", ct)
 	}
 
-	if rec := do(t, e, http.MethodGet, "/api/plans", token(t)); rec.Code != http.StatusOK {
+	if rec := do(t, e, http.MethodGet, "/api"+legacyProbePath, token(t)); rec.Code != http.StatusOK {
 		t.Errorf("legacy route with token: want 200, got %d", rec.Code)
 	}
 }

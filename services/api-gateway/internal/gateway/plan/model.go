@@ -11,10 +11,17 @@ import (
 
 // --- HTTP request shapes (kept 1:1 with the monolith API the FE expects) ---
 
+// CreatePlanReq is the body for POST /plans.
+//
+// The omitempty on Description is CONTRACT, not formatting. Huma derives
+// "required" from the absence of omitempty, while gin derives it from
+// binding:"required" — two independent mechanisms. Description was never
+// required by gin but carried no omitempty, so serializing it as-is would have
+// published it as required and returned 422 to anyone who trusted the document.
 type CreatePlanReq struct {
 	Name        string `json:"name" binding:"required"`
 	Focus       string `json:"focus" binding:"required"`
-	Description string `json:"description"`
+	Description string `json:"description,omitempty"`
 	PlanType    string `json:"planType" binding:"required"`
 }
 
@@ -159,8 +166,13 @@ type PlanResp struct {
 	Description string    `json:"description"`
 	PlanType    string    `json:"planType"`
 	DailyReset  bool      `json:"dailyReset"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	// camelCase, matching UserResponse, ProfileResponse and ChecklistResp's own
+	// startDate/dueDate. These were the last snake_case keys on the surface —
+	// publishing one entity under two spellings is a defect the retrofit would
+	// introduce rather than preserve, so it is corrected here (FS-0004 R6's
+	// exception, same as the users group). The frontend reads neither field.
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 type ChecklistResp struct {

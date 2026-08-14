@@ -107,18 +107,14 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	// under FS-0004. Until a group lands it is reachable but undocumented — a
 	// stated trade, since the swaggo document that used to describe it was
 	// removed outright (ADR-0006 §5).
-	MountSerialized(router, APIDeps{Profile: authClient, Users: authClient})
+	MountSerialized(router, APIDeps{
+		Profile: authClient,
+		Users:   authClient,
+		Plans:   planGwClient,
+	})
 
-	// -- Plan Routes (proxied to plan-service via gRPC) --
-	planRoutes := protected.Group("/plans")
-	planRoutes.GET("/:id", planGwHandler.GetPlanByID)
-	planRoutes.GET("", planGwHandler.ListPlans)
-	planRoutes.GET("/search", planGwHandler.SearchPlans)
-	planRoutes.GET("/shared", planGwHandler.ListSharedPlans)
-	planRoutes.POST("", planGwHandler.CreatePlan)
-	planRoutes.PATCH("/:id", planGwHandler.UpdatePlan)
-	planRoutes.PATCH("/:id/toggle-daily-reset", planGwHandler.ToggleDailyReset)
-	planRoutes.DELETE("/:id", planGwHandler.DeletePlan)
+	// Plan routes are SERIALIZED (FS-0004, I-0016) and registered above via
+	// MountSerialized. Their gin registrations are deleted, not left alongside.
 
 	// -- Checklist Routes (proxied to plan-service via gRPC) --
 	checkListRoutes := protected.Group("/plans/:id/checklists")

@@ -6,6 +6,7 @@ import (
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/apierr"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
 	authgw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/auth"
+	plangw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/plan"
 	"github.com/gin-gonic/gin"
 )
 
@@ -43,6 +44,7 @@ func init() {
 type APIDeps struct {
 	Profile authgw.ProfileClient
 	Users   authgw.UsersClient
+	Plans   plangw.PlansClient
 }
 
 // Doc surface paths. Public by design: the contract is browsable without a
@@ -131,6 +133,7 @@ func RegisterAPI(engine *gin.Engine, deps APIDeps, protect func(huma.Context, fu
 	api := humagin.New(engine, cfg)
 	authgw.RegisterOperations(api, deps.Profile, protect, Secured)
 	authgw.RegisterUsersOperations(api, deps.Users, protect, Secured)
+	plangw.RegisterPlanOperations(api, deps.Plans, protect, Secured)
 	return api
 }
 
