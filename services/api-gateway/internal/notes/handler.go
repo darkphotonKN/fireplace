@@ -1,29 +1,105 @@
 package notes
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/apierr"
+	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
-type Handler struct {
-	service *Service
+// PlanOwnership answers "may this caller act on this plan?".
+//
+// It is the seam this package was missing entirely. plan-service deliberately
+// does NOT enforce ownership on direct reads — it treats the gateway as a
+// trusted caller and expects the gateway to assert ownership where it matters
+// (plangw.Adapter's own comment says exactly this). Notes never asserted it, so
+// every notes endpoint was reachable by any authenticated user for any plan id:
+// a two-account probe confirmed a stranger could both READ and WRITE notes on
+// someone else's plan.
+type PlanOwnership interface {
+	AssertPlanOwnership(ctx context.Context, planID, userID uuid.UUID) error
 }
 
-// NewHandler creates a new notes handler
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+type Handler struct {
+	service   *Service
+	ownership PlanOwnership
+}
+
+// NewHandler creates a new notes handler.
+//
+// ownership is required, not optional. A nil checker fails every request CLOSED
+// rather than quietly restoring the unauthorized behaviour this replaced —
+// the failure mode of an authorization seam must never be "allow".
+func NewHandler(service *Service, ownership PlanOwnership) *Handler {
+	return &Handler{service: service, ownership: ownership}
+}
+
+// authorize parses the plan id, resolves the caller, and asserts the caller may
+// act on that plan. It writes the error response itself, so callers return on
+// ok == false.
+func (h *Handler) authorize(c *gin.Context, op string) (uuid.UUID, bool) {
+	planID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		apierr.Fail(c, "notes: "+op, fmt.Errorf("%w: plan id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("id")))
+		return uuid.Nil, false
+	}
+	userID, err := auth.GetUserID(c)
+	if err != nil {
+		apierr.Fail(c, "notes: "+op, fmt.Errorf("%w: %v", commonconstants.ErrUnauthorized, err))
+		return uuid.Nil, false
+	}
+	if h.ownership == nil {
+		apierr.Fail(c, "notes: "+op, fmt.Errorf("%w: ownership checker not configured", commonconstants.ErrForbidden))
+		return uuid.Nil, false
+	}
+	if err := h.ownership.AssertPlanOwnership(c.Request.Context(), planID, userID); err != nil {
+		apierr.Fail(c, "notes: "+op, err)
+		return uuid.Nil, false
+	}
+	return planID, true
+}
+
+// authorizeNote authorizes the PLAN in the path and then confirms the note
+// actually belongs to it.
+//
+// The plan check alone is not enough. These handlers are keyed by note id and
+// the service looks a note up by that id ALONE, so without the second check a
+// caller who owns any plan could read or delete a note belonging to someone
+// else's plan simply by putting their own plan id in the path. Ownership of the
+// container does not imply ownership of an arbitrary item claimed to be in it.
+func (h *Handler) authorizeNote(c *gin.Context, op string) (uuid.UUID, bool) {
+	planID, ok := h.authorize(c, op)
+	if !ok {
+		return uuid.Nil, false
+	}
+	noteID, err := uuid.Parse(c.Param("noteId"))
+	if err != nil {
+		apierr.Fail(c, "notes: "+op, fmt.Errorf("%w: note id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("noteId")))
+		return uuid.Nil, false
+	}
+	note, err := h.service.GetNoteByID(noteID)
+	if err != nil {
+		apierr.Fail(c, "notes: "+op, err)
+		return uuid.Nil, false
+	}
+	if note == nil || note.PlanID != planID {
+		// Not found rather than forbidden: the note is not in the plan the
+		// caller asked about, and saying "wrong plan" would confirm it exists.
+		apierr.Fail(c, "notes: "+op, fmt.Errorf("%w: note %s is not in plan %s", commonconstants.ErrNotFound, noteID, planID))
+		return uuid.Nil, false
+	}
+	return noteID, true
 }
 
 // Create handles POST /api/plans/:id/notes
 func (h *Handler) Create(c *gin.Context) {
-	planID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		apierr.Fail(c, "notes: create", fmt.Errorf("%w: plan id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("id")))
+	planID, ok := h.authorize(c, "create")
+	if !ok {
 		return
 	}
 
@@ -48,9 +124,8 @@ func (h *Handler) Create(c *gin.Context) {
 
 // GetByID handles GET /api/plans/:id/notes/:noteId
 func (h *Handler) GetByID(c *gin.Context) {
-	noteID, err := uuid.Parse(c.Param("noteId"))
-	if err != nil {
-		apierr.Fail(c, "notes: get", fmt.Errorf("%w: note id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("noteId")))
+	noteID, ok := h.authorizeNote(c, "get")
+	if !ok {
 		return
 	}
 
@@ -69,9 +144,8 @@ func (h *Handler) GetByID(c *gin.Context) {
 
 // GetAll handles GET /api/plans/:id/notes
 func (h *Handler) GetAll(c *gin.Context) {
-	planID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		apierr.Fail(c, "notes: list", fmt.Errorf("%w: plan id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("id")))
+	planID, ok := h.authorize(c, "list")
+	if !ok {
 		return
 	}
 
@@ -134,9 +208,8 @@ func (h *Handler) GetAll(c *gin.Context) {
 
 // Update handles PATCH /api/plans/:id/notes/:noteId
 func (h *Handler) Update(c *gin.Context) {
-	noteID, err := uuid.Parse(c.Param("noteId"))
-	if err != nil {
-		apierr.Fail(c, "notes: update", fmt.Errorf("%w: note id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("noteId")))
+	noteID, ok := h.authorizeNote(c, "update")
+	if !ok {
 		return
 	}
 
@@ -161,9 +234,8 @@ func (h *Handler) Update(c *gin.Context) {
 
 // Delete handles DELETE /api/plans/:id/notes/:noteId
 func (h *Handler) Delete(c *gin.Context) {
-	noteID, err := uuid.Parse(c.Param("noteId"))
-	if err != nil {
-		apierr.Fail(c, "notes: delete", fmt.Errorf("%w: note id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("noteId")))
+	noteID, ok := h.authorizeNote(c, "delete")
+	if !ok {
 		return
 	}
 
@@ -181,9 +253,8 @@ func (h *Handler) Delete(c *gin.Context) {
 
 // GenerateAINotes handles POST /api/plans/:id/notes/generate-ai
 func (h *Handler) GenerateAINotes(c *gin.Context) {
-	planID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		apierr.Fail(c, "notes: generate ai", fmt.Errorf("%w: plan id %q", commonconstants.ErrUUIDCouldNotBeParsed, c.Param("id")))
+	planID, ok := h.authorize(c, "generate ai")
+	if !ok {
 		return
 	}
 

@@ -18,6 +18,11 @@ The api-gateway is the **only HTTP surface** in the Fireplace platform — the e
 - [x] Legacy enveloped REST surface → FS-none
 - [ ] Whole gateway surface serialized and governed → FS-0004
 
+## Authorization
+
+- [x] Edge authentication on every protected route → FS-none
+- [ ] Per-user authorization on plan-scoped resources → FS-0005
+
 <!--
 LEGACY BELOW: every section from here down predates the thin format and still carries
 FS-level detail inline. Per migrate-only-what-you-touch, they are left as found rather

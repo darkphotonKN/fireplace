@@ -17,8 +17,17 @@ import (
 
 // SERIALIZED plans operations (FS-0004 §API surface, plans).
 //
-// Ownership checks live in plan-service and surface as 403. The gateway
-// supplies the caller identity and never restates a downstream rule (ADR-0005).
+// The gateway supplies the caller identity and never restates a downstream rule
+// (ADR-0005).
+//
+// AUTHORIZATION IS NOT IMPLEMENTED YET (FS-0005). An earlier version of this
+// comment claimed ownership was enforced by plan-service and surfaced as 403.
+// That was written from reading AssertPlanOwnership rather than exercising it,
+// and a two-account probe disproved it: a non-owner reads a plan successfully.
+// What plan-service actually does today is uneven — DELETE 404s a non-owner,
+// PATCH silently no-ops, GET returns the plan. 403 stays in the Errors lists
+// because it is the status these operations will use once the check lands, and
+// declaring it now means adding the behaviour is not a contract change.
 
 // SearchResult is the transport mirror for a search hit.
 //
@@ -169,7 +178,9 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 		OperationID: "getPlan", Method: http.MethodGet, Path: "/api/plans/{id}",
 		Middlewares: mw, Security: secured,
 		Summary:     "Get a plan",
-		Description: "Returns one plan by id. Ownership is enforced by plan-service, which answers 403 when the caller does not own it.",
+		Description: "Returns one plan by id. NOTE: per-user authorization is not implemented yet " +
+			"(FS-0005) — any authenticated caller can currently read any plan by id. 403 is listed " +
+			"because it is the status this operation will use once ownership is enforced.",
 		Errors:      errs,
 	}, func(ctx context.Context, in *PlanIDInput) (*PlanOutput, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)

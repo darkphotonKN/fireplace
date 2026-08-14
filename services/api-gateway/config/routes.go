@@ -84,7 +84,7 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	notesRepo := notes.NewRepository(db)
 	notesGen := ai.NewNotesGenerator()
 	notesService := notes.NewService(notesRepo, notesGen, planAdapter, planAdapter)
-	notesHandler := notes.NewHandler(notesService)
+	notesHandler := notes.NewHandler(notesService, planAdapter)
 
 	// calendar-service is remote — gateway proxies /api/plans/:id/calendar
 	// through calendargw via gRPC. Calendar-service calls plan-service on
