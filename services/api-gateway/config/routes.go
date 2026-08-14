@@ -59,8 +59,9 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	// proxy through plangw via gRPC. The adapter satisfies the in-process
 	// interfaces that cross-domain consumers (insights, notes, calendar,
 	// useranalytics, jobs) depend on.
+	// No legacy gin handler: every plan and checklist endpoint is serialized, so
+	// client is consumed directly by the typed operations.
 	planGwClient := plangw.NewClient(registry)
-	planGwHandler := plangw.NewHandler(planGwClient)
 	planAdapter := plangw.NewAdapter(planGwClient)
 
 	userAnalyticsRepo := useranalytics.NewRepository(db)
@@ -108,25 +109,16 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	// stated trade, since the swaggo document that used to describe it was
 	// removed outright (ADR-0006 §5).
 	MountSerialized(router, APIDeps{
-		Profile: authClient,
-		Users:   authClient,
-		Plans:   planGwClient,
+		Profile:    authClient,
+		Users:      authClient,
+		Plans:      planGwClient,
+		Checklists: planGwClient,
 	})
 
 	// Plan routes are SERIALIZED (FS-0004, I-0016) and registered above via
 	// MountSerialized. Their gin registrations are deleted, not left alongside.
 
-	// -- Checklist Routes (proxied to plan-service via gRPC) --
-	checkListRoutes := protected.Group("/plans/:id/checklists")
-	checkListRoutes.GET("", planGwHandler.ListChecklists)
-	checkListRoutes.GET("/archived", planGwHandler.ListArchivedChecklists)
-	checkListRoutes.GET("/upcoming", planGwHandler.ListUpcomingChecklists)
-	checkListRoutes.GET("/:checklist_id", planGwHandler.GetChecklist)
-	checkListRoutes.POST("", planGwHandler.CreateChecklist)
-	checkListRoutes.PATCH("/:checklist_id", planGwHandler.UpdateChecklist)
-	checkListRoutes.DELETE("/:checklist_id", planGwHandler.DeleteChecklist)
-	checkListRoutes.PATCH("/:checklist_id/dates", planGwHandler.UpdateChecklistDates)
-	checkListRoutes.PATCH("/:checklist_id/archive", planGwHandler.ArchiveChecklist)
+	// Checklist routes are SERIALIZED (FS-0004, I-0017), registered above.
 
 	// -- User Analytics Routes --
 	userAnalyticsRoutes := protected.Group("/analytics")

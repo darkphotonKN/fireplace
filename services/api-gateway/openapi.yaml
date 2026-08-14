@@ -1,5 +1,15 @@
 components:
   schemas:
+    ArchiveReq:
+      additionalProperties: false
+      properties:
+        archived:
+          examples:
+            - true
+          type: boolean
+      required:
+        - archived
+      type: object
     AuthResponse:
       additionalProperties: false
       properties:
@@ -26,6 +36,93 @@ components:
         - accessExpiresIn
         - refreshExpiresIn
         - userInfo
+      type: object
+    ChecklistResp:
+      additionalProperties: false
+      properties:
+        archived:
+          examples:
+            - false
+          type: boolean
+        createdAt:
+          format: date-time
+          type: string
+        description:
+          examples:
+            - Write the integration test plan
+          type: string
+        done:
+          examples:
+            - false
+          type: boolean
+        dueDate:
+          format: date-time
+          type: string
+        id:
+          examples:
+            - 3f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8
+          format: uuid
+          type: string
+        parentId:
+          format: uuid
+          type: string
+        planId:
+          examples:
+            - 550e8400-e29b-41d4-a716-446655440000
+          format: uuid
+          type: string
+        scope:
+          examples:
+            - daily
+          type: string
+        sequence:
+          examples:
+            - "1"
+          type: string
+        startDate:
+          format: date-time
+          type: string
+        type:
+          examples:
+            - task
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - description
+        - done
+        - sequence
+        - type
+        - scope
+        - archived
+        - createdAt
+        - updatedAt
+        - planId
+      type: object
+    CreateChecklistReq:
+      additionalProperties: false
+      properties:
+        description:
+          examples:
+            - Write the integration test plan
+          type: string
+        parentId:
+          examples:
+            - 550e8400-e29b-41d4-a716-446655440000
+          format: uuid
+          type: string
+        scope:
+          examples:
+            - daily
+          type: string
+        type:
+          examples:
+            - task
+          type: string
+      required:
+        - description
       type: object
     CreatePlanReq:
       additionalProperties: false
@@ -222,6 +319,58 @@ components:
         - email
         - password
         - name
+      type: object
+    UpdateChecklistReq:
+      additionalProperties: false
+      properties:
+        archived:
+          examples:
+            - false
+          type: boolean
+        description:
+          examples:
+            - Updated description
+          type: string
+        done:
+          examples:
+            - true
+          type: boolean
+        parentId:
+          description: Send a UUID to set it, null to clear it, or omit the field to leave it unchanged.
+          examples:
+            - 550e8400-e29b-41d4-a716-446655440000
+          format: uuid
+          type:
+            - string
+            - "null"
+        scope:
+          examples:
+            - longterm
+          type: string
+        type:
+          examples:
+            - task
+          type: string
+      type: object
+    UpdateDatesReq:
+      additionalProperties: false
+      properties:
+        dueDate:
+          description: Send a "YYYY-MM-DD" date to set it, null to clear it, or omit the field to leave it unchanged.
+          examples:
+            - "2026-06-01"
+          format: date
+          type:
+            - string
+            - "null"
+        startDate:
+          description: Send a "YYYY-MM-DD" date to set it, null to clear it, or omit the field to leave it unchanged.
+          examples:
+            - "2026-06-01"
+          format: date
+          type:
+            - string
+            - "null"
       type: object
     UpdatePlanReq:
       additionalProperties: false
@@ -695,6 +844,636 @@ paths:
       security:
         - bearerAuth: []
       summary: Update a plan
+  /api/plans/{id}/checklists:
+    get:
+      description: Returns non-archived items. `scope` and `type` are optional filters. Omitting a filter and sending it empty are equivalent — both return every value.
+      operationId: listChecklists
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: Filter by scope; omit (or send empty) for all
+          explode: false
+          in: query
+          name: scope
+          schema:
+            description: Filter by scope; omit (or send empty) for all
+            enum:
+              - daily
+              - longterm
+            type: string
+        - description: Filter by item type; omit (or send empty) for all
+          explode: false
+          in: query
+          name: type
+          schema:
+            description: Filter by item type; omit (or send empty) for all
+            enum:
+              - task
+              - note
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ChecklistResp"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: List a plan's checklist items
+    post:
+      description: Creates a task or note under the plan. `scope` and `type` are optional; plan-service defaults them to longterm and task. Parent nesting is validated downstream — a parent must be a top-level item in the same plan.
+      operationId: createChecklist
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChecklistReq"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistResp"
+          description: Created
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Create a checklist item
+  /api/plans/{id}/checklists/archived:
+    get:
+      description: Returns only archived items.
+      operationId: listArchivedChecklists
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ChecklistResp"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: List a plan's archived checklist items
+  /api/plans/{id}/checklists/upcoming:
+    get:
+      description: Returns items whose start date falls within the next week.
+      operationId: listUpcomingChecklists
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ChecklistResp"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: List a plan's upcoming checklist items
+  /api/plans/{id}/checklists/{checklist_id}:
+    delete:
+      description: Deletes the item. Answers 204 with no body.
+      operationId: deleteChecklist
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: Checklist item id
+          in: path
+          name: checklist_id
+          required: true
+          schema:
+            description: Checklist item id
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Delete a checklist item
+    get:
+      description: Returns one checklist item by id.
+      operationId: getChecklist
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: Checklist item id
+          in: path
+          name: checklist_id
+          required: true
+          schema:
+            description: Checklist item id
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistResp"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Get a checklist item
+    patch:
+      description: "Partial update. `parentId` is three-state: send a UUID to re-parent, null to clear, or omit to leave unchanged. Conversion and re-parenting rules are enforced downstream."
+      operationId: updateChecklist
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: Checklist item id
+          in: path
+          name: checklist_id
+          required: true
+          schema:
+            description: Checklist item id
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChecklistReq"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistResp"
+          description: OK
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Update a checklist item
+  /api/plans/{id}/checklists/{checklist_id}/archive:
+    patch:
+      description: Takes a body with `archived`. It is a SETTER, not a toggle — sending false unarchives.
+      operationId: archiveChecklist
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: Checklist item id
+          in: path
+          name: checklist_id
+          required: true
+          schema:
+            description: Checklist item id
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveReq"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistResp"
+          description: OK
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Archive or unarchive a checklist item
+  /api/plans/{id}/checklists/{checklist_id}/dates:
+    patch:
+      description: "Both dates are three-state: send \"YYYY-MM-DD\" to set, null to clear, or omit to leave unchanged. When both are present, startDate must be on or before dueDate — enforced downstream, not by this schema."
+      operationId: updateChecklistDates
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: Checklist item id
+          in: path
+          name: checklist_id
+          required: true
+          schema:
+            description: Checklist item id
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDatesReq"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistResp"
+          description: OK
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Set or clear a checklist item's dates
   /api/plans/{id}/toggle-daily-reset:
     patch:
       description: Flips dailyReset and returns the updated plan. Takes no body.

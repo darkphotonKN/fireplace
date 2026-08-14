@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 )
 
@@ -73,8 +74,13 @@ type UpdateChecklistReq struct {
 	Archived    *bool   `json:"archived,omitempty" example:"false"`
 	Type        *string `json:"type,omitempty" enums:"task,note" example:"task"`
 	// Parent item id: send a UUID to re-parent, null to clear, or omit to leave
-	// unchanged. The three-state OptUUID marshals as a plain string.
-	ParentID OptUUID `json:"parentId" format:"uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	// unchanged.
+	//
+	// No `example` tag: huma parses example as JSON for a non-string Go kind, and
+	// OptUUID is a struct, so a bare uuid string there PANICS the generator. The
+	// example belongs in the schema hook, where it is emitted against the
+	// published type rather than the Go one.
+	ParentID OptUUID `json:"parentId,omitempty"`
 }
 
 // UpdateDatesReq is the body for PATCH /plans/{id}/checklists/{checklist_id}/dates.
@@ -90,10 +96,12 @@ type UpdateChecklistReq struct {
 // docs/api-conventions.md.
 type UpdateDatesReq struct {
 	// New start date "YYYY-MM-DD", null to clear, or omit to leave unchanged.
-	StartDate OptDate `json:"startDate" format:"date" example:"2026-06-01"`
+	// Format and example come from the schema hook — see ParentID above for why
+	// they cannot be struct tags on a three-state type.
+	StartDate OptDate `json:"startDate,omitempty"`
 	// New due date "YYYY-MM-DD", null to clear, or omit to leave unchanged. Must
 	// be on or after startDate when both are present (enforced downstream).
-	DueDate OptDate `json:"dueDate" format:"date" example:"2026-06-15"`
+	DueDate OptDate `json:"dueDate,omitempty"`
 }
 
 type ArchiveReq struct {
@@ -186,40 +194,50 @@ type ChecklistResp struct {
 	DueDate     *time.Time `json:"dueDate,omitempty" format:"date-time"`
 	Scope       string     `json:"scope" enums:"daily,longterm" example:"daily"`
 	Archived    bool       `json:"archived" example:"false"`
-	CreatedAt   time.Time  `json:"created_at" format:"date-time"`
-	UpdatedAt   time.Time  `json:"updated_at" format:"date-time"`
-	PlanID      uuid.UUID  `json:"planId" format:"uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
+	// camelCase, matching every other published entity. This type already spelled
+	// startDate/dueDate in camelCase, so its own timestamps were the outlier.
+	// Nothing in the client reads either field.
+	CreatedAt time.Time `json:"createdAt" format:"date-time"`
+	UpdatedAt time.Time `json:"updatedAt" format:"date-time"`
+	PlanID    uuid.UUID `json:"planId" format:"uuid" example:"550e8400-e29b-41d4-a716-446655440000"`
 }
 
-// --- Swagger response envelopes (doc-only) ---
+// --- Published schemas for the three-state types -------------------------
 //
-// The handlers emit the gateway's standard gin.H envelope
-// ({ "statusCode": <int>, "result": <payload> } on success, and
-// { "statusCode": <int>, "message": <string> } on error via apierr.Fail).
-// These structs exist purely so the generated spec mirrors that wire shape;
-// they are never constructed in code.
+// OptUUID and OptDate are {Present, Valid, Value} in Go so a handler can tell
+// "omitted" from "explicitly null". That is an IMPLEMENTATION detail; on the
+// wire these have always been a string or null.
+//
+// Huma derives schemas from struct SHAPE, so without these hooks it publishes
+// an object requiring Present/Valid/Value — a document from which a generated
+// client would send {"parentId":{"Present":true,"Valid":true,"Value":"…"}},
+// and every real request would fail strict validation. Implementing
+// huma.SchemaProvider is what keeps the published contract equal to the wire
+// format that already shipped.
+//
+// What the schema CANNOT express: JSON Schema distinguishes null from a value,
+// but "omitted" is only the absence of the field from `required`. The third
+// state therefore lives in prose on each field, which is why these types are
+// never listed as required.
 
-// ChecklistResponse is the success envelope for a single checklist item.
-type ChecklistResponse struct {
-	StatusCode int           `json:"statusCode" example:"200"`
-	Result     ChecklistResp `json:"result"`
+// Schema publishes OptUUID as a nullable uuid string.
+func (OptUUID) Schema(huma.Registry) *huma.Schema {
+	return &huma.Schema{
+		Type:        "string",
+		Format:      "uuid",
+		Nullable:    true,
+		Description: "Send a UUID to set it, null to clear it, or omit the field to leave it unchanged.",
+		Examples:    []any{"550e8400-e29b-41d4-a716-446655440000"},
+	}
 }
 
-// ChecklistListResponse is the success envelope for a list of checklist items.
-type ChecklistListResponse struct {
-	StatusCode int             `json:"statusCode" example:"200"`
-	Result     []ChecklistResp `json:"result"`
-}
-
-// MessageResponse is the success envelope for endpoints that return only a
-// status message (e.g. delete).
-type MessageResponse struct {
-	StatusCode int    `json:"statusCode" example:"200"`
-	Message    string `json:"message" example:"Item deleted."`
-}
-
-// ErrorResponse is the standard gateway error body produced by apierr.Fail.
-type ErrorResponse struct {
-	StatusCode int    `json:"statusCode" example:"404"`
-	Message    string `json:"message" example:"not found"`
+// Schema publishes OptDate as a nullable date string.
+func (OptDate) Schema(huma.Registry) *huma.Schema {
+	return &huma.Schema{
+		Type:        "string",
+		Format:      "date",
+		Nullable:    true,
+		Description: "Send a \"YYYY-MM-DD\" date to set it, null to clear it, or omit the field to leave it unchanged.",
+		Examples:    []any{"2026-06-01"},
+	}
 }

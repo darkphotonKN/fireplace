@@ -27,11 +27,22 @@ type ctxKey struct{}
 func BridgeIdentity() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if userID, err := GetUserID(c); err == nil {
-			c.Request = c.Request.WithContext(
-				context.WithValue(c.Request.Context(), ctxKey{}, userID))
+			c.Request = c.Request.WithContext(WithUserID(c.Request.Context(), userID))
 		}
 		c.Next()
 	}
+}
+
+// WithUserID puts an authenticated identity on a context.
+//
+// The seam had a reader and no writer, so ctxKey was reachable only from this
+// package and no other package could exercise a typed handler's authenticated
+// path — a test either booted the full middleware chain or asserted nothing
+// past the 401. Exporting the writer makes the seam symmetric, and
+// BridgeIdentity now goes through it rather than touching the key directly, so
+// there is still exactly one place that knows the key.
+func WithUserID(ctx context.Context, userID uuid.UUID) context.Context {
+	return context.WithValue(ctx, ctxKey{}, userID)
 }
 
 // UserIDFromCtx reads the authenticated user inside a typed handler.

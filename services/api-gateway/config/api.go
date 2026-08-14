@@ -42,9 +42,10 @@ func init() {
 // APIDeps is the (currently tiny) set of collaborators serialized operations
 // need. Nil is legal — spec generation constructs none of them.
 type APIDeps struct {
-	Profile authgw.ProfileClient
-	Users   authgw.UsersClient
-	Plans   plangw.PlansClient
+	Profile    authgw.ProfileClient
+	Users      authgw.UsersClient
+	Plans      plangw.PlansClient
+	Checklists plangw.ChecklistsClient
 }
 
 // Doc surface paths. Public by design: the contract is browsable without a
@@ -134,6 +135,7 @@ func RegisterAPI(engine *gin.Engine, deps APIDeps, protect func(huma.Context, fu
 	authgw.RegisterOperations(api, deps.Profile, protect, Secured)
 	authgw.RegisterUsersOperations(api, deps.Users, protect, Secured)
 	plangw.RegisterPlanOperations(api, deps.Plans, protect, Secured)
+	plangw.RegisterChecklistOperations(api, deps.Checklists, protect, Secured)
 	return api
 }
 
