@@ -1,5 +1,9 @@
-import { api, messageFor, type Problem } from "./client";
+import { api, apiErrorFrom, ApiError } from "./client";
 import type { components } from "./generated/schema";
+
+// ApiError moved to ./client when users.ts also needed it. Re-exported so the
+// callers already importing it from here keep working.
+export { ApiError };
 
 /**
  * Profile read/write through the generated client (FS-0002, I-0006).
@@ -11,32 +15,18 @@ import type { components } from "./generated/schema";
 export type UserProfile = components["schemas"]["ProfileResponse"];
 export type UpdateProfileRequest = components["schemas"]["UpdateProfileRequest"];
 
-/** Thrown with the domain code intact so callers can branch on it. */
-export class ApiError extends Error {
-  constructor(
-    readonly problem: Problem | undefined,
-    readonly status: number,
-  ) {
-    super(messageFor(problem));
-    this.name = "ApiError";
-  }
-  get code() {
-    return this.problem?.code;
-  }
-}
-
 export const getProfile = async (): Promise<UserProfile> => {
-  const { data, error, response } = await api.GET("/users/profile");
-  if (error) throw new ApiError(error as Problem, response.status);
+  const { data, error, response } = await api.GET("/api/users/profile");
+  if (error) throw apiErrorFrom(error, response.status);
   return data!;
 };
 
 export const updateProfile = async (
   updates: UpdateProfileRequest,
 ): Promise<UserProfile> => {
-  const { data, error, response } = await api.PATCH("/users/profile", {
+  const { data, error, response } = await api.PATCH("/api/users/profile", {
     body: updates,
   });
-  if (error) throw new ApiError(error as Problem, response.status);
+  if (error) throw apiErrorFrom(error, response.status);
   return data!;
 };

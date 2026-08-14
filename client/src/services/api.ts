@@ -530,70 +530,22 @@ export const toggleDailyReset = async (
 };
 
 // --- Auth ---
+//
+// SERIALIZED (FS-0004, I-0015). The hand-written fetch versions of signIn and
+// signUp are gone; these re-export the generated-client versions from
+// @/api/users so existing import sites keep working.
+//
+// The response SHAPE changed with them: the {statusCode, message, result}
+// envelope is removed, so signIn resolves with the token pair directly and
+// signUp resolves with nothing. AuthUser is no longer restated here either —
+// it comes from the contract as UserResponse, which also fixes its date fields,
+// which were declared snake_case by hand and were never what the API returned.
 
-export interface AuthUser {
-  id: string;
-  name: string;
-  email: string;
-  created_at: string;
-  updated_at: string;
-}
+export type { AuthResponse, UserResponse } from "@/api/users";
+export { signIn, signUp, getUser, listUsers } from "@/api/users";
 
-export interface SignInResponse {
-  statusCode: number;
-  message: string;
-  result: {
-    accessToken: string;
-    refreshToken: string;
-    accessExpiresIn: number;
-    refreshExpiresIn: number;
-    userInfo: AuthUser;
-  };
-}
-
-export interface SignUpResponse {
-  statusCode: number;
-  message: string;
-}
-
-export const signIn = async (
-  email: string,
-  password: string,
-): Promise<SignInResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/users/signin`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || "Sign in failed");
-  }
-
-  return data;
-};
-
-export const signUp = async (
-  name: string,
-  email: string,
-  password: string,
-): Promise<SignUpResponse> => {
-  const response = await fetch(`${API_BASE_URL}/api/users/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, email, password }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || "Sign up failed");
-  }
-
-  return data;
-};
+/** @deprecated Use UserResponse from the generated contract. */
+export type AuthUser = import("@/api/users").UserResponse;
 
 // --- User Profile ---
 

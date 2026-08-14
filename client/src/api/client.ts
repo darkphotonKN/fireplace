@@ -15,17 +15,23 @@ import type { paths, components } from "./generated/schema";
  * request or response shape by hand; if the backend contract moves, this fails
  * at `tsc` instead of at runtime.
  *
- * The `/api` on the baseUrl is NOT optional. openapi.yaml declares
- * `servers: [{url: /api}]` and writes its paths relative to that
- * (`/users/profile`, not `/api/users/profile`), but openapi-fetch never reads
- * `servers` — it joins `baseUrl` + the literal path and nothing else. So the
- * gateway's base path has to live in the baseUrl. Drop it and every serialized
- * call 404s while the legacy `services/api.ts` calls, which spell `/api` out
- * per-URL, keep working — so it presents as "one page is broken", not "the
- * typed client is misconfigured".
+ * The baseUrl carries NO `/api`, and that changed. The document used to declare
+ * `servers: [{url: /api}]` with paths written relative to it (`/users/profile`),
+ * and since openapi-fetch never reads `servers` — it joins `baseUrl` + the
+ * literal path and nothing else — the prefix had to live here.
+ *
+ * Mounting huma on the engine removed that indirection: operations now declare
+ * their full path (`/api/users/profile`), so the document describes the real
+ * URL. Keeping `/api` here would send every call to `/api/api/...`.
+ *
+ * That refactor left this file stale and nothing caught it, because the two
+ * errors cancelled — a relative path in a stale `schema.d.ts` plus this prefix
+ * produced the correct URL by accident. `make gates` has no client-staleness
+ * check; adding one is I-0020's job. Until then, a contract change not followed
+ * by `make client` is caught by nothing.
  */
 export const api = createClient<paths>({
-  baseUrl: `${config.apiBaseUrl}/api`,
+  baseUrl: config.apiBaseUrl,
 });
 
 // Attach the bearer token and mirror the legacy 401 handling so serialized and
@@ -61,6 +67,7 @@ export type ErrorCode =
   | "ALREADY_EXISTS"
   | "FORBIDDEN"
   | "INTERNAL_ERROR"
+  | "SERVICE_UNAVAILABLE"
   | "PROFILE_NAME_EMPTY";
 
 /**
@@ -78,12 +85,41 @@ const MESSAGES: Record<ErrorCode, string> = {
   ALREADY_EXISTS: "That already exists.",
   FORBIDDEN: "You don't have access to that.",
   INTERNAL_ERROR: "Something went wrong on our end. Please try again.",
+  // Distinct from INTERNAL_ERROR on purpose: this one is worth retrying, and
+  // saying so is the entire reason FS-0004 R13 stopped mapping a downstream
+  // outage to 500.
+  SERVICE_UNAVAILABLE: "That service is temporarily unavailable. Please try again in a moment.",
   PROFILE_NAME_EMPTY: "Name can't be empty.",
 };
 
 export function messageFor(problem: Problem | undefined): string {
   const code = problem?.code as ErrorCode | undefined;
   return (code && MESSAGES[code]) || MESSAGES.INTERNAL_ERROR;
+}
+
+/**
+ * Thrown with the domain code intact so callers can branch on it.
+ *
+ * Lives here rather than in profile.ts because every serialized module throws
+ * it — profile.ts owned it when profile was the only serialized surface, and
+ * it re-exports it now for the callers that already import it from there.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly problem: Problem | undefined,
+    readonly status: number,
+  ) {
+    super(messageFor(problem));
+    this.name = "ApiError";
+  }
+  get code() {
+    return this.problem?.code;
+  }
+}
+
+/** Builds an ApiError from openapi-fetch's untyped `error` channel. */
+export function apiErrorFrom(error: unknown, status: number): ApiError {
+  return new ApiError(error as Problem, status);
 }
 
 /** Which form field a failure belongs to, when the code identifies one. */

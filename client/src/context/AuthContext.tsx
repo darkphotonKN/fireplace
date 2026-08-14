@@ -44,8 +44,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const data = await apiSignIn(email, password);
-    const { accessToken, refreshToken, userInfo } = data.result;
+    // Bare resource, not `data.result`: the {statusCode, message, result}
+    // envelope was removed when this endpoint was serialized (FS-0004 R4).
+    const { accessToken, refreshToken, userInfo } = await apiSignIn(email, password);
 
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
