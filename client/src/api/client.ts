@@ -14,9 +14,18 @@ import type { paths, components } from "./generated/schema";
  * `paths` is generated from openapi.yaml. Nothing in this file restates a
  * request or response shape by hand; if the backend contract moves, this fails
  * at `tsc` instead of at runtime.
+ *
+ * The `/api` on the baseUrl is NOT optional. openapi.yaml declares
+ * `servers: [{url: /api}]` and writes its paths relative to that
+ * (`/users/profile`, not `/api/users/profile`), but openapi-fetch never reads
+ * `servers` — it joins `baseUrl` + the literal path and nothing else. So the
+ * gateway's base path has to live in the baseUrl. Drop it and every serialized
+ * call 404s while the legacy `services/api.ts` calls, which spell `/api` out
+ * per-URL, keep working — so it presents as "one page is broken", not "the
+ * typed client is misconfigured".
  */
 export const api = createClient<paths>({
-  baseUrl: config.apiBaseUrl,
+  baseUrl: `${config.apiBaseUrl}/api`,
 });
 
 // Attach the bearer token and mirror the legacy 401 handling so serialized and
