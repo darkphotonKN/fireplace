@@ -42,6 +42,7 @@ read-model, HTTP REST surface, AI suggestions) are listed under **Owned elsewher
 - [x] Cascade-delete a user's plans on `user.deleted`
 - [x] `plan.created` published via transactional outbox
 - [ ] `plan.deleted` event (marshaled, publish stubbed out)
+- [ ] Guided and custom plan creation → FS-0006
 
 ### Checklist Items
 
@@ -51,6 +52,7 @@ read-model, HTTP REST surface, AI suggestions) are listed under **Owned elsewher
 - [x] List a user's items across their plans
 - [x] `checklist_item.completed` / `.uncompleted` events on done-flip
 - [ ] Daily-items-only-via-AI rule (not currently enforced)
+- [ ] Initial items materialized from generated insights → FS-0006
 
 ### Plan Calendar (data side)
 

@@ -4,15 +4,15 @@
 
 > Scope: AI suggestions (checklist, daily, video) + event-driven generation. Platform maps: ../../CLAUDE.md.
 
-insights-service is the **owner** of the AI Insights + video-suggestion domain in the Fireplace platform. This document describes the **target design this service implements**. Where a piece is not yet ported (real OpenAI generator, video-finder, DLQ, read-path cache), it is marked **In Progress** — it is this service's feature that is partially implemented.
+insights-service is the **owner** of the AI Insights + video-suggestion domain in the Fireplace platform. This document describes the **target design this service implements**. Where a piece is not yet finished (DLQ, read-path cache, starting the event consumer), it is marked **In Progress** — it is this service's feature that is partially implemented.
 
 ## Domain Terms
 
 | Term                  | Meaning                                                                                                                                                         |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Insight**           | An AI-generated productivity artifact for a plan: a single suggestion, a set of daily focus items, or video recommendations.                                    |
-| **Content Generator** | The pluggable LLM seam (`ContentGenerator.Generate(prompt) → text`). Target implementation: OpenAI GPT-4o. Currently a stub.                                    |
-| **Discovery**         | The subsystem that turns AI-generated search terms into concrete tutorial videos (YouTube crawler). Currently only the search-term generation half exists here. |
+| **Content Generator** | The pluggable LLM seam (`ContentGenerator.Generate(prompt) → text`). Implemented by `ai.Generator` over OpenAI (`gpt-5-mini` by default, `OPENAI_MODEL` overrides). One generator per system prompt. |
+| **Discovery**         | The subsystem that turns AI-generated search terms into concrete tutorial videos (YouTube crawler). Both halves live here.                                     |
 | **Focus**             | A plan's high-level goal string, fetched from plan-service and fed into every prompt.                                                                           |
 | **Plan Context**      | Focus + flattened checklist items fetched from plan-service; insights owns none of this data.                                                                   |
 
@@ -23,13 +23,15 @@ insights-service is the **owner** of the AI Insights + video-suggestion domain i
 - [x] Video suggestion prompt (search-term generation)
 - [x] Pluggable `ContentGenerator` interface seam
 - [x] Plan-context read path over gRPC, with ownership assertion
-- [x] Event-driven generation trigger
-- [x] Exactly-once event processing
-- [ ] Real OpenAI `ContentGenerator` (stub returns `ErrGeneratorNotConfigured` today)
-- [ ] Video finder resolving search terms to videos
+- [ ] Event-driven generation trigger (consumer implemented but never started by `SetupServices`)
+- [ ] Exactly-once event processing (implemented; unreachable until the consumer is started)
+- [x] Real OpenAI `ContentGenerator`
+- [x] Video finder resolving search terms to videos
 - [ ] DLQ for unexpected inbox errors
 - [ ] Serve cached insights instead of regenerating per RPC
 - [ ] Populate `generated_insights.content` (written empty today)
+- [ ] Planless draft generation for guided plan creation → FS-0006
+- [ ] Generation outcomes published as events → FS-0006
 
 ## gRPC Surface (`insights.InsightsService`, :7106)
 
@@ -37,7 +39,7 @@ insights-service is the **owner** of the AI Insights + video-suggestion domain i
 | -------------------------- | -------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `GenerateSuggestion`       | `plan_id`, `user_id` | `suggestion` (string)                                          | One verb-first actionable checklist item, 4–20 words.                                            |
 | `GenerateDailySuggestions` | `plan_id`, `user_id` | `suggestions` (repeated string)                                | 3 items derived from longterm tasks; each draw nudged away from the prior so they don't collide. |
-| `SuggestVideos`            | `plan_id`, `user_id` | `videos` (repeated `Video{title,url,source,type,description}`) | Generates 3 search terms; returns `[]` until video-finder is ported.                             |
+| `SuggestVideos`            | `plan_id`, `user_id` | `videos` (repeated `Video{title,url,source,type,description}`) | Generates 3 search terms, then crawls one YouTube search per term and takes the first hit.       |
 
 All requests carry `user_id` for ownership assertion. Every method first calls plan-service `GetPlan` (which enforces ownership by taking `user_id`) to fetch plan context. Errors map through the shared gRPC error mapper; a malformed `plan_id`/`user_id` → `InvalidArgument`, stub generator → `Internal`.
 
@@ -102,7 +104,9 @@ PK `(event_id, consumer)` enforces dedup. Append-only ledger — never updated (
 
 - **Duplicate redelivery** — Redis `SetNX` fails fast → `ErrEventAlreadyProcessed` → `Ack`+drop; even if Redis is unavailable, the DB unique constraint rolls the tx back and reports the same.
 - **Transient vs poison** — transient DB errors → `Nack(requeue)`; malformed body / bad UUIDs / unexpected errors → `Nack(no-requeue)` (future DLQ).
-- **Generator not configured** — with the stub, all generation RPCs return `Internal` (`ErrGeneratorNotConfigured`); event processing still writes ledger + `generated_insights` (with empty content).
+- **Generation failure** — OpenAI errors are retried 3× with a 1s delay, then surface as `Internal`. A response with no choices is an error, not a panic.
+- **No usable search terms** — if the LLM returns only blank lines, `SuggestVideos` returns an empty list rather than crawling empty queries.
+- **All crawls fail** — `SuggestVideos` returns `Internal`; a partial failure yields a `No relevant video found` placeholder for that term only.
 - **plan-service unreachable** — plan-client dial/discovery failures surface as server faults (`Internal`); mapped status codes (`NotFound`, `PermissionDenied`, `InvalidArgument`, `Unauthenticated`) translate to the corresponding domain sentinels.
 
 ## Owned elsewhere

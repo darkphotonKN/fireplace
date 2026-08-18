@@ -15,6 +15,11 @@
 - [x] Hand-written fetch/axios service layer → FS-none
 - [ ] Generated client for the whole gateway surface → FS-0004
 
+## Plans
+
+- [x] Plan creation form → FS-none
+- [ ] Guided and custom plan creation → FS-0006
+
 ## Project Overview
 
 **Name**: Flow Client
