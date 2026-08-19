@@ -44,10 +44,18 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
 
 ### Creation paths
 
-- **R7.** **Custom creation** takes `planDraft` in the request body. No generation step.
-- **R8.** **Guided creation** takes a short `seed` line plus `planType`, and plan-service calls
+- **R7.** Both paths are **one operation on one resource** — `POST /api/plans` — discriminated
+  by a required `mode` field (`guided` | `custom`). Guided and custom differ in *how the draft is
+  obtained*, not in what is created, so they are not separate resources.
+- **R7a.** **Custom** (`mode=custom`) takes `planDraft` in the request body. No generation step.
+- **R8.** **Guided** (`mode=guided`) takes a short `seed` line, and plan-service calls
   insights-service to generate the whole draft. The generated text is what is persisted as
   `plan_draft`; it is not returned for approval first.
+- **R8a.** Per-field constraints (`mode` enum, `seed` 10–500, `planDraft` 1–20000) are **shape**
+  and are rejected at the boundary with 422. The conditional rule — the field matching `mode` is
+  present and the other absent — is **domain**, owned by plan-service, returning 400
+  `VALIDATION_FAILED` through the existing mapping (ADR-0005). No new error code is required for
+  it, and none is added.
 - **R9.** Both paths complete in **one client round trip** and commit **only the plan row** —
   never items.
 - **R10.** The generated draft is visible and editable in the plan-edit surface, like any other
@@ -210,10 +218,10 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
 
 ### Validation
 
-- **R57.** Custom `planDraft`: non-empty, at most 20,000 characters. Shape-validated at the
-  boundary → 422.
-- **R58.** Guided `seed`: 10 to 500 characters, **rejected before any LLM call is made**, so a
-  seed of "asdf" never costs a generation.
+- **R57.** `planDraft`: non-empty, at most 20,000 characters. Shape-validated at the boundary
+  → 422.
+- **R58.** `seed`: 10 to 500 characters, **rejected before any LLM call is made**, so a seed of
+  "asdf" never costs a generation.
 - **R59.** Domain rules stay with the owning service and return 400 with a specific code; the
   gateway never restates a downstream rule (ADR-0005).
 
@@ -299,11 +307,14 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
 
 **Creation**
 
-- [ ] Custom creation with a valid `planDraft` returns 201 and commits exactly one `plans` row
-      and zero `checklist_items`.
-- [ ] Guided creation with a valid `seed` returns 201, and the persisted `plan_draft` is the
+- [ ] `mode=custom` with a valid `planDraft` returns 201 and commits exactly one `plans` row and
+      zero `checklist_items`.
+- [ ] `mode=guided` with a valid `seed` returns 201, and the persisted `plan_draft` is the
       generated text, not the seed.
-- [ ] When `GenerateDraft` fails, guided creation returns an error and **no `plans` row exists**.
+- [ ] `mode=guided` carrying `planDraft`, or `mode=custom` carrying `seed`, is rejected 400
+      `VALIDATION_FAILED` with no plan row and no LLM call.
+- [ ] When `GenerateDraft` fails, creation returns 503 `GENERATION_FAILED` and **no `plans` row
+      exists**.
 - [ ] `SetupServices` no longer discards its registry parameter.
 - [ ] The insights client dials once and reuses the connection across calls.
 - [ ] Wrapping `GenerateDraft` inside `ExecTx` is caught by review; the call is demonstrably
@@ -391,8 +402,7 @@ does not restate or generalise it.
 
 | Op | Method + Path | Query/Params | Request body | Response | Errors |
 |----|---------------|--------------|--------------|----------|--------|
-| `createPlan` *(changed)* | POST `/api/plans` | — | `name` (req), `planDraft` (req, 1–20000), `description` (opt), `planType` (req) — `focus` **removed** | 201 `PlanResp` | 400, 401, 422, 503 |
-| `createGuidedPlan` *(new)* | POST `/api/plans/guided` | — | `name` (req), `seed` (req, 10–500), `planType` (req), `description` (opt) | 201 `PlanResp` | 400, 401, 422, 503, `GENERATION_FAILED` |
+| `createPlan` *(changed)* | POST `/api/plans` | — | `name` (req), `planType` (req), `mode` (req, `guided`\|`custom`), `planDraft` (opt, 1–20000), `seed` (opt, 10–500), `description` (opt) — `focus` **removed** | 201 `PlanResp` | 400 `VALIDATION_FAILED`, 401, 422, 503 `SERVICE_UNAVAILABLE` \| `GENERATION_FAILED` |
 | `getPlanGeneration` *(new)* | GET `/api/plans/{id}/generation` | — | — | 200 `{status, failureClass?, itemCount, requestedAt}` | 401, 403, 404, 503 |
 | `retryPlanGeneration` *(new)* | POST `/api/plans/{id}/generation/retry` | — | — | 202 (no body) | 401, 403, 404, 409, 429 `GENERATION_COOLDOWN`, 503 |
 | `updatePlan` *(changed)* | PATCH `/api/plans/{id}` | — | `focus` → `planDraft`, all optional, all `omitempty` | 200 `PlanResp` | as today |
@@ -405,8 +415,18 @@ does not restate or generalise it.
 
 | Code | Status | Meaning |
 |---|---|---|
-| `GENERATION_FAILED` | 502 | Guided draft generation failed; no plan was created. Client keeps the seed and offers retry. |
+| `GENERATION_FAILED` | **503** | insights was reachable but could not generate; no plan was created. Client keeps the seed and offers retry. Shares 503 with `SERVICE_UNAVAILABLE` (insights *unreachable*) — both retryable, different copy. Status is the coarse signal, the code is the precise one (ADR-0004). |
 | `GENERATION_COOLDOWN` | 429 | Retry requested inside the cooldown or past the attempt cap. |
+
+**502 was considered and rejected.** `apierr.httpForCode` has no 502 branch, so it would widen
+the seam for a single case. **500 was also rejected**, and for a stronger reason: per
+`errcode.go`'s own rationale, 500 means "your request broke us — do not retry," which is false
+here. A failed generation is exactly the case where retry is correct.
+
+**No code is added for the `mode` discriminator.** A body whose `mode` and payload disagree is a
+first-party client bug, not a user-facing state, and `VALIDATION_FAILED` already carries it.
+`docs/agents/contract.md`: domain codes are added when a real failure needs distinguishing,
+never speculatively.
 
 `retryPlanGeneration` returns **409** when the plan is already `generating` — the request is
 well-formed but the state forbids it, and it must not silently enqueue a second chain.
@@ -476,6 +496,13 @@ import `common/api/proto/*`, neither imports the other, so there is no Go import
 at boot; *synchronous recursion* — the guided call is planless, so insights has nothing to call
 back for. What survives is a property of the feature, not the wiring: if insights is down,
 guided creation fails, and gateway orchestration would not have made it more available.
+
+**Two creation endpoints** (`POST /api/plans` plus `POST /api/plans/guided`). Rejected: guided
+and custom create the *same resource* and differ only in how the draft is obtained. Two endpoints
+would have made the conditional-required rule enforceable as shape (422 rather than 400), which
+was the only argument for it — but it buys that by splitting one user-facing concept across two
+operations and putting a verb in a path. The discriminated body costs one small domain rule that
+the existing mapping already handles, and adds no error code.
 
 **Degrading instead of failing closed on guided generation.** Rejected: committing the plan with
 the user's seed as `plan_draft` silently hands them a custom plan when they asked for a guided
