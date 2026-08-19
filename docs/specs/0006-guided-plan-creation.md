@@ -1,445 +1,524 @@
 # FS-0006: Guided plan creation and asynchronous initial items
 
-> Status: draft · SPECIFICATION.md: services/plan-service/SPECIFICATION.md "## Plans" + "## Checklist Items", services/insights-service/SPECIFICATION.md "## Features", client/SPECIFICATION.md "## Plans" → this FS · Related ADRs: docs/adr/0002-contract-planes-code-first-openapi.md (§API surface obligation), docs/adr/0007-user-edits-win.md, docs/adr/0008-choreography-not-saga-for-generation-chains.md
+> Status: work-order · SPECIFICATION.md: services/plan-service/SPECIFICATION.md "## Plans" + "## Checklist Items", services/insights-service/SPECIFICATION.md "## Features", client/SPECIFICATION.md "## Plans" → this FS · Related ADRs: docs/adr/0002-contract-planes-code-first-openapi.md, docs/adr/0004-error-representation-rfc9457.md, docs/adr/0005-request-validation-and-contract-design.md, docs/adr/0007-user-edits-win.md, docs/adr/0008-choreography-not-saga-for-generation-chains.md
 
-**Cross-service FS.** plan-service, insights-service, and client all carry a thin line pointing here.
+**Cross-service.** plan-service, insights-service, api-gateway (contract only) and client each carry a thin line pointing here.
 
-**Scoping session:** 2026-08-18/19. Decisions were locked collaboratively but **not run through
-`challenge-me`** — annotated `(not challenged)` where that matters.
+## Summary
 
----
-
-## Scoping notes (raw)
-
-### Why this exists
-
-Today plan creation is a vending machine: the user authors a plan themselves, then clicks
+Plan creation today is a vending machine: the user writes the plan themselves, then clicks
 "get suggestion" and receives three suggestions. Nothing accumulates, and the assist arrives
 after the plan is already shaped.
 
-The goal is a creation flow that produces a structured plan, with checklist items derived
-asynchronously from persisted insights — while remaining fully skippable for users who know
-exactly what they want.
+This replaces it with two creation paths that both produce a **Plan Draft** — the freeform
+steering text that replaces `focus` — and then materializes a plan's first checklist items
+asynchronously from generated insights. **Guided** turns a short seed line into a whole plan
+draft; **Custom** lets the user write the draft themselves, at any length. Either way the plan
+row commits alone, items arrive afterwards over a two-hop event chain, and nothing about the
+generation blocks the user from using the plan.
+
+Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/CONTEXT.md`.
 
 ---
 
-### Locked decisions (arrived pre-locked; constraints, not suggestions)
+## Requirements
 
-#### Field change
+### The Plan Draft field
 
-- `focus` (one line) is renamed to **`plan_draft`**: freeform, any length, a sentence or a
-  page. It is the single input steering all downstream AI for that plan.
-- **The reason:** `focus` was doing two jobs — identifying the plan and steering the LLM — and
-  being one line meant it failed the second. Users wrote the same text into `focus` and
-  `description`.
-- `description` survives with a narrowed job: a short blurb for the plans-list block and for
-  collaborators on shared plans. Prefilled from the draft, editable.
-- A **compact derivation** of the draft feeds high-frequency calls; the **full draft** is
-  reserved for low-frequency deep calls. The draft is unbounded, so putting it in every prompt
-  is both expensive and context-diluting.
+- **R1.** `plans.focus` is renamed to `plans.plan_draft` (TEXT NOT NULL). It is freeform and
+  unbounded in the database — a sentence or a page.
+- **R2.** `plan_draft` is the single input from which all downstream AI for that plan derives.
+  A **compact derivation** of it feeds high-frequency calls; the **full draft** is reserved for
+  low-frequency deep calls. The draft is unbounded, so putting it in every prompt is both
+  expensive and context-diluting.
+- **R3.** `description` keeps its column and narrows its job: a short blurb for the plans list
+  and for collaborators on shared plans. It is prefilled from the draft at creation and is
+  independently editable thereafter.
+- **R4.** The HTTP surface publishes the field as `planDraft`. `focus` is removed from
+  `PlanResp`, `CreatePlanReq` and `UpdatePlanReq`, not aliased — there is one first-party
+  consumer and it ships with the gateway.
+- **R5.** `PlanCreatedEvent.focus` is renamed to `plan_draft`, **reusing the existing field
+  number**. insights-service is its only consumer and is mid-development.
+- **R6.** The migration is a rename; existing values are valid short drafts and need no
+  transformation. No other backfill of `plan_draft` is required.
 
-#### Flow
+### Creation paths
 
-- **No preview.** Items are never shown before creation. This was scoped and then cut — it
-  forced a synchronous LLM call and split the design into two divergent paths.
-- Two entry paths converge on a populated `plan_draft`: **guided** (user gives a short line,
-  the system drafts) and **custom / skip** (user writes the draft themselves).
-- Plan creation commits **the plan row only**. No items.
-- Item generation is asynchronous and never blocks creation.
+- **R7.** **Custom creation** takes `planDraft` in the request body. No generation step.
+- **R8.** **Guided creation** takes a short `seed` line plus `planType`, and plan-service calls
+  insights-service to generate the whole draft. The generated text is what is persisted as
+  `plan_draft`; it is not returned for approval first.
+- **R9.** Both paths complete in **one client round trip** and commit **only the plan row** —
+  never items.
+- **R10.** The generated draft is visible and editable in the plan-edit surface, like any other
+  draft. Guided and custom plans are indistinguishable once created.
+- **R11.** plan-service dials insights-service over gRPC directly. `SetupServices` stops
+  discarding its `discovery.Registry` parameter, and `internal/plan/insights_client.go` follows
+  the existing client pattern: one cached `*grpc.ClientConn`, never dialled per RPC, with
+  gRPC status codes translated into local domain sentinels.
+- **R12.** insights-service gains a **planless** generation RPC — `GenerateDraft(seed,
+  plan_type) → draft`. Planless because no plan exists yet, so unlike every other method on
+  that service it cannot begin by fetching Plan Context.
+- **R13.** The `GenerateDraft` call happens **outside** the database transaction. Folding it
+  into `ExecTx` alongside the outbox write would hold a Postgres transaction open for the
+  length of a 10–15 second LLM call.
+- **R14.** Guided generation failure is **fail-closed**: no plan row commits, and the client
+  keeps the user's seed so retry is one action.
 
-#### Event chain
+### The generation chain
 
-`plan.created` → insights-service consumes → generates and persists insights → publishes →
-plan-service consumes → materializes initial checklist items.
+- **R15.** `plan.items_requested` is the **sole** trigger for item generation, emitted both at
+  creation (guided and custom) and on user-initiated retry. insights-service binds only this
+  routing key.
+- **R16.** `plan.created` remains a general-purpose lifecycle fact with no insights binding. It
+  is never re-emitted for a retry.
+- **R17.** Each emission of `plan.items_requested` is a new outbox row and therefore a new
+  `event_id`, so retry needs no special-casing in the dedup path.
+- **R18.** insights-service publishes `insight.generated` on success and
+  `insight.generation_failed` when transient retries are exhausted. Both are **facts** — named
+  for what happened, never for what should happen next (ADR-0008).
+- **R19.** `insight.generated` carries the generated items themselves. plan-service materializes
+  them without calling back, so materialization never depends on insights being reachable.
+- **R20.** A new `insights.events` topic exchange is added to `common/constants/events.go`,
+  with routing keys `insight.generated` and `insight.generation_failed` — **singular resource**,
+  matching the file's existing `{resource}.{action}` convention.
+- **R21.** plan-service gains a `processed_events (event_id, consumer)` inbox table and a queue
+  `plan-service.insight.generated` bound to the new exchange.
+- **R22.** Materialization writes **all items and the `processed_events` row in one
+  transaction**. A partial insert followed by redelivery would produce a checklist with
+  everything twice.
+- **R23.** Effectively-once on both hops: transactional outbox on producers, inbox on consumers,
+  Redis claim as a best-effort layer with PostgreSQL as the authority. Sentinel routing:
+  already-processed → ack, transient → retry, unexpected → DLQ.
+- **R24.** `correlation_id` (whole chain) and `causation_id` (immediate parent) propagate
+  through both hops. They are envelope concerns, so `commonbroker.Message` grows a headers
+  field rather than every event proto growing two columns.
+- **R25.** Retry transport is **TTL-tiered DLX** (1m / 5m / 15m), not native requeue. A bare
+  `Nack(requeue)` redelivers the original message and increments nothing; `x-death` is populated
+  only by dead-letter round-tripping. `RetryExchange` and `DlxEventsExchange` already exist as
+  constants and are bound for the first time here.
 
-Effectively-once throughout: transactional outbox on producers, inbox with
-`processed_events (event_id, consumer)` on consumers, Redis claim as a best-effort layer, DLQ
-for unexpected errors.
+### Failure handling
 
-Items are stored in **plan-service**. Plan is the aggregate root and items are entities inside
-it — the boundary was evaluated and rejected. insights-service owns the *generation*, not the
-data.
+- **R26.** Two **disjoint** terminal outcomes. A message ends in exactly one; they never both
+  fire.
+- **R27.** *Path 1 — transient errors, retries exhausted.* insights-service publishes
+  `insight.generation_failed` rather than DLQ'ing; plan-service moves the plan to `failed`; the
+  user gets a retry action on the page they are already on. Nothing is broken, so the fastest
+  recovery is the user regenerating on the spot — a DLQ entry waiting on an operator is strictly
+  slower for a problem that will probably work next attempt.
+- **R28.** The failure publish uses **no outbox**. insights-service persists nothing about the
+  exhausted attempt — the count lives in message metadata and the plan status is owned by
+  plan-service — so there is no dual write to be atomic with. **Publish before ack**: if the
+  publish fails, do not ack, and let RabbitMQ redeliver. The unacked message is the durable
+  record. *This holds only while insights-service stays stateless about failures; the moment it
+  writes anything locally about a failed attempt, the dual-write problem returns and so does the
+  outbox.*
+- **R29.** *Path 2 — bugs, parse errors, unexpected exceptions.* Not retryable; goes to DLQ. The
+  user is told something went wrong and needs a fix. No user retry on this path.
+- **R30.** A **separate delivery-count ceiling** guards the terminal branch, distinct from the
+  generation retry count. Not-acking is reserved strictly for "the failure publish itself
+  failed"; without its own ceiling, a message already at max attempts that fails to publish and
+  requeues comes back still at max, re-evaluates as exhausted, and spins as fast as the broker
+  delivers.
+- **R31.** A **sweeper** backstops plans stuck in `generating`. A panic or OOM runs no error
+  handler at all — no failure publish, no DLQ decision, just redelivery — so something has to
+  notice. Its threshold is **derived from the retry schedule**, sitting beyond the exhausted-retry
+  window by construction, never picked by hand.
+- **R32.** User-initiated retry carries a **cooldown and an attempt cap**. An LLM call sits
+  behind that button; twenty clicks must not be twenty paid generations.
 
-#### Project invariant — user edits win
+### Plan state
 
-Once a user modifies AI-generated content, it is theirs. Regeneration may add or propose,
-never overwrite or delete a row the user has touched. This surfaced in three features and is
-recorded project-wide → **ADR-0007**, not re-decided here.
+- **R33.** `plans` gains `status`, `status_changed_at`, `failure_class`, `retry_count` and
+  `last_retry_at`.
+- **R34.** Plan status is `generating` | `ready` | `failed`, with exactly these transitions:
+  creation → `generating`; `generating → ready` (materialization, including zero items);
+  `generating → failed` (failure event or sweeper); `failed → generating` and
+  `ready → generating` (user retry / regeneration). Every other transition is rejected.
+- **R35.** Plan status is deliberately **not monotonic** — retry re-enters `generating` on
+  purpose. It is enforced by guarded conditional updates plus a database trigger, not by a
+  monotonicity rule.
+- **R36.** Status transitions driven by events use the guarded form
+  `UPDATE plans SET status = ... WHERE id = ? AND status = '<expected>'`. A second delivery
+  touches zero rows, so at-least-once delivery is safe by construction and the failure event
+  needs no `processed_events` entry of its own.
+- **R37.** `failure_class` travels with `failed`, because `failed` alone cannot drive the two
+  things that depend on it: what the user is told, and whether a retry action is offered.
+- **R38.** Any user-facing message driven off status renders **only while the plan is in that
+  status**, so a duplicate delivery cannot produce a duplicate effect.
+- **R39.** Existing rows backfill to `status='ready'`, `status_changed_at=NOW()`,
+  `failure_class NULL`, `retry_count=0`, `last_retry_at NULL`. Nothing is in flight at migration
+  time.
 
-#### Deferred, already agreed
+### Item provenance — a monotonic FSM
 
-- SSE for completion notification — polling for v1, SSE is a deliberate follow-up refactor.
+- **R40.** `checklist_items` gains `status`: `authored` | `generated` | `touched`.
+  `authored` = created by the user. `generated` = materialized and never modified.
+  `touched` = generated, then modified by the user.
+- **R41.** The **only** legal transition is `generated → touched`. `authored` and `touched` are
+  absorbing. Status can never move backwards.
+- **R42.** Monotonicity is enforced at **two layers**, matching the existing two-tier-nesting
+  idiom: a service-layer transition function that is the sole writer of the column, and a
+  `BEFORE UPDATE` trigger that rejects every illegal transition with SQLSTATE `23514`.
+  A convention that says "don't clear this" is not enough — ADR-0007 claims the protection is
+  structural, and this is what makes that claim true against a future bug or a later feature.
+- **R43.** Regeneration may add rows and may replace rows with `status='generated'`. It may
+  **never** touch `authored` or `touched` rows (ADR-0007).
+- **R44.** "Touched" means any user-initiated mutation: description, `done`, dates, re-parent,
+  scope, type, archive — every path through `UpdateItem`, `UpdateItemDates` and `ArchiveItem`.
+  It explicitly excludes **daily reset** and **materialization**, both of which are the system
+  acting rather than the user.
+- **R45.** Existing rows backfill to `authored`, so pre-existing data is user-owned and no
+  regeneration can ever remove it.
+- **R46.** A single **"clear generated items"** action deletes exactly the `status='generated'`
+  set. It is the same predicate regeneration uses, so there is one rule rather than two, and it
+  is ADR-0007-safe by construction: anything touched survives it.
+- **R47.** The client marks `generated` items subtly and **drops the marker once the item is
+  `touched`** — the marker's only job is signalling "safe to regenerate away," which stops being
+  true the moment the item is protected.
+
+### Plan types
+
+- **R48.** Learning and project plans share **one code path** and swap prompts. The data model
+  is already identical — `scope`, `type`, `parent_id`, `sequence`, dates — and
+  prerequisites-versus-dependencies is a content difference the LLM expresses through nesting and
+  sequence, both of which two-tier nesting already carries.
+- **R49.** The stale comment on migration `000003` (`-- learning or development.`) is deleted.
+  There has never been a `development` value; the live values are `project` and `learning`.
+
+### Client surface
+
+- **R50.** The creation form offers guided and custom paths. Custom is fully skippable — a user
+  who knows what they want types their draft and creates.
+- **R51.** After creation the user lands on the plan with the draft in place and a visible
+  "items are being generated" state. The plan is usable immediately; generation never gates it.
+- **R52.** Completion is detected by **polling**: every 2s for the first 30s, then every 5s,
+  then every 10s. Polling stops when status leaves `generating`, or at the sweeper threshold —
+  the client give-up and the server sweeper agree rather than disagreeing visibly.
+- **R53.** Polling pauses on tab blur and resumes with an immediate poll on focus.
+- **R54.** The status read is a **dedicated lightweight endpoint**, not a full plan GET. SSE
+  later pushes the same payload, so the client swaps transport without touching its state
+  handling. Polling remains the degradation path when SSE lands.
+- **R55.** A plans-list entry shows name, plan type, `description` and a status indicator. It
+  never shows `plan_draft`, which is too large for an inline block and lives in plan-edit. The
+  list's current `focus` render is removed — that duplication is what the field split exists to
+  fix.
+- **R56.** Editing `plan_draft` after items exist triggers **nothing automatically**. The draft
+  saves, and the plan offers "draft changed — regenerate items?" as an opt-in. Auto-regeneration
+  would burn a paid call on every save and delete work the user never asked to lose.
+
+### Validation
+
+- **R57.** Custom `planDraft`: non-empty, at most 20,000 characters. Shape-validated at the
+  boundary → 422.
+- **R58.** Guided `seed`: 10 to 500 characters, **rejected before any LLM call is made**, so a
+  seed of "asdf" never costs a generation.
+- **R59.** Domain rules stay with the owning service and return 400 with a specific code; the
+  gateway never restates a downstream rule (ADR-0005).
+
+---
+
+## User Stories
+
+1. As a user with a rough idea, I want to type one line and get a whole plan drafted for me, so
+   I don't stare at an empty form.
+2. As a user who knows exactly what I want, I want to skip generation entirely and write my own
+   draft, so the assist never slows me down.
+3. As a user, I want my plan created immediately rather than waiting on an AI call for items, so
+   I can start working while the system catches up.
+4. As a user, I want the generated draft to be editable afterwards, so a near-miss is fixable
+   rather than a restart.
+5. As a user, I want to write a draft as long as I like, so a complex plan isn't squeezed into
+   one line.
+6. As a user, I want a short description on the plans list, so I can recognise a plan without
+   reading its whole draft.
+7. As a user, I want the description prefilled from my draft, so I don't write the same thing
+   twice.
+8. As a user, I want to see that items are on their way, so an empty checklist doesn't read as a
+   failure.
+9. As a user, I want the page to update on its own when items arrive, so I don't refresh to
+   check.
+10. As a user, I want polling to stop when I switch tabs, so a background tab isn't hammering the
+    server on my behalf.
+11. As a user whose generation failed transiently, I want a retry button on the page I'm already
+    on, so recovery is one click and not a support request.
+12. As a user, I want to be told when a failure needs a fix rather than a retry, so I'm not
+    clicking a button that cannot work.
+13. As a user, I want a cooldown on retry, so I can't accidentally spend a fortune by
+    double-clicking.
+14. As a user, I want a plan that generated zero items to be usable, so an unhelpful generation
+    isn't a dead plan.
+15. As a user, I want to see which items came from AI, so I know what I'm reviewing.
+16. As a user, I want that marker to disappear once I've edited an item, so the badge means
+    something.
+17. As a user, I want to reject a whole generation in one action, so declining isn't more work
+    than accepting.
+18. As a user, I want my edits to survive regeneration, so improving a generated item isn't
+    punished by losing it.
+19. As a user, I want my hand-written items to be untouchable by any regeneration, so the feature
+    can never eat my own work.
+20. As a user, I want changing my draft to be my decision to act on, not an automatic
+    regeneration, so editing a typo doesn't rewrite my checklist.
+21. As a user, I want a learning plan to be sequenced like a curriculum and a project plan to
+    read like tasks, so the assist fits what I'm actually doing.
+22. As a user, I want to delete a plan mid-generation without anything breaking, so changing my
+    mind is safe.
+23. As a returning user, I want my existing plans untouched by this change, so nothing I already
+    built is disturbed.
+24. As a collaborator on a shared plan, I want a readable description, so I understand the plan
+    without the owner's raw draft.
+25. As an operator, I want a plan stuck in `generating` to be detected without a user reporting
+    it, so a crashed consumer surfaces on its own.
+26. As an operator, I want transient failures to reach the user and bugs to reach the DLQ, so my
+    queue isn't a support channel.
+27. As an operator, I want a redelivered event to be a no-op, so at-least-once delivery never
+    duplicates a checklist.
+28. As an operator, I want `correlation_id` on every hop, so I can trace one plan's chain across
+    two services.
+29. As an operator, I want a broken failure-publish path to stop rather than spin, so one bad
+    branch can't saturate the broker.
+30. As a developer, I want insights-service to publish facts and know nothing about who consumes
+    them, so a notification or embedding worker can subscribe later without touching it.
+31. As a developer, I want one generation trigger for both creation and retry, so retry isn't a
+    second code path.
+32. As a developer, I want provenance enforced by the database, so a future feature can't quietly
+    break ADR-0007.
+
+---
+
+## Acceptance Criteria
+
+**Field change**
+
+- [ ] `plans.focus` is renamed to `plan_draft`; every existing value survives unchanged.
+- [ ] `focus` appears nowhere in `PlanResp`, `CreatePlanReq` or `UpdatePlanReq`; `planDraft` does.
+- [ ] `PlanCreatedEvent`'s draft field is renamed with its field number reused.
+- [ ] The plans list renders `description`, not the draft.
+- [ ] Migration `000003`'s `-- learning or development.` comment is gone.
+
+**Creation**
+
+- [ ] Custom creation with a valid `planDraft` returns 201 and commits exactly one `plans` row
+      and zero `checklist_items`.
+- [ ] Guided creation with a valid `seed` returns 201, and the persisted `plan_draft` is the
+      generated text, not the seed.
+- [ ] When `GenerateDraft` fails, guided creation returns an error and **no `plans` row exists**.
+- [ ] `SetupServices` no longer discards its registry parameter.
+- [ ] The insights client dials once and reuses the connection across calls.
+- [ ] Wrapping `GenerateDraft` inside `ExecTx` is caught by review; the call is demonstrably
+      outside the transaction.
+
+**Chain**
+
+- [ ] Creating a plan writes exactly one `plan.items_requested` outbox row in the same
+      transaction as the plan row.
+- [ ] Retrying writes another `plan.items_requested` row with a different `event_id`.
+- [ ] `plan.created` is never emitted twice for one plan.
+- [ ] Delivering the same `insight.generated` twice creates the items once.
+- [ ] A materialization that fails partway leaves zero items and no `processed_events` row.
+- [ ] `correlation_id` and `causation_id` survive both hops.
+- [ ] Retries traverse the DLX tiers; `x-death` count increases across attempts.
+
+**Failure**
+
+- [ ] Exhausted transient retries move the plan to `failed` with a `failure_class`, and the UI
+      offers retry.
+- [ ] A malformed message reaches the DLQ and the plan's copy does not promise recovery.
+- [ ] Delivering `insight.generation_failed` twice leaves one `failed` plan and updates zero rows
+      the second time.
+- [ ] A failure-publish that keeps failing stops at its own ceiling instead of spinning.
+- [ ] A plan whose consumer is killed mid-generation is picked up by the sweeper.
+- [ ] The sweeper threshold is computed from the retry schedule, not a literal.
+- [ ] Retry beyond the attempt cap, or inside the cooldown, is refused without an LLM call.
+
+**Provenance**
+
+- [ ] Materialized items are `generated`; user-created items are `authored`.
+- [ ] Editing a `generated` item moves it to `touched`; editing an `authored` item leaves it
+      `authored`.
+- [ ] A direct `UPDATE` attempting `touched → generated` is rejected by the trigger with
+      SQLSTATE `23514`.
+- [ ] Daily reset does not move any item to `touched`.
+- [ ] Regeneration replaces `generated` rows and leaves `touched` and `authored` rows byte-identical.
+- [ ] "Clear generated items" removes every `generated` row and nothing else.
+- [ ] Every pre-existing item backfills to `authored`.
+
+**Client**
+
+- [ ] A plan in `generating` shows a waiting state and polls on the 2s/5s/10s schedule.
+- [ ] Polling stops on leaving `generating` and at the sweeper threshold.
+- [ ] Blurring the tab pauses polling; focusing resumes with an immediate poll.
+- [ ] A plan that finishes with zero items reads as ready-and-empty, never as an error.
+- [ ] Editing the draft on a plan with items triggers no generation and offers the opt-in.
+- [ ] `seed` under 10 or over 500 characters is rejected with 422 and no LLM call is made.
+
+---
+
+## Edge States
+
+| Scenario | Behaviour |
+| --- | --- |
+| Insights returns nothing usable | Plan reaches `ready` with zero items — a valid end state, not a failure. Showing an error for a non-error trains people to ignore errors. |
+| Plan deleted while generation is in flight | The materialization consumer checks the plan exists inside its transaction; if it is gone, **ack and drop, log at info**. Terminal, not an error, not DLQ — the user deleted it deliberately. |
+| Plan deleted, insights still generating | insights-service's write has no FK to `plans` (separate database), so it succeeds and leaves an orphan `generated_insights` row. Accepted: it is a cache, and the retention scan handles it. |
+| `insight.generated` redelivered | Inbox insert conflicts, the transaction rolls back, the consumer acks. Items exist once. |
+| `insight.generation_failed` redelivered | Guarded update matches zero rows; status unchanged, no second effect. |
+| Failure event arrives after the sweeper already failed the plan | Guarded update matches zero rows — the plan is already `failed`. First writer wins, and both agree on the outcome. |
+| Failure publish itself fails repeatedly | Terminal-branch ceiling stops the loop. Without it the message returns already at max attempts and spins with no backoff. |
+| Consumer panics mid-generation | No handler runs, so no failure event and no DLQ decision. The sweeper is the only thing that notices. |
+| Bug-class failure with no DLQ replay | **Accepted cost, stated not hidden:** that plan gets zero items *permanently*, not "until it's fixed." Copy must not promise eventual recovery. |
+| User retries during cooldown | Refused before any LLM call, with the remaining cooldown surfaced. |
+| User retries past the attempt cap | Refused; the plan stays `failed` and the retry affordance is withdrawn rather than left dead. |
+| Regeneration on a plan where every item is touched | Adds new items only; nothing is replaced. A legitimate no-delete outcome. |
+| User edits an item while materialization is committing | Materialization writes in one transaction; the edit either precedes it (item is `authored`, untouched by materialization) or follows it (`generated → touched`). No interleaved state is observable. |
+| Insights unreachable at guided creation | 503; no plan row; the client keeps the seed. |
+| Insights unreachable at retry | Retry accepted (it is asynchronous), and the chain fails normally into `failed` — the retry path does not need insights to be reachable at the moment of the click. |
+| Draft edited while items are generating | Allowed. The in-flight generation used the draft as it was at request time; the opt-in regenerate offer appears once the plan leaves `generating`. |
+| Existing plans at migration time | `status='ready'`, all items `authored`. No chain runs for them and no regeneration can touch their items. |
+| Empty `{}` PATCH on a plan | Valid no-op — every `UpdatePlanReq` field carries `omitempty` (contract-patterns §5). |
+
+---
+
+## API surface
+
+Plane 1 (client ↔ api-gateway). `/api/plans` is already serialized under FS-0004, so **no
+slice ⓪ is required** — changes flow through the typed Huma handlers and `openapi.yaml`
+regenerates. Errors are RFC 9457 `problem+json` with a `code` from `common/errcode` (ADR-0004).
+Error rows below follow the **existing** `apierr.StatusFor` / `CodeFor` mapping, which already
+maps gRPC `Unavailable → 503 SERVICE_UNAVAILABLE` correctly (contract-patterns §9) — this FS
+does not restate or generalise it.
+
+| Op | Method + Path | Query/Params | Request body | Response | Errors |
+|----|---------------|--------------|--------------|----------|--------|
+| `createPlan` *(changed)* | POST `/api/plans` | — | `name` (req), `planDraft` (req, 1–20000), `description` (opt), `planType` (req) — `focus` **removed** | 201 `PlanResp` | 400, 401, 422, 503 |
+| `createGuidedPlan` *(new)* | POST `/api/plans/guided` | — | `name` (req), `seed` (req, 10–500), `planType` (req), `description` (opt) | 201 `PlanResp` | 400, 401, 422, 503, `GENERATION_FAILED` |
+| `getPlanGeneration` *(new)* | GET `/api/plans/{id}/generation` | — | — | 200 `{status, failureClass?, itemCount, requestedAt}` | 401, 403, 404, 503 |
+| `retryPlanGeneration` *(new)* | POST `/api/plans/{id}/generation/retry` | — | — | 202 (no body) | 401, 403, 404, 409, 429 `GENERATION_COOLDOWN`, 503 |
+| `updatePlan` *(changed)* | PATCH `/api/plans/{id}` | — | `focus` → `planDraft`, all optional, all `omitempty` | 200 `PlanResp` | as today |
+| `listPlans` / `getPlan` *(changed)* | unchanged paths | unchanged | — | `PlanResp` gains `planDraft`, `status`, `failureClass?`; loses `focus` | as today |
+| `clearGeneratedItems` *(new)* | DELETE `/api/plans/{id}/checklists/generated` | — | — | 204 | 401, 403, 404, 503 |
+| `listChecklists` *(changed)* | unchanged path | unchanged | — | `ChecklistResp` gains `status` (`authored`\|`generated`\|`touched`) | as today |
+
+**New error codes** (added because a real failure needs distinguishing, not speculatively —
+`docs/agents/contract.md`):
+
+| Code | Status | Meaning |
+|---|---|---|
+| `GENERATION_FAILED` | 502 | Guided draft generation failed; no plan was created. Client keeps the seed and offers retry. |
+| `GENERATION_COOLDOWN` | 429 | Retry requested inside the cooldown or past the attempt cap. |
+
+`retryPlanGeneration` returns **409** when the plan is already `generating` — the request is
+well-formed but the state forbids it, and it must not silently enqueue a second chain.
+
+Plane 2 (gRPC) additions: `insights.InsightsService.GenerateDraft(seed, plan_type) → draft`, and
+`PlanCreatedEvent.focus → plan_draft` with the field number reused. Plane 2 governance
+(`buf lint` / `buf breaking`) is **not yet wired** in this repo — noted so the gap is explicit.
+
+---
+
+## Out of Scope
+
+- **SSE** — polling for v1; SSE is a deliberate follow-up refactor, and R54 is what keeps the
+  API from having to change when it lands.
 - Adjustment chips on generated assumptions.
 - RAG / embedding-based retrieval.
 - Adaptive profile from completion history.
+- Calendar-derived plan seeding.
+- Changes to the insights schema — that is the insights persistence scope.
+- Model selection per call, beyond noting which calls are high- versus low-frequency (R2).
+- DLQ **replay** tooling. The DLQ receives messages; nothing reads it back. R29's accepted cost
+  depends on this staying out of scope.
+- Bulk multi-select item deletion. R46 covers the generation case; general selection is its own
+  feature.
 
 ---
 
-### Decisions taken during this session
+## Ownership split for `/spec-to-issues`
 
-#### The guided step is a direct gRPC call from plan-service to insights (not the gateway)
+**Flagged as the owner's — do not assign:**
 
-The guided path is **not** "return a draft, user approves, then create." Generation happens
-**inside** creation, in one client round trip:
+- The publish legs on both hops: outbox drain, publish-worker, and `insight.generated` /
+  `insight.generation_failed` publishing.
+- All insights-service work: `GenerateDraft`, consumer wiring, inbox injection, the queue-binding
+  fix, populating `generated_insights.content`, the failure-event publisher, DLQ.
 
-```
-POST /api/plans (guided)
-        |
-        v
- plan-service CreatePlan
-        |
-        +--> insights.GenerateDraft(short_line, plan_type)   <-- OUTSIDE the tx
-        |        returns the full generated plan text
-        |
-        +--> BEGIN TX
-        |      insert plans (plan_draft = generated text)
-        |      insert outbox (plan.created, carries plan_draft)
-        |    COMMIT
-        v
-   plan returned; draft visible and editable in the plan-edit surface
-```
+**In this FS's lane:** the `plan_draft` change end-to-end (migration, proto, gRPC, HTTP contract,
+client), both creation paths, plan-service's insights client, plan-service's inbox and
+materialization transaction, both FSMs, the sweeper, the retry budget, and the client
+waiting/failed/retry surface.
 
-Custom mode is the same path minus the first arrow — `plan_draft` arrives in the request body.
-
-**Rejected: gateway orchestration** (gateway calls insights, then calls plan-service).
-Guided-vs-custom is domain logic about how a plan comes into being, and the platform's
-strangler direction moves domain logic *out* of the gateway. plan-service owning the invariant
-"a plan is created with a populated `plan_draft`" keeps it with the aggregate root.
-
-**Withdrawn objection — "that's a dependency cycle."** It is not, and this was argued and
-dropped during the session. `insights → plan-service` already exists
-(`PlanGateway.GetPlanContext`), so plan-service dialling insights makes the graph
-bidirectional — which is unremarkable. None of the three things "circular dependency" usually
-means applies: (1) *compile-time* — both services import `common/api/proto/*`, neither imports
-the other, so there is no Go import cycle; (2) *startup ordering* — clients resolve via Consul
-and dial lazily, neither blocks the other at boot; (3) *synchronous recursion* — the guided
-call is **planless** (no `plan_id` exists yet), so insights has nothing to call back for.
-Recorded so it is not re-raised.
-
-What *does* survive, and is a property of the feature rather than the wiring: if insights is
-down, guided creation fails. Gateway orchestration would not have made it more available.
-
-**Cost of the client, measured:** plan-service has **zero outbound gRPC clients today**. It
-registers with Consul, but `SetupServices(workerCtx, db, amqpChannel, _ discovery.Registry, wg)`
-**discards the registry**. Adding one is: name that parameter, and clone
-`insights-service/internal/insights/plan_client.go` (cached `ClientConn`, status-code → domain
-sentinel translation). The pattern already exists twice — insights and calendar.
-
-#### The generation call sits OUTSIDE the transaction
-
-Stated explicitly because the obvious-looking refactor is to fold it into `ExecTx` alongside
-the outbox write, which would hold a Postgres transaction open for the length of a 10–15s LLM
-call.
-
-#### Guided generation failure is fail-closed
-
-If `GenerateDraft` fails, **no plan row commits**. Rejected alternative: commit with the user's
-short line as `plan_draft`. That silently hands the user a custom plan when they asked for a
-guided one — and worse, `plan.created` then fires carrying a one-line draft, so items get
-generated from the degraded input too. One failure becomes two. Failing closed costs nothing:
-no state exists yet, the form still holds their input client-side, retry is one button.
-
-#### `project` vs "development"
-
-The original brief said "learning and development plans." **There is no `development` value.**
-`internal/plan/model.go` has `PlanTypeProject = "project"` / `PlanTypeLearning = "learning"`;
-the client dropdown renders Project / Learning. The only occurrence of the word anywhere is a
-stale comment on migration `000003` (`plan_type TEXT NOT NULL, -- learning or development.`)
-that the code never matched. Confirmed as a **typo, not a rename** — "development" means the
-existing `project`. The stale comment is worth deleting; chasing the value is not.
+Issues and docs are safe to write while insights work proceeds in parallel — no file conflict is
+possible between the two lanes.
 
 ---
 
-### Event flow and failure handling (owner handoff, verbatim)
+## Design notes — alternatives rejected, and why
 
-> Scope of this briefing: the event flow and failure handling for generating a plan's initial
-> checklist items on the guided creation path. Nothing else. Not the creation UI, not the draft
-> field changes, not the insights schema.
->
-> **The flow**
->
-> Two-hop choreography. Nothing blocks; each hop is fire-and-forget.
->
-> 1. Plan is created. Plan row commits with the draft only — no items. Outbox row written in
->    the same transaction. `plan.created` published.
-> 2. insights-service consumes it, generates insights via LLM, persists them, and publishes a
->    fact: insights were generated for plan X.
-> 3. plan-service consumes that and materializes the initial checklist items in a single
->    transaction.
->
-> **Why choreography and not orchestration**
->
-> At two hops, choreography is well within its competence — the readability problem starts
-> around four or five steps. If this chain grows past that, Temporal is already in the stack
-> and is the answer.
->
-> This is deliberately **not a saga**. A saga's defining feature is compensation, and there is
-> nothing here to compensate. Item creation fails → don't delete the insights (still valid and
-> reusable), don't delete the plan (user made it, it's usable). Failure means retry or tell the
-> user, never unwind. It's a pipeline with retries.
->
-> **Why generation is async and reads are sync**
->
-> Generation takes 10-15 seconds, so it can't sit behind a synchronous call. Reading
-> already-persisted insights is a different job and should be a synchronous gRPC call. Both,
-> for different purposes.
->
-> **Event naming matters here**
->
-> The second event is a **fact, not a command**. insights-service does not know plan-service is
-> listening and does not care. Name it after what happened (`insights.generated`), not after
-> what should happen next (`create_items_for_plan`). Same wire traffic, completely different
-> coupling — and it's what lets an embedding worker or notification service subscribe later
-> without insights-service changing at all.
->
-> Propagate `correlation_id` (whole chain) and `causation_id` (immediate parent) through both
-> hops. Costs nothing at two steps and is the only reason a longer chain is debuggable later.
->
-> **Delivery guarantees**
->
-> Effectively-once on both hops:
->
-> - Transactional outbox on producers
-> - Inbox with `processed_events (event_id, consumer)` on consumers
-> - Redis claim as a best-effort layer, PostgreSQL as authority
-> - Sentinel routing: already-processed → ack, transient → retry, unexpected → DLQ
->
-> Item materialization must be **one transaction** covering all items plus the
-> `processed_events` write. A partial insert followed by redelivery produces a checklist with
-> everything twice.
->
-> **Failure handling — the part that needs care**
->
-> Two **disjoint** outcomes. A message ends in exactly one; they never both fire.
->
-> *Path 1 — transient errors, retries exhausted*
->
-> Timeouts, rate limits, temporary unavailability. Retried with backoff and jitter. When
-> attempts are exhausted:
->
-> - insights-service publishes a **failure event** rather than DLQ'ing
-> - plan-service consumes it and moves the plan to a **failed** state
-> - User gets a **retry action** on the page they're already on
->
-> Rationale: nothing is broken, so the fastest recovery is the user regenerating on the spot. A
-> DLQ entry waiting on an operator is strictly slower for a problem that will probably just work
-> on the next attempt.
->
-> **No outbox needed for this failure publish.** The outbox exists to make a local write and a
-> publish atomic. insights-service persists nothing about the exhausted attempt — the count
-> lives in message metadata, the plan status is owned by plan-service — so there is no dual
-> write and nothing to be atomic with. **Publish before ack**: if the publish fails, don't ack,
-> let RabbitMQ redeliver. The unacked message is the durable record.
->
-> **Condition:** the moment insights-service starts writing anything locally about failed
-> attempts, the dual-write problem returns and so does the outbox. Keep it stateless about
-> failures.
->
-> *Path 2 — bugs, parse errors, unexpected exceptions*
->
-> Nothing retryable. Goes to DLQ. Copy tells the user something went wrong and a fix is needed.
-> No user retry on this path for now.
->
-> **Known accepted cost, state it rather than hide it:** with no DLQ replay path, a plan that
-> hits a bug gets zero items **permanently** — not "until it's fixed." If the copy promises
-> eventual recovery, either soften the copy or accept that shipping the fix leaves those plans
-> stranded. Fine as an edge case; shouldn't be invisible.
->
-> **Idempotency on the failure path**
->
-> The failure event does **not** need `processed_events`. Use a guarded status transition:
->
-> ```sql
-> UPDATE plans SET status = 'failed'
-> WHERE id = ? AND status = 'generating'
-> ```
->
-> Second delivery touches zero rows. A conditional update is cleaner than a dedup protocol for a
-> single state transition — and it means at-least-once delivery of the failure event is safe by
-> construction. Same principle for any user-facing message driven off status: render it only
-> while the plan is in that state, so a duplicate delivery can't produce a duplicate effect.
->
-> **Two things to get right**
->
-> *1. Delivery-count ceiling on the terminal branch, separate from the generation retry count.*
->
-> If the attempt counter travels in message metadata, a native requeue preserves it unchanged.
-> So a message that reaches max attempts, fails to publish the failure event, and gets requeued
-> comes back **already at max**. It re-evaluates as exhausted, tries to publish again, fails
-> again, requeues again — a hot loop with no backoff, spinning as fast as the broker delivers.
->
-> Safe as long as not-acking is reserved strictly for "the failure publish itself failed," which
-> is rare and usually self-resolving. Needs a **separate ceiling on that branch** so a
-> persistently broken publish path can't spin forever.
->
-> *2. A sweeper as backstop.*
->
-> Explicit failure events cover well-behaved failures. A panic or OOM runs **no error handler at
-> all** — no failure publish, no DLQ decision, just redelivery. Something has to notice a plan
-> stuck in `generating` with no resolution.
->
-> Threshold must be **derived from the retry schedule, not picked**. With TTL-tiered retry at
-> 1m/5m/15m, a 5-minute sweeper fires while retries are legitimately in flight and reports
-> failure on work that's still running. The threshold sits beyond the exhausted-retry window by
-> construction.
->
-> Fast path for known failures, sweeper for the ones that kill the process before it can report.
->
-> **Retry budget**
->
-> An LLM call sits behind the user's retry button. Needs a **cooldown and an attempt cap** —
-> otherwise twenty clicks is twenty paid generations.
->
-> **Schema implication**
->
-> `status = failed` alone isn't enough. The **failure class** needs to travel with it, since it
-> drives both the copy and whether a retry action is offered.
->
-> **Already settled, don't reopen**
->
-> - RabbitMQ durability (durable queues, persistent delivery, publisher confirms) — handled
-> - Items live in plan-service. Plan is the aggregate root, items are entities within it. The
->   service boundary was evaluated and rejected — insights-service owns generation, not the data
-> - Preview was scoped and cut
-> - Temporal is reserved for the review workflow; the first real saga is calendar write-back
+Kept because each of these was argued and would otherwise be re-argued.
 
----
+**Preview of items before creation.** Scoped and cut. It forced a synchronous LLM call and split
+the design into two divergent paths. R46's "clear generated items" is the mitigation that
+replaced it; a staging tray was reconsidered during this session and rejected as the same preview
+arriving by a different door.
 
-### Plan state model
+**Gateway orchestration of guided creation** (gateway calls insights, then calls plan-service).
+Rejected: guided-versus-custom is domain logic about how a plan comes into being, and the
+platform's strangler direction moves domain logic *out* of the gateway. plan-service owning "a
+plan is created with a populated `plan_draft`" keeps the invariant with the aggregate root.
 
-The handoff's guarded transition **requires a stored `status` column** — a derived-from-
-timestamps state cannot be the target of a conditional `UPDATE`, so idempotency-by-construction
-only works with real stored status. An earlier two-timestamp proposal from this session is
-superseded by that and recorded only so it is not re-proposed.
+**"plan-service dialling insights is a dependency cycle."** Raised during this session and
+**withdrawn as unfounded** — recorded so it is not raised again. `insights → plan-service`
+already exists via `PlanGateway.GetPlanContext`, making the graph bidirectional, which is
+unremarkable. None of the three things "circular dependency" means applies: *compile-time* — both
+import `common/api/proto/*`, neither imports the other, so there is no Go import cycle;
+*startup ordering* — clients resolve through Consul and dial lazily, so neither blocks the other
+at boot; *synchronous recursion* — the guided call is planless, so insights has nothing to call
+back for. What survives is a property of the feature, not the wiring: if insights is down,
+guided creation fails, and gateway orchestration would not have made it more available.
 
-Timestamps do not disappear, because the sweeper needs to know *when* `generating` started.
+**Degrading instead of failing closed on guided generation.** Rejected: committing the plan with
+the user's seed as `plan_draft` silently hands them a custom plan when they asked for a guided
+one, and `plan.items_requested` then fires carrying a one-line draft, so items get generated from
+the degraded input too. One failure becomes two.
 
-| Column              | Purpose                                                                  |
-| ------------------- | ------------------------------------------------------------------------ |
-| `plan_draft`        | renamed from `focus`; TEXT NOT NULL, unbounded                           |
-| `status`            | the guarded-transition target; drives copy and whether retry is offered  |
-| `status_changed_at` | sweeper input — "stuck in `generating` past the exhausted-retry window"  |
-| `failure_class`     | the handoff's requirement: `failed` alone isn't enough                   |
-| `retry_count`       | the retry budget's attempt cap                                           |
-| `last_retry_at`     | the retry budget's cooldown                                              |
+**insights binding both `plan.created` and `plan.items_requested`.** Rejected: it makes insights
+know that "a plan was created" *implies* "items are wanted" — plan lifecycle semantics leaking
+into the generation service. **Re-emitting `plan.created` on retry** was also rejected: it would
+give every future `plan.created` subscriber a false creation signal. The single-trigger design
+was nearly free to adopt because insights' binding is broken today and being rewritten regardless.
 
-**plan-service can observe when items materialize; it cannot observe that insights failed**
-except by being told (failure event) or by elapsed time (sweeper). That asymmetry is why both
-mechanisms exist.
+**Two nullable timestamps for provenance** (`generated_at` / `user_edited_at`). Rejected in favour
+of the FSM: timestamps carry the same information, but nothing *prevents* `user_edited_at` being
+cleared by a bug or a future "reset" feature. ADR-0007 claims the protection is structural, and
+only a one-way state machine with a database trigger makes that claim true. **Deriving "touched"
+by diffing against a stored original** was also rejected — it contradicts "recorded, never
+inferred", false-positives on whitespace, and cannot see a date set or a re-parent.
 
----
+**Structural branching by plan type.** Rejected for now: two materializers and two schemas
+maintained before either need is proven. Revisit when one plan type genuinely needs a column the
+other does not — a real prerequisite DAG for learning plans would be that trigger.
 
-### Missing infrastructure this FS must create (verified against the code, 2026-08-19)
+**A derived plan state from timestamps** (an earlier proposal in this session). Superseded: a
+derived state cannot be the target of a conditional `UPDATE`, so idempotency-by-construction
+(R36) only works with stored status.
 
-Not objections — inputs the work orders have to carry.
+## Pre-existing defects this chain depends on
 
-1. **No `insights.events` exchange.** `common/constants/events.go` declares auth / plan /
-   example / orchestrator only. Note the file's own convention is `{resource}.{action}`
-   **singular** (`user.created`, `plan.created`), so the constant should be
-   **`insight.generated`**, not `insights.generated`, and the failure event named to match
-   (e.g. `insight.generation_failed`).
-2. **plan-service has no `processed_events` table.** It has an outbox (migration `000020`) but
-   no inbox. Needs a new migration, plus a queue — `plan-service.insight.generated` under the
-   `{consumer-service}.{routing-key}` convention — bound to the new exchange.
-3. **`RetryExchange` and `DlxEventsExchange` are declared but never used** — no binding, no TTL
-   tiers, no DLQ anywhere in the repo. The 1m/5m/15m tiering is the mechanism that makes the
-   attempt counter work at all: a bare `Nack(requeue)` redelivers the *original* message and
-   increments nothing; `x-death` is populated only by DLX round-tripping. **TTL-tiered DLX is
-   the retry transport, not native requeue.**
-4. **`correlation_id` / `causation_id` have nowhere to go.** `PlanCreatedEvent` carries
-   `id, user_id, name, focus, plan_type, created_at`, and `commonbroker.Message` exposes only
-   `MessageId, ContentType, Body, DeliveryMode` — no headers field. Either extend the broker
-   `Message` struct (headers, transport-level — preferred, since these are envelope concerns
-   not domain fields) or add the fields to every event proto.
-5. **`PlanCreatedEvent.focus` is a published wire field.** Renaming it to `plan_draft` is a
-   contract change. insights is its only consumer and is mid-development, so a straight rename
-   is safe now — but the field number must be **reused deliberately**, not bumped.
+Owned by the parallel insights-service effort, recorded because the chain does not function until
+they are fixed.
 
-### Pre-existing defects in the chain (coordination points, not work here)
-
-Owned by the parallel insights-service effort. Recorded because this FS's chain does not
-function until they are fixed, and because the insights spec currently overstates them.
-
-- `insights-service/internal/insights/amqp_consumer.go` **declares and consumes
-  `plan-service.events`** but **binds `insights-service.plan.created`**. The bound queue is
-  never declared; the consumed queue is plan-service's own. Wired as-is, insights would compete
-  with plan-service's `user.deleted` consumer for the same messages.
+- `insights-service/internal/insights/amqp_consumer.go` declares and consumes
+  `plan-service.events` but binds `insights-service.plan.created`. The bound queue is never
+  declared; the consumed queue is plan-service's own. Wired as-is, insights would compete with
+  plan-service's `user.deleted` consumer.
 - `insights.NewService(...)` does not pass `inboxService`, so `Service.inboxService` is a nil
   interface and `s.inboxService.CreateTx` panics on the first event.
-- `NewConsumer` and `SetupAMQPInfrastructure` are **never called** from `cmd/server/main.go` or
-  `config/services.go`. Nothing consumes `plan.created` today. (The insights spec was updated
-  during this session to mark the trigger and exactly-once lines unchecked, which now matches.)
+- `NewConsumer` and `SetupAMQPInfrastructure` are never called from `cmd/server/main.go` or
+  `config/services.go`.
 
-### Chore, out of band
+## Chore, out of band
 
-`Makefile` line 5: `SERVICES = api-gateway auth-service calendar-service example-service
-plan-service` — **insights-service and orchestrator-service are missing**, so both are excluded
-from `build-all`, `clean-builds`, and `check-builds`. insights-service is a consumer in this
-flow. Worth fixing before this lands; it is not a slice of this FS.
-
----
-
-### Ownership split for `/spec-to-issues`
-
-**Flagged as the owner's — do not assign these:**
-
-- The publish legs on both hops: outbox drain, publish-worker, `insight.generated` publishing.
-- All insights-service work: the planless `GenerateDraft` RPC, consumer wiring, inbox
-  injection, queue-binding fix, populating `generated_insights.content`, the failure-event
-  publisher, DLQ.
-
-**In this FS's lane:** the `plan_draft` field change end-to-end (migration, proto, gRPC,
-generated HTTP contract, client), guided/custom creation paths, plan-service's insights client,
-plan-service's inbox + materialization transaction, plan status model, the sweeper, the retry
-budget, and the client waiting/failed/retry surface.
-
-Issues and docs are safe to write while insights work proceeds in parallel — no file conflict
-is possible between the two lanes.
-
----
-
-### Open questions — explicitly NOT settled
-
-- **Is a plan with zero items a valid end state?** If insights legitimately returns nothing,
-  does the consumer mark the plan complete-but-empty, or is empty treated as failure?
-- **Does a stalled/failed plan offer regeneration, and does regenerating re-emit
-  `plan.created`?** insights dedupes on `event_id`, so a retry needs a *new* event id and
-  therefore probably a distinct routing key (e.g. `plan.items_requested`) rather than a second
-  `plan.created`.
-- **Provenance on generated items** — what marks an item as AI-generated, and what the UI does
-  with it. Interacts with ADR-0007: the invariant tells us a touched row is protected, but not
-  how "touched" is recorded.
-- **Bulk rejection.** A generation the user dislikes means deleting items one at a time, and
-  deleting is more effort than accepting. What mitigates that?
-- **User edits `plan_draft` after items exist** — ADR-0007 constrains this; it does not fully
-  answer it.
-- **Learning vs project plans** — do they branch structurally (sequenced curriculum with
-  prerequisites vs. tasks with dependencies and a definition of done), or swap prompts on one
-  code path?
-- **Polling** — interval, backoff, give-up threshold, behaviour on tab blur. And: polling must
-  remain the degradation path when SSE lands — does that shape the API now?
-- **Plans-list entry** — `plan_draft` is too large for an inline block. What does a list entry
-  show, and what does clicking in reveal? (`description` is the intended blurb, but the current
-  list renders `description` *and* `focus`.)
-- **Validation on `plan_draft`** — is there a minimum before generation is worth attempting?
-- **Migration backfill** — existing `focus` values are already valid short drafts; confirm
-  nothing else needs backfilling.
-- **Plan deleted while generation is in flight.**
-
----
-
-### Out of scope
-
-- SSE implementation
-- Adjustment chips, RAG / embedding retrieval, adaptive profile
-- Calendar-derived plan seeding
-- Changes to the insights schema (that is the insights persistence scope)
-- Model selection per call, beyond noting which calls are high- vs low-frequency
-
-### API surface — deferred to `/write-a-spec`
-
-Recorded here as an input, not as the section itself. This FS changes the `POST /api/plans` request body (`focus` →
-`plan_draft`, plus the guided-mode discriminator) and adds at least one plan-status read path
-for polling. `/api/plans` is already serialized under FS-0004, so **no slice ⓪ is required** —
-the change flows through the typed Huma handler and `openapi.yaml` regenerates. The legacy
-`/api/insights/*` gin routes are untouched by this FS and remain unserialized.
+`Makefile` line 5 omits **insights-service** and **orchestrator-service** from `SERVICES`, so
+both are excluded from `build-all`, `clean-builds` and `check-builds`. insights-service is a
+consumer in this flow. Not a slice of this FS.

@@ -43,6 +43,16 @@ looks for when deciding whether a plan is stuck.
 status because `failed` alone cannot drive the two things that depend on it: what the user is
 told, and whether a retry action is offered at all.
 
+**Seed** — the short line a user supplies on the Guided Creation path, from which the whole
+Plan Draft is generated. Not a draft and never persisted as one: the seed is discarded once the
+draft it produced is saved.
+
+**Authored** — an item created directly by the user. Terminal: an authored item is never
+generated, and editing it does not change what it is. Regeneration can never touch it.
+
+**Generated** — an item created by Materialization and not yet modified by anyone. The only
+status regeneration is allowed to replace, and the only one the client badges.
+
 **Touched** — a generated row a user has modified, and which regeneration may therefore neither
 overwrite nor delete (ADR-0007). Being touched is recorded, never inferred; what counts as
 touching is stated per surface.
@@ -54,3 +64,8 @@ consumes them (ADR-0008).
 **Inbox** — this service's `processed_events (event_id, consumer)` ledger, written in the same
 transaction as the business effect it guards, making redelivery a no-op. The DB constraint is
 the authority; the Redis claim in front of it is an efficiency layer only.
+
+**Item Status** — the one-way state machine carrying item provenance: `authored` and `generated`
+on creation, with `generated → touched` as the single legal transition. Enforced by a service-layer
+transition function and a `BEFORE UPDATE` trigger, so ADR-0007's protection is structural rather
+than conventional.
