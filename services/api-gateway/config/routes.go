@@ -1,17 +1,15 @@
 package config
 
 import (
-	"log"
 	"time"
 
 	commondiscovery "github.com/darkphotonKN/fireplace/common/discovery"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/ai"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/discovery" // legacy AI search discovery (not service registry)
 	authgw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/auth"
 	calendargw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/calendar"
+	insightsgw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/insights"
 	plangw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/plan"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/insights"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/jobs"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/logger"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/notes"
@@ -67,17 +65,11 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	userAnalyticsRepo := useranalytics.NewRepository(db)
 	userAnalyticsService := useranalytics.NewService(userAnalyticsRepo, planAdapter)
 
-	checklistGen := ai.NewChecklistGen()
-	insightsRepo := insights.NewRepository(db)
-	insightsService := insights.NewService(insightsRepo, checklistGen, planAdapter, planAdapter, nil)
-
-
-	searchTermGen := ai.NewSearchTermGenerator()
-	youtubeVideoFinder, err := discovery.NewYoutubeVideoFinder()
-	if err != nil {
-		log.Fatalf("Error when attempting to initialize youtubeVideoFinder, error: %+v\n", err)
-	}
-	videoInsightsService := insights.NewService(insightsRepo, searchTermGen, planAdapter, planAdapter, youtubeVideoFinder)
+	// insights-service is remote — /api/insights/* proxies through insightsgw
+	// via gRPC. The in-process implementation (internal/insights service +
+	// repository, internal/discovery, and the checklist/search-term generators)
+	// was deleted with this move rather than left alongside.
+	insightsGwClient := insightsgw.NewClient(registry)
 
 	notesRepo := notes.NewRepository(db)
 	notesGen := ai.NewNotesGenerator()
@@ -112,8 +104,8 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 		Notes:          notesService,
 		NotesOwnership: planAdapter,
 
-		Suggestions:      insightsService,
-		VideoSuggestions: videoInsightsService,
+		Suggestions:      insightsGwClient,
+		VideoSuggestions: insightsGwClient,
 		Analytics:        userAnalyticsService,
 		Calendar:         calendarGwClient,
 	})

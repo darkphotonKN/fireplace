@@ -2,11 +2,11 @@ package config
 
 import (
 	"encoding/json"
-	"time"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	pb "github.com/darkphotonKN/fireplace/common/api/proto/auth"
 	commonauth "github.com/darkphotonKN/fireplace/common/auth"

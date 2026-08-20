@@ -9,43 +9,83 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/discovery"
 	"github.com/google/uuid"
 )
 
 type recordingSuggestions struct {
 	gotPlanID uuid.UUID
+	gotUserID uuid.UUID
 	daily     []string
 	single    string
 }
 
-func (r *recordingSuggestions) GenerateSuggestions(ctx context.Context, planID uuid.UUID) (string, error) {
-	r.gotPlanID = planID
+func (r *recordingSuggestions) GenerateSuggestions(ctx context.Context, planID, userID uuid.UUID) (string, error) {
+	r.gotPlanID, r.gotUserID = planID, userID
 	return r.single, nil
 }
 
-func (r *recordingSuggestions) GenerateDailySuggestions(ctx context.Context, planID uuid.UUID) ([]string, error) {
-	r.gotPlanID = planID
+func (r *recordingSuggestions) GenerateDailySuggestions(ctx context.Context, planID, userID uuid.UUID) ([]string, error) {
+	r.gotPlanID, r.gotUserID = planID, userID
 	return r.daily, nil
 }
 
 type recordingVideos struct {
 	gotPlanID uuid.UUID
-	resources []discovery.Resource
+	gotUserID uuid.UUID
+	videos    []VideoSuggestionResponse
 }
 
-func (r *recordingVideos) GenerateSuggestedVideoLinks(ctx context.Context, planID uuid.UUID) ([]discovery.Resource, error) {
-	r.gotPlanID = planID
-	return r.resources, nil
+func (r *recordingVideos) SuggestVideos(ctx context.Context, planID, userID uuid.UUID) ([]VideoSuggestionResponse, error) {
+	r.gotPlanID, r.gotUserID = planID, userID
+	return r.videos, nil
 }
 
 func newInsightsAPI(t *testing.T, s SuggestionsService, v VideoSuggestionsService) humatest.TestAPI {
+	return newInsightsAPIAs(t, s, v, uuid.New())
+}
+
+func newInsightsAPIAs(t *testing.T, s SuggestionsService, v VideoSuggestionsService, userID uuid.UUID) humatest.TestAPI {
 	t.Helper()
 	_, api := humatest.New(t, huma.DefaultConfig("test", "1"))
 	RegisterInsightsOperations(api, s, v, func(ctx huma.Context, next func(huma.Context)) {
-		next(huma.WithContext(ctx, auth.WithUserID(ctx.Context(), uuid.New())))
+		next(huma.WithContext(ctx, auth.WithUserID(ctx.Context(), userID)))
 	}, nil)
 	return api.(humatest.TestAPI)
+}
+
+// The in-process implementation took a plan id and NOTHING else — no user id,
+// no ownership assertion, so any authenticated caller could read suggestions
+// for any plan. insights-service fetches plan context through plan-service,
+// which enforces ownership, so the caller's identity has to reach it. This is
+// the behaviour change the strangler repoint carries.
+func TestInsights_CallerIdentityReachesTheService(t *testing.T) {
+	caller := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	planID := uuid.New()
+
+	t.Run("suggestion", func(t *testing.T) {
+		s := &recordingSuggestions{}
+		api := newInsightsAPIAs(t, s, &recordingVideos{}, caller)
+		api.Get("/api/insights/checklist-suggestion?plan_id=" + planID.String())
+		if s.gotUserID != caller {
+			t.Fatalf("userID = %s, want %s", s.gotUserID, caller)
+		}
+	})
+	t.Run("daily", func(t *testing.T) {
+		s := &recordingSuggestions{}
+		api := newInsightsAPIAs(t, s, &recordingVideos{}, caller)
+		api.Get("/api/insights/checklist-suggestion-daily?plan_id=" + planID.String())
+		if s.gotUserID != caller {
+			t.Fatalf("userID = %s, want %s", s.gotUserID, caller)
+		}
+	})
+	t.Run("videos", func(t *testing.T) {
+		v := &recordingVideos{}
+		api := newInsightsAPIAs(t, &recordingSuggestions{}, v, caller)
+		api.Get("/api/insights/suggest-videos?plan_id=" + planID.String())
+		if v.gotUserID != caller {
+			t.Fatalf("userID = %s, want %s", v.gotUserID, caller)
+		}
+	})
 }
 
 // plan_id is snake_case here while notes uses camelCase. Both are transcribed

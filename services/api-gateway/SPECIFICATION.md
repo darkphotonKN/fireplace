@@ -139,5 +139,5 @@ Per-user daily productivity metrics (`internal/useranalytics`), backed by the `u
 - **Users, JWT issuance, refresh tokens** → auth-service (gateway only *validates* tokens at the edge).
 - **Plans, checklist items, daily-reset logic, Gantt/search data** → plan-service.
 - **Calendar read-model** → calendar-service.
-- **AI insights / video suggestions** → insights-service (the `/api/insights/*` routes and leftover `internal/insights`, `internal/discovery`, `internal/ai` code here are strangler cleanup, not a gateway feature).
+- **AI insights / video suggestions** → insights-service. The `/api/insights/*` routes remain here because the gateway is the only HTTP surface, but they now proxy to insights-service over gRPC via `internal/gateway/insights`. The in-process implementation (`internal/insights` service + repository, `internal/discovery`, `internal/concepts`, and the checklist/search-term generators) was **deleted** when the routes were repointed — the strangler cleanup is done. What remains under `internal/insights` is the gateway's own typed HTTP transport layer, and `internal/ai` now serves **Notes only**.
 - **Landing page + all UI** → client (React/Next.js).

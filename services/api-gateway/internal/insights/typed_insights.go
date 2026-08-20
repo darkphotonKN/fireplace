@@ -7,29 +7,35 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/apierr"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/discovery"
 	"github.com/google/uuid"
 )
 
 // SERIALIZED insights operations (FS-0004 §API surface, insights).
 //
-// This is slice ⓪ for these three endpoints under ADR-0002 serialize-on-touch:
-// a behaviour-preserving typed wrap that establishes the contract BEFORE the
-// handlers are repointed at insights-service over gRPC. Everything here
-// transcribes what ships today so the repoint shows up as a reviewable diff
-// rather than an invisible drift.
+// These endpoints were serialized first (I-0019) and repointed at
+// insights-service afterwards, in that order, because ADR-0002 §6 forbids a
+// handler rewrite preceding its endpoints' serialization. The contract below
+// was established while the in-process implementation still served it, so the
+// move to gRPC was a diff the gates could see rather than an invisible drift.
+//
+// The response shapes are unchanged by the move: the HTTP surface is identical
+// either side of it, which is exactly what slice ⓪ bought.
 
-// SuggestionsService and VideoSuggestionsService are two seams, not one,
-// because they are two different objects: the router builds one service around
-// the checklist generator and another around the search-term generator. A
-// single fat interface would force each to carry a method it does not serve.
+// SuggestionsService and VideoSuggestionsService are two seams, not one, so a
+// caller depends only on what it consumes. Both are satisfied by the
+// insights-service gRPC client (internal/gateway/insights).
+//
+// Both carry userID, which the in-process implementation did not: it took a
+// plan id alone and asserted nothing, so any authenticated caller could read
+// suggestions for any plan. insights-service reaches plan context through
+// plan-service, which enforces ownership.
 type SuggestionsService interface {
-	GenerateSuggestions(ctx context.Context, planID uuid.UUID) (string, error)
-	GenerateDailySuggestions(ctx context.Context, planID uuid.UUID) ([]string, error)
+	GenerateSuggestions(ctx context.Context, planID, userID uuid.UUID) (string, error)
+	GenerateDailySuggestions(ctx context.Context, planID, userID uuid.UUID) ([]string, error)
 }
 
 type VideoSuggestionsService interface {
-	GenerateSuggestedVideoLinks(ctx context.Context, planID uuid.UUID) ([]discovery.Resource, error)
+	SuggestVideos(ctx context.Context, planID, userID uuid.UUID) ([]VideoSuggestionResponse, error)
 }
 
 // --- transport mirror ------------------------------------------------------
@@ -70,11 +76,12 @@ func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSugge
 		http.StatusUnauthorized, http.StatusUnprocessableEntity, http.StatusServiceUnavailable,
 	}
 
-	identity := func(ctx context.Context, op string) error {
-		if _, ok := auth.UserIDFromCtx(ctx); !ok {
-			return apierr.ProblemFor(op, apierr.ErrNoIdentity())
+	identity := func(ctx context.Context, op string) (uuid.UUID, error) {
+		userID, ok := auth.UserIDFromCtx(ctx)
+		if !ok {
+			return uuid.Nil, apierr.ProblemFor(op, apierr.ErrNoIdentity())
 		}
-		return nil
+		return userID, nil
 	}
 
 	huma.Register(api, huma.Operation{
@@ -86,10 +93,11 @@ func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSugge
 			"and current checklist. The body is the suggestion itself.",
 		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDQueryInput) (*SuggestionOutput, error) {
-		if err := identity(ctx, "insights: generate suggestions"); err != nil {
+		userID, err := identity(ctx, "insights: generate suggestions")
+		if err != nil {
 			return nil, err
 		}
-		res, err := s.GenerateSuggestions(ctx, in.PlanID)
+		res, err := s.GenerateSuggestions(ctx, in.PlanID, userID)
 		if err != nil {
 			return nil, apierr.ProblemFor("insights: generate suggestions", err)
 		}
@@ -105,10 +113,11 @@ func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSugge
 			"items, each nudged away from the previous so the set does not repeat itself.",
 		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDQueryInput) (*DailySuggestionsOutput, error) {
-		if err := identity(ctx, "insights: generate daily suggestions"); err != nil {
+		userID, err := identity(ctx, "insights: generate daily suggestions")
+		if err != nil {
 			return nil, err
 		}
-		res, err := s.GenerateDailySuggestions(ctx, in.PlanID)
+		res, err := s.GenerateDailySuggestions(ctx, in.PlanID, userID)
 		if err != nil {
 			return nil, apierr.ProblemFor("insights: generate daily suggestions", err)
 		}
@@ -127,29 +136,17 @@ func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSugge
 			"one recommended video per term.",
 		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDQueryInput) (*VideoSuggestionsOutput, error) {
-		if err := identity(ctx, "insights: suggested video links"); err != nil {
+		userID, err := identity(ctx, "insights: suggested video links")
+		if err != nil {
 			return nil, err
 		}
-		res, err := v.GenerateSuggestedVideoLinks(ctx, in.PlanID)
+		res, err := v.SuggestVideos(ctx, in.PlanID, userID)
 		if err != nil {
 			return nil, apierr.ProblemFor("insights: suggested video links", err)
 		}
-		return &VideoSuggestionsOutput{Body: toVideoResponses(res)}, nil
+		if res == nil {
+			res = []VideoSuggestionResponse{}
+		}
+		return &VideoSuggestionsOutput{Body: res}, nil
 	})
-}
-
-// toVideoResponses is explicitly non-nil so an empty result marshals to [] and
-// never null (FS-0004 §Edge States).
-func toVideoResponses(in []discovery.Resource) []VideoSuggestionResponse {
-	out := make([]VideoSuggestionResponse, 0, len(in))
-	for _, r := range in {
-		out = append(out, VideoSuggestionResponse{
-			Title:       r.Title,
-			URL:         r.URL,
-			Source:      r.Source,
-			Type:        string(r.Type),
-			Description: r.Description,
-		})
-	}
-	return out
 }
