@@ -110,12 +110,22 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
 - **R23.** Effectively-once on both hops: transactional outbox on producers, inbox on consumers,
   PostgreSQL as the authority. Sentinel routing: already-processed → ack, transient → retry,
   unexpected → DLQ.
-- **R23a.** The **Redis claim is retained only on the insights hop**, where it already exists and
-  is already wired. plan-service's hop uses the inbox alone. The claim is an efficiency lock that
-  avoids opening a transaction for a duplicate — it is never the authority — and at one event per
-  plan creation the saving is negligible. Adding it would give plan-service a Redis dependency it
-  has never had (`plan-service/CLAUDE.md`: *"No Redis"*), for no correctness gain. Correctness is
-  unchanged: the `(event_id, consumer)` unique constraint decides in both cases.
+- **R23a.** The **Redis claim is retained on both hops**, scoped to **consumer dedup only**. It
+  spares the database a transaction for a redelivered event while Redis is up. It is never the
+  authority — `(event_id, consumer)` decides — so its whole contract is "cheap negative answer,
+  no positive guarantee." plan-service gains a Redis dependency it has not had
+  (`plan-service/CLAUDE.md` still says *"No Redis"* and needs updating).
+- **R23b.** **The claim must fail open.** A Redis error is *not* a duplicate. Only an
+  unambiguous "the key already exists" may short-circuit; an unreachable or erroring Redis falls
+  through to the database, which is the authority. Implementations must distinguish
+  `(acquired=false, err=nil)` — a real duplicate — from `(acquired=false, err!=nil)` — Redis
+  could not answer. Collapsing the two turns a cache outage into silent event loss.
+- **R23c.** **Relay drain contention is not a Redis concern.** Two relay instances draining the
+  same outbox are separated by `FOR UPDATE SKIP LOCKED` in `GetUnpublished` — in-database, exact
+  rather than best-effort, and free because the relay is already taking that row lock. A
+  resource-keyed distributed lock (`lock:<resource>:<id>`) is the correct tool when the contended
+  thing is *not* a row the worker already selects for update; that is not the case here.
+  Recorded because the two locks are easy to conflate and solve different problems.
 - **R24.** `correlation_id` (whole chain) and `causation_id` (immediate parent) propagate
   through both hops. They are envelope concerns, so `commonbroker.Message` grows a headers
   field rather than every event proto growing two columns.
@@ -434,6 +444,9 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
 - [ ] Retrying writes another `plan.items_requested` row with a different `event_id`.
 - [ ] `plan.created` is never emitted twice for one plan.
 - [ ] Delivering the same `insight.generated` twice creates the items once.
+- [ ] With **Redis stopped**, events are still processed exactly once and none are dropped —
+      the claim fails open and the inbox decides.
+- [ ] A Redis error and a genuine duplicate produce different outcomes, not the same one.
 - [ ] A materialization that fails partway leaves zero items and no `processed_events` row.
 - [ ] `correlation_id` and `causation_id` survive both hops.
 - [ ] Retries traverse the DLX tiers; `x-death` count increases across attempts.
@@ -649,6 +662,13 @@ inferred", false-positives on whitespace, and cannot see a date set or a re-pare
 maintained before either need is proven. Revisit when one plan type genuinely needs a column the
 other does not — a real prerequisite DAG for learning plans would be that trigger.
 
+**Naming: "generation" covers two different things.** Noted and deliberately not renamed. The
+word names both the *synchronous draft call* (`GenerateDraft`, `GENERATION_FAILED`, guided mode
+only, ~15s, inside the create request) and the *asynchronous item chain*
+(`/api/plans/{id}/generation`, both modes, minutes, after the response). Renaming the resource to
+`item-generation` and the code to `DRAFT_GENERATION_FAILED` was proposed and passed over. Anyone
+reading a ticket should know the URL refers only to the second.
+
 **A derived plan state from timestamps** (an earlier proposal in this session). Superseded: a
 derived state cannot be the target of a conditional `UPDATE`, so idempotency-by-construction
 (R36) only works with stored status.
@@ -666,6 +686,11 @@ they are fixed.
   interface and `s.inboxService.CreateTx` panics on the first event.
 - `NewConsumer` and `SetupAMQPInfrastructure` are never called from `cmd/server/main.go` or
   `config/services.go`.
+- **The Redis claim fails closed** (`internal/insights/service.go`). `acquired, _ :=
+  s.cache.SetNX(...)` discards the error, so an unreachable Redis yields `acquired=false`, which
+  is reported as `ErrEventAlreadyProcessed`, which the consumer **acks and drops**. Every event
+  is silently discarded for the duration of a Redis outage. The comment above it states the
+  intent was best-effort; the code does the opposite. R23b is the fix.
 
 ## Chore, out of band
 
