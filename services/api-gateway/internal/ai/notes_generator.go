@@ -44,7 +44,8 @@ Use emojis sparingly for visual clarity. Keep the response under 150 words.`, co
 	resp, err := ng.client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model: openai.GPT3Dot5Turbo,
+			Model:           modelName(),
+			ReasoningEffort: "minimal",
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
@@ -55,8 +56,7 @@ Use emojis sparingly for visual clarity. Keep the response under 150 words.`, co
 					Content: prompt,
 				},
 			},
-			MaxTokens:   200,
-			Temperature: 0.7,
+			MaxCompletionTokens: 200,
 		},
 	)
 
@@ -88,7 +88,8 @@ Start with an appropriate emoji. Keep it under 100 words.`, tasksContext)
 	resp, err := ng.client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model: openai.GPT3Dot5Turbo,
+			Model:           modelName(),
+			ReasoningEffort: "minimal",
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
@@ -99,8 +100,7 @@ Start with an appropriate emoji. Keep it under 100 words.`, tasksContext)
 					Content: prompt,
 				},
 			},
-			MaxTokens:   150,
-			Temperature: 0.6,
+			MaxCompletionTokens: 150,
 		},
 	)
 
@@ -131,7 +131,8 @@ Be encouraging but honest. Start with an appropriate emoji. Keep it under 100 wo
 	resp, err := ng.client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model: openai.GPT3Dot5Turbo,
+			Model:           modelName(),
+			ReasoningEffort: "minimal",
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
@@ -142,8 +143,7 @@ Be encouraging but honest. Start with an appropriate emoji. Keep it under 100 wo
 					Content: prompt,
 				},
 			},
-			MaxTokens:   150,
-			Temperature: 0.7,
+			MaxCompletionTokens: 150,
 		},
 	)
 
@@ -174,7 +174,8 @@ Be practical and specific. Start with an appropriate emoji. Keep it under 120 wo
 	resp, err := ng.client.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
-			Model: openai.GPT3Dot5Turbo,
+			Model:           modelName(),
+			ReasoningEffort: "minimal",
 			Messages: []openai.ChatCompletionMessage{
 				{
 					Role:    openai.ChatMessageRoleSystem,
@@ -185,8 +186,7 @@ Be practical and specific. Start with an appropriate emoji. Keep it under 120 wo
 					Content: prompt,
 				},
 			},
-			MaxTokens:   150,
-			Temperature: 0.7,
+			MaxCompletionTokens: 150,
 		},
 	)
 

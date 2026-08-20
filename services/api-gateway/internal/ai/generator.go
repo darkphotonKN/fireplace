@@ -40,7 +40,8 @@ func (g *Generator) Generate(message string) (string, error) {
 		resp, err = g.client.CreateChatCompletion(
 			context.Background(),
 			openai.ChatCompletionRequest{
-				Model: openai.GPT4o,
+				Model:           modelName(),
+				ReasoningEffort: "minimal",
 				Messages: []openai.ChatCompletionMessage{
 					{
 						Role:    openai.ChatMessageRoleSystem,
@@ -51,8 +52,7 @@ func (g *Generator) Generate(message string) (string, error) {
 						Content: message,
 					},
 				},
-				Temperature: 0.7,
-				MaxTokens:   200,
+				MaxCompletionTokens: 200,
 			},
 		)
 
