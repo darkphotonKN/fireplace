@@ -87,6 +87,18 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   for what happened, never for what should happen next (ADR-0008).
 - **R19.** `insight.generated` carries the generated items themselves. plan-service materializes
   them without calling back, so materialization never depends on insights being reachable.
+- **R19a.** The payload is `{plan_id, user_id, items[]}`, where an item is the **creatable
+  subset** of a checklist item: `description`, `scope`, `type`, and an optional
+  `parent_index`. It is deliberately the same shape as a checklist item minus everything the
+  database owns — no `id`, `plan_id`, `status`, `done`, `created_at` or `updated_at`.
+- **R19b.** Nesting is expressed by **`parent_index`**, an index into the same array, because no
+  row IDs exist before the materialization transaction opens. Two-tier nesting still applies: a
+  referenced parent must itself have no `parent_index`.
+- **R19c.** **Array order is `sequence`.** Carrying an explicit sequence field would let the
+  payload disagree with itself; order cannot.
+- **R19d.** The payload carries **no dates**. AI auto-scheduling of `start_date` / `due_date` is
+  an unshipped plan-service capability and is out of scope here — materialized items arrive
+  unscheduled.
 - **R20.** A new `insights.events` topic exchange is added to `common/constants/events.go`,
   with routing keys `insight.generated` and `insight.generation_failed` — **singular resource**,
   matching the file's existing `{resource}.{action}` convention.
@@ -96,15 +108,31 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   transaction**. A partial insert followed by redelivery would produce a checklist with
   everything twice.
 - **R23.** Effectively-once on both hops: transactional outbox on producers, inbox on consumers,
-  Redis claim as a best-effort layer with PostgreSQL as the authority. Sentinel routing:
-  already-processed → ack, transient → retry, unexpected → DLQ.
+  PostgreSQL as the authority. Sentinel routing: already-processed → ack, transient → retry,
+  unexpected → DLQ.
+- **R23a.** The **Redis claim is retained only on the insights hop**, where it already exists and
+  is already wired. plan-service's hop uses the inbox alone. The claim is an efficiency lock that
+  avoids opening a transaction for a duplicate — it is never the authority — and at one event per
+  plan creation the saving is negligible. Adding it would give plan-service a Redis dependency it
+  has never had (`plan-service/CLAUDE.md`: *"No Redis"*), for no correctness gain. Correctness is
+  unchanged: the `(event_id, consumer)` unique constraint decides in both cases.
 - **R24.** `correlation_id` (whole chain) and `causation_id` (immediate parent) propagate
   through both hops. They are envelope concerns, so `commonbroker.Message` grows a headers
   field rather than every event proto growing two columns.
-- **R25.** Retry transport is **TTL-tiered DLX** (1m / 5m / 15m), not native requeue. A bare
+- **R25.** Retry transport is **TTL-tiered DLX** with **exponential tiers 10s / 20s / 40s /
+  80s / 160s** — five retry queues plus the DLQ — not native requeue. A bare
   `Nack(requeue)` redelivers the original message and increments nothing; `x-death` is populated
   only by dead-letter round-tripping. `RetryExchange` and `DlxEventsExchange` already exist as
   constants and are bound for the first time here.
+- **R25a.** The tiers are exponential from the ticker interval (10s, R69) to a 160s ceiling,
+  exhausting after **310s of waiting**. Including ~15s of generation per attempt across six
+  attempts, a legitimately-retrying plan reaches terminal failure in **≈7 minutes** worst case.
+  Tiers of 1m/5m/15m were considered and rejected: a 21-minute exhaustion window is correct for
+  background work and wrong for something a human is watching — it would have made R27's "the
+  fastest recovery is the user regenerating on the spot" false by twenty minutes.
+- **R25b.** Exhaustion ends **the generation job, not the plan**. The plan row was committed at
+  t=0 (R9) and stays — usable, with its draft, and with items the user may add by hand. This is
+  graceful degradation of the *feature*: the capability is reduced, the plan is not.
 
 ### Failure handling
 
@@ -131,8 +159,12 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   delivers.
 - **R31.** A **sweeper** backstops plans stuck in `generating`. A panic or OOM runs no error
   handler at all — no failure publish, no DLQ decision, just redelivery — so something has to
-  notice. Its threshold is **derived from the retry schedule**, sitting beyond the exhausted-retry
-  window by construction, never picked by hand.
+  notice. Its threshold is **derived, never picked by hand**, from the exhausted-retry window
+  (≈7 min, R25a) plus one ticker interval per hop (R69), plus margin — **10 minutes**. The signal
+  (R60) is droppable, so the worst case a healthy plan can legitimately take is bounded by the
+  ticker, not by the signal; a threshold derived from the retry schedule alone would fail plans
+  that are merely queued. In practice the sweeper only ever catches crashes, because a
+  well-behaved exhaustion publishes its failure at ≈7 minutes.
 - **R32.** User-initiated retry carries a **cooldown and an attempt cap**. An LLM call sits
   behind that button; twenty clicks must not be twenty paid generations.
 
@@ -169,10 +201,26 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
 - **R42.** Monotonicity is enforced at **two layers**, matching the existing two-tier-nesting
   idiom: a service-layer transition function that is the sole writer of the column, and a
   `BEFORE UPDATE` trigger that rejects every illegal transition with SQLSTATE `23514`.
+  **An UPDATE that leaves `status` unchanged is not a transition and must pass.** The naive
+  guard (`IF OLD.status = 'touched' THEN RAISE`) would reject every update to a touched row —
+  including the nightly bulk `DailyReset` CTE, which sets `done=false` and never touches
+  `status`.
   A convention that says "don't clear this" is not enough — ADR-0007 claims the protection is
   structural, and this is what makes that claim true against a future bug or a later feature.
 - **R43.** Regeneration may add rows and may replace rows with `status='generated'`. It may
   **never** touch `authored` or `touched` rows (ADR-0007).
+- **R43a.** **Touching a child promotes its parent.** When an item moves `generated → touched`,
+  its parent — if `generated` — moves to `touched` in the same transaction. Two-tier nesting caps
+  the depth at one hop, so no recursion is possible.
+- **R43b.** *Why this rule exists:* `checklist_items.parent_id` is
+  `REFERENCES checklist_items(id) ON DELETE CASCADE` (migration 000019). Without R43a, deleting a
+  `generated` parent would cascade into a `touched` child and destroy the user's work — through
+  the FK, silently, via the very actions (R43, R46) this FS calls ADR-0007-safe. Promoting the
+  parent removes it from the deletable set, so the cascade can never reach protected data. The
+  predicate stays `status='generated'` everywhere; no descendant subquery is needed anywhere.
+- **R43c.** *Accepted consequence:* a parent's own text becomes un-regenerable once any of its
+  children is edited, even though nobody edited the parent. That is the conservative direction,
+  and ADR-0007 is a conservative rule.
 - **R44.** "Touched" means any user-initiated mutation: description, `done`, dates, re-parent,
   scope, type, archive — every path through `UpdateItem`, `UpdateItemDates` and `ArchiveItem`.
   It explicitly excludes **daily reset** and **materialization**, both of which are the system
@@ -180,8 +228,9 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
 - **R45.** Existing rows backfill to `authored`, so pre-existing data is user-owned and no
   regeneration can ever remove it.
 - **R46.** A single **"clear generated items"** action deletes exactly the `status='generated'`
-  set. It is the same predicate regeneration uses, so there is one rule rather than two, and it
-  is ADR-0007-safe by construction: anything touched survives it.
+  set. It is the same predicate regeneration uses, so there is one rule rather than two, and —
+  given R43a — it is ADR-0007-safe by construction including through the FK cascade: any parent
+  holding edited children is already `touched` and is therefore not in the set.
 - **R47.** The client marks `generated` items subtly and **drops the marker once the item is
   `touched`** — the marker's only job is signalling "safe to regenerate away," which stops being
   true the moment the item is protected.
@@ -201,9 +250,11 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   who knows what they want types their draft and creates.
 - **R51.** After creation the user lands on the plan with the draft in place and a visible
   "items are being generated" state. The plan is usable immediately; generation never gates it.
-- **R52.** Completion is detected by **polling**: every 2s for the first 30s, then every 5s,
-  then every 10s. Polling stops when status leaves `generating`, or at the sweeper threshold —
-  the client give-up and the server sweeper agree rather than disagreeing visibly.
+- **R52.** Completion is detected by **polling**: every 2s for the first 30s, then every 5s to
+  2 minutes, then every 10s. Polling stops when status leaves `generating`, or at the sweeper
+  threshold (10 min, R31) — the client give-up and the server sweeper agree rather than
+  disagreeing visibly. The happy path resolves in ~20s (signal-driven pickup plus one
+  generation), so the later tiers exist for the retrying case, not the normal one.
 - **R53.** Polling pauses on tab blur and resumes with an immediate poll on focus.
 - **R54.** The status read is a **dedicated lightweight endpoint**, not a full plan GET. SSE
   later pushes the same payload, so the client swaps transport without touching its state
@@ -224,6 +275,62 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   "asdf" never costs a generation.
 - **R59.** Domain rules stay with the owning service and return 400 with a specific code; the
   gateway never restates a downstream rule (ADR-0005).
+
+### Outbox relay signalling
+
+> **Shared code.** This changes `common/worker`, which has no spec of its own — a behaviour
+> change there belongs to the FS of the feature driving it (root CLAUDE.md). plan-service is the
+> only constructor today (`config/services.go:40`); insights-service becomes the second when it
+> gains an outbox for `insight.generated`.
+
+- **R60.** The relay gains an **in-process signal channel** alongside its existing ticker.
+  Producers notify it after committing outbox rows, so pickup is immediate on the happy path
+  instead of waiting out the interval.
+- **R61.** **The ticker is still the correctness guarantee.** It runs unconditionally — not as a
+  fallback armed by a failed signal. The signal is purely a latency optimization and must always
+  be safely droppable.
+- **R62.** *Rationale, recorded so it is not "simplified" later:* the signal is silently absent in
+  cases undetectable at the send site — process death between commit and notify, a full channel,
+  an outbox row written by another process or by hand, or a new code path that forgets to notify.
+  None of these produces an error. The relay therefore cannot know a signal was owed and never
+  arrived, and can never skip polling on that basis. If the signal ever becomes the delivery
+  mechanism rather than a hint, a dropped signal strands a row — reintroducing the dual-write
+  problem the outbox exists to eliminate.
+- **R63.** The channel is `chan struct{}` with **buffer 1**. *Not unbuffered:* an unbuffered send
+  succeeds only if a receiver is blocked at that exact instant, so a notify arriving while the
+  relay is mid-drain would be dropped — the case where the signal matters most. *Not larger:* the
+  signal carries no information; ten notifies mean what one means — go look. Buffer 1 is a
+  one-slot latch meaning "work arrived while you weren't looking," and one bit is all the state
+  there is.
+- **R64.** Notify is **non-blocking** — `select` with a `default` that drops. It never blocks the
+  request path and never returns an error. A full channel means a wake-up is already pending, so
+  dropping is correct behaviour, not a failure.
+- **R65.** The relay loop selects over **signal, ticker, and context cancellation**. All wake
+  paths call the same drain, and the drain does not know or care why it woke.
+- **R66.** Notify fires **after commit**, never inside the transaction. Inside, the relay could
+  wake and query before the commit is visible, find nothing, and sleep again — leaving the row for
+  the ticker and losing the optimization exactly when it was requested.
+- **R67.** Notify call sites, exhaustively:
+  (a) after every commit that wrote outbox rows — today plan creation in plan-service and the
+  insights consumer after writing its own outbox row, plus any future outbox write;
+  (b) on relay **startup**, before entering the loop, since rows may have been written while the
+  service was down;
+  (c) optionally after a drain returns a **full batch**, signalling a backlog larger than the
+  query limit.
+  Nothing else fires it. In particular the failure-event publish (**R28**) writes no outbox row
+  and therefore has **no** notify call site — adding one for symmetry would reintroduce the dual
+  write R28 exists to avoid.
+- **R68.** The outbox write and the notify must be **hard to separate** — one repository helper
+  doing both, rather than two things a caller has to remember to pair. A new write path that
+  forgets to notify degrades silently to ticker latency, with no error anywhere.
+- **R69.** The polling interval is **10 seconds**, replacing `time.Minute * 2`
+  (`plan-service/config/services.go:40`). This is a *loosening* relative to the ~2s the relay
+  would need if the ticker were the only pickup path — the signal takes the ticker off the
+  critical path, so it only has to catch rare misses. Two minutes was defensible only while
+  nothing user-facing waited on the outbox.
+- **R70.** **Observability:** track rows found by ticker-triggered drains versus signal-triggered
+  ones. Near-zero on the ticker path is healthy; a rising count means notifies are being missed
+  somewhere. Nothing else surfaces that failure.
 
 ---
 
@@ -352,8 +459,23 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
       SQLSTATE `23514`.
 - [ ] Daily reset does not move any item to `touched`.
 - [ ] Regeneration replaces `generated` rows and leaves `touched` and `authored` rows byte-identical.
+- [ ] Editing a child of a `generated` parent promotes the parent to `touched` in the same
+      transaction.
+- [ ] Clearing generated items on a plan whose generated parent has a touched child deletes
+      neither — the FK cascade never reaches protected data.
+- [ ] `DailyReset` succeeds against `touched` items; the status trigger permits the no-op.
 - [ ] "Clear generated items" removes every `generated` row and nothing else.
 - [ ] Every pre-existing item backfills to `authored`.
+
+**Outbox relay**
+
+- [ ] Notify against a full channel does not block.
+- [ ] A drain with no pending rows is a no-op.
+- [ ] **An outbox row written with no notify at all is still published on the next tick** — the
+      test that proves the signal is an optimization and not a dependency.
+- [ ] The ticker fires regardless of signal activity.
+- [ ] Notify happens after commit: a relay woken by the signal always finds the row.
+- [ ] Shutdown drains in-flight work before returning.
 
 **Client**
 
@@ -462,6 +584,7 @@ Plane 2 (gRPC) additions: `insights.InsightsService.GenerateDraft(seed, plan_typ
   `insight.generation_failed` publishing.
 - All insights-service work: `GenerateDraft`, consumer wiring, inbox injection, the queue-binding
   fix, populating `generated_insights.content`, the failure-event publisher, DLQ.
+- **R60–R70, the relay signal channel** — being done by hand as a Go concurrency exercise.
 
 **In this FS's lane:** the `plan_draft` change end-to-end (migration, proto, gRPC, HTTP contract,
 client), both creation paths, plan-service's insights client, plan-service's inbox and
