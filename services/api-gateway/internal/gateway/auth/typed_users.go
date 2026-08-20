@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	pb "github.com/darkphotonKN/fireplace/common/api/proto/auth"
 	"github.com/danielgtaylor/huma/v2"
+	pb "github.com/darkphotonKN/fireplace/common/api/proto/auth"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/apierr"
 	"github.com/google/uuid"
 )

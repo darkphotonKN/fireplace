@@ -23,4 +23,3 @@ type GetUserAnalyticsReq struct {
 	UserID uuid.UUID `json:"userId" binding:"required"`
 	Date   time.Time `json:"date" binding:"required"`
 }
-

@@ -34,6 +34,12 @@ const (
 	// it needs its own slice rather than riding along with a vocabulary update.
 	ServiceUnavailable Code = "SERVICE_UNAVAILABLE"
 
+	// NotImplemented is 501 and is a DELIVERY statement, not a failure: the
+	// operation is published in the contract with its success shape declared,
+	// but its data path has not landed yet. A client can distinguish "this will
+	// work later" from "this broke" — which a bare 500 cannot express.
+	NotImplemented Code = "NOT_IMPLEMENTED"
+
 	// Domain-specific. This one exists because errors[] cannot be populated
 	// from a downstream gRPC failure (the wire carries only a string message),
 	// so the field-level precision has to live in the code itself.

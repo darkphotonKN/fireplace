@@ -12,6 +12,7 @@ var (
 	ErrDuplicateResource    = errors.New("resource already exists")
 	ErrConstraintViolation  = errors.New("input does not follow column constraints")
 	ErrForbidden            = errors.New("you do not have permission to access this resource")
+	ErrNotImplemented    = errors.New("not implemented")
 	ErrUnauthorized         = errors.New("incorrect credentials entered during when attempting to authenticate")
 	ErrTransient            = errors.New("transient error")
 	ErrUUIDCouldNotBeParsed = errors.New("uuid could not be parsed")

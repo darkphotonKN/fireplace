@@ -104,7 +104,7 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 	identity := func(ctx context.Context, op string) (uuid.UUID, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
-			return uuid.Nil, apierr.ProblemFor(op, errNoIdentity())
+			return uuid.Nil, apierr.ProblemFor(op, apierr.ErrNoIdentity())
 		}
 		return userID, nil
 	}

@@ -13,7 +13,7 @@ import (
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/models"
 )
 
-type service struct {
+type Service struct {
 	repo               Repository
 	contentGen         interfaces.ContentGenerator
 	checklistService   ChecklistInsightsService
@@ -40,8 +40,8 @@ type InsightsYoutubeVideoFinder interface {
 type Repository interface {
 }
 
-func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService ChecklistInsightsService, planService PlanInsightsService, youtubeVideoFinder InsightsYoutubeVideoFinder) Service {
-	return &service{
+func NewService(repo Repository, contentGen interfaces.ContentGenerator, checklistService ChecklistInsightsService, planService PlanInsightsService, youtubeVideoFinder InsightsYoutubeVideoFinder) *Service {
+	return &Service{
 		repo:               repo,
 		contentGen:         contentGen,
 		checklistService:   checklistService,
@@ -54,7 +54,7 @@ func NewService(repo Repository, contentGen interfaces.ContentGenerator, checkli
 /**
 * Generates the correct checklist item suggestion with some the context of user's focus and current checklist items.
 **/
-func (s *service) GenerateSuggestions(ctx context.Context, planId uuid.UUID) (string, error) {
+func (s *Service) GenerateSuggestions(ctx context.Context, planId uuid.UUID) (string, error) {
 	prompt, err := s.generatePromptWithChecklist(ctx, planId, "")
 	if err != nil {
 		return "", fmt.Errorf("insights: generate suggestions: %w", err)
@@ -71,7 +71,7 @@ func (s *service) GenerateSuggestions(ctx context.Context, planId uuid.UUID) (st
 /**
 * Generates 3 daily suggestions based on longterm checklist items and focus.
 **/
-func (s *service) GenerateDailySuggestions(ctx context.Context, planId uuid.UUID) ([]string, error) {
+func (s *Service) GenerateDailySuggestions(ctx context.Context, planId uuid.UUID) ([]string, error) {
 	// TODO: add default rules for daily suggestion to additional prompt argument.
 	prompt, err := s.generatePromptWithChecklist(ctx, planId, "focus on tasks that are marked as \"longterm\" and breaking them down when you make your suggestions.")
 	if err != nil {
@@ -102,20 +102,20 @@ func (s *service) GenerateDailySuggestions(ctx context.Context, planId uuid.UUID
 * Generates the correct checklist item suggestion with some context of user's focus, current checklist items, and
 * half finished user input for a checklist item.
 **/
-func (s *service) AutocompleteChecklistSuggestion(focus string) (string, error) {
+func (s *Service) AutocompleteChecklistSuggestion(focus string) (string, error) {
 	return "", nil
 }
 
 /**
 * Takes a string prompt and converts it into a protocol for plan and checklist service to create a custom tailored plan.create a custom tailored plan.
 **/
-func (s *service) GenerateDailySummary() {
+func (s *Service) GenerateDailySummary() {
 }
 
 /**
 * Sets up all the default checklist-based settings to for appropriate prompt string based on the checklists under a specific planId and any additional prompt information provided.
 **/
-func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.UUID, additionalPrompt string) (string, error) {
+func (s *Service) generatePromptWithChecklist(ctx context.Context, planId uuid.UUID, additionalPrompt string) (string, error) {
 	// sets primary prompt defaults
 	// setup base prompt
 	s.basePrompt = `
@@ -154,7 +154,7 @@ func (s *service) generatePromptWithChecklist(ctx context.Context, planId uuid.U
 /**
 * grabs relevant plan, checklist, focus data for LLM searches.
 **/
-func (s *service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) (focus string, checklistItemPrompt string, error error) {
+func (s *Service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) (focus string, checklistItemPrompt string, error error) {
 
 	// gets relavant planID and checklistItems
 	plan, err := s.planService.GetById(ctx, planId)
@@ -184,7 +184,7 @@ func (s *service) AcquireGenRelevantData(ctx context.Context, planId uuid.UUID) 
 /**
 * Finds the focus and recent checklist items to find relevant search terms.
 **/
-func (s *service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.UUID) ([]discovery.Resource, error) {
+func (s *Service) GenerateSuggestedVideoLinks(ctx context.Context, planId uuid.UUID) ([]discovery.Resource, error) {
 	// gather relevant data for constructing prompt
 	focus, checklistPrompt, err := s.AcquireGenRelevantData(ctx, planId)
 	if err != nil {

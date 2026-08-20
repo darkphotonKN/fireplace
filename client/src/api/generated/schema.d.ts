@@ -4,6 +4,86 @@
  */
 
 export interface paths {
+    "/api/analytics/user/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a user's daily analytics
+         * @description Returns per-user daily completion counts, rate, and streak. NOT YET IMPLEMENTED: this operation answers 501 with code `NOT_IMPLEMENTED` until its data path lands. The success shape below is the intended contract and is unproven until then.
+         */
+        get: operations["getUserAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insights/checklist-suggestion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggest the next checklist item
+         * @description Returns one concrete, verb-first next task derived from the plan's focus and current checklist. The body is the suggestion itself.
+         */
+        get: operations["getChecklistSuggestion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insights/checklist-suggestion-daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggest daily items from long-term work
+         * @description Returns three suggestions biased toward breaking down long-term checklist items, each nudged away from the previous so the set does not repeat itself.
+         */
+        get: operations["getDailyChecklistSuggestion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insights/suggest-videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggest learning videos for a plan
+         * @description Generates search terms from the plan's focus and checklist, then returns one recommended video per term.
+         */
+        get: operations["getSuggestedVideos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/plans": {
         parameters: {
             query?: never;
@@ -77,7 +157,7 @@ export interface paths {
         };
         /**
          * Get a plan
-         * @description Returns one plan by id. Ownership is enforced by plan-service, which answers 403 when the caller does not own it.
+         * @description Returns one plan by id. NOTE: per-user authorization is not implemented yet (FS-0005) — any authenticated caller can currently read any plan by id. 403 is listed because it is the status this operation will use once ownership is enforced.
          */
         get: operations["getPlan"];
         put?: never;
@@ -94,6 +174,26 @@ export interface paths {
          * @description Partial update. Omitted fields are left unchanged.
          */
         patch: operations["updatePlan"];
+        trace?: never;
+    };
+    "/api/plans/{id}/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a plan's Gantt calendar window
+         * @description Returns the plan's scheduled checklist items for one window. `view` selects granularity (`week` or `month`) and `date` anchors the window; omitting `date` uses the current week or month.
+         */
+        get: operations["getCalendar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/plans/{id}/checklists": {
@@ -228,6 +328,78 @@ export interface paths {
         patch: operations["updateChecklistDates"];
         trace?: never;
     };
+    "/api/plans/{id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a plan's notes
+         * @description Returns the plan's notes, optionally filtered. `tags` is repeatable — `?tags=a&tags=b` filters on both. Omitting a filter and sending it empty are equivalent. For `isRead`/`isDismissed`, any value other than `true` reads as false.
+         */
+        get: operations["listNotes"];
+        put?: never;
+        /**
+         * Create a note
+         * @description Creates a note on the plan and returns it. Answers 201.
+         */
+        post: operations["createNote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{id}/notes/generate-ai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate AI notes for a plan
+         * @description Generates notes from the plan's focus and checklist. `requestType` selects one kind; an empty value or `{}` generates all. A request with no body at all is rejected with 400.
+         */
+        post: operations["generateAINotes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{id}/notes/{noteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a note
+         * @description Returns one note. Answers 404 when the note is not in the given plan, whether or not it exists elsewhere.
+         */
+        get: operations["getNote"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a note
+         * @description Deletes a note. Answers 204 with no body.
+         */
+        delete: operations["deleteNote"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a note
+         * @description Applies a partial update. Omitted fields are left unchanged.
+         */
+        patch: operations["updateNote"];
+        trace?: never;
+    };
     "/api/plans/{id}/toggle-daily-reset": {
         parameters: {
             query?: never;
@@ -356,6 +528,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AIMetadataPayload: {
+            /** Format: double */
+            confidence: number;
+            generatedAt: string;
+            generatedFrom: string;
+            sourceContext: string;
+        };
         ArchiveReq: {
             /** @example true */
             archived: boolean;
@@ -377,6 +556,21 @@ export interface components {
             refreshToken: string;
             /** @description The authenticated user */
             userInfo: components["schemas"]["UserResponse"];
+        };
+        CalendarItemResponse: {
+            description: string;
+            done: boolean;
+            dueDate: string;
+            id: string;
+            scope: string;
+            startDate: string;
+        };
+        CalendarResponse: {
+            items: components["schemas"]["CalendarItemResponse"][] | null;
+            planId: string;
+            view: string;
+            windowEnd: string;
+            windowStart: string;
         };
         ChecklistResp: {
             /** @example false */
@@ -431,6 +625,20 @@ export interface components {
             /** @example task */
             type?: string;
         };
+        CreateNoteRequest: {
+            /** @description Present on AI-generated notes */
+            aiMetadata?: components["schemas"]["AIMetadataPayload"];
+            /** @description Note body */
+            content: string;
+            /** @description low | medium | high | critical */
+            priority?: string;
+            /** @description Checklist item ids this note refers to */
+            relatedTaskIds?: string[] | null;
+            /** @description Free-form tags */
+            tags?: string[] | null;
+            /** @description user | ai | warning | insight | suggestion */
+            type?: string;
+        };
         CreatePlanReq: {
             description?: string;
             focus: string;
@@ -444,6 +652,26 @@ export interface components {
             message?: string;
             /** @description The value at the given location */
             value?: unknown;
+        };
+        GenerateAINotesRequest: {
+            /** @description suggestion | warning | insight; empty or omitted means all */
+            requestType?: string;
+        };
+        NoteResponse: {
+            aiMetadata?: components["schemas"]["AIMetadataPayload"];
+            content: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            isDismissed: boolean;
+            isRead: boolean;
+            planId: string;
+            priority: string;
+            relatedTaskIds: string[] | null;
+            tags: string[] | null;
+            type: string;
+            /** Format: date-time */
+            updatedAt: string;
         };
         PlanResp: {
             /** Format: date-time */
@@ -577,6 +805,18 @@ export interface components {
              */
             startDate?: string | null;
         };
+        UpdateNoteRequest: {
+            /** @description Replaces the note body */
+            content?: string;
+            /** @description Marks the note dismissed or not */
+            isDismissed?: boolean;
+            /** @description Marks the note read or unread */
+            isRead?: boolean;
+            /** @description low | medium | high | critical */
+            priority?: string;
+            /** @description Replaces the tag set */
+            tags?: string[] | null;
+        };
         UpdatePlanReq: {
             dailyReset?: boolean;
             description?: string;
@@ -587,6 +827,26 @@ export interface components {
             bio?: string;
             displayName?: string;
             name?: string;
+        };
+        UserAnalyticsResponse: {
+            /** Format: int64 */
+            activePlansCount: number;
+            /** Format: double */
+            completionRate: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            currentStreak: number;
+            /** Format: date-time */
+            date: string;
+            id: string;
+            /** Format: int64 */
+            tasksCompleted: number;
+            /** Format: int64 */
+            tasksTotal: number;
+            /** Format: date-time */
+            updatedAt: string;
+            userId: string;
         };
         UserResponse: {
             /** @description Optional short biography */
@@ -619,6 +879,13 @@ export interface components {
              */
             updatedAt: string;
         };
+        VideoSuggestionResponse: {
+            description: string;
+            source: string;
+            title: string;
+            type: string;
+            url: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -628,6 +895,251 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getUserAnalytics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User id */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAnalyticsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getChecklistSuggestion: {
+        parameters: {
+            query?: {
+                /** @description Plan id */
+                plan_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getDailyChecklistSuggestion: {
+        parameters: {
+            query?: {
+                /** @description Plan id */
+                plan_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[] | null;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getSuggestedVideos: {
+        parameters: {
+            query?: {
+                /** @description Plan id */
+                plan_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoSuggestionResponse"][] | null;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listPlans: {
         parameters: {
             query?: never;
@@ -1052,6 +1564,88 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getCalendar: {
+        parameters: {
+            query?: {
+                /** @description Window granularity: week or month. Unrecognised values are forwarded to calendar-service, not rejected */
+                view?: string;
+                /** @description Anchor date: YYYY-MM-DD for week, YYYY-MM for month. Defaults to today's window when omitted */
+                date?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarResponse"];
                 };
             };
             /** @description Unauthorized */
@@ -1823,6 +2417,470 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listNotes: {
+        parameters: {
+            query?: {
+                /** @description Filter by note type; omit (or send empty) for all */
+                type?: string;
+                /** @description Filter by priority; omit (or send empty) for all */
+                priority?: string;
+                /** @description Filter by read state. Any value other than 'true' reads as false; omit for no filter */
+                isRead?: string;
+                /** @description Filter by dismissed state. Any value other than 'true' reads as false; omit for no filter */
+                isDismissed?: string;
+                /** @description Filter to notes referencing this task id */
+                relatedTaskId?: string;
+                /** @description Repeatable. ?tags=a&tags=b filters on both */
+                tags?: string[] | null;
+            };
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteResponse"][] | null;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    generateAINotes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateAINotesRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteResponse"][] | null;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+                /** @description Note id */
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+                /** @description Note id */
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+                /** @description Note id */
+                noteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

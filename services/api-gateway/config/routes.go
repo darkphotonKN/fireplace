@@ -66,12 +66,11 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 
 	userAnalyticsRepo := useranalytics.NewRepository(db)
 	userAnalyticsService := useranalytics.NewService(userAnalyticsRepo, planAdapter)
-	userAnalyticsHandler := useranalytics.NewHandler(userAnalyticsService)
 
 	checklistGen := ai.NewChecklistGen()
 	insightsRepo := insights.NewRepository(db)
 	insightsService := insights.NewService(insightsRepo, checklistGen, planAdapter, planAdapter, nil)
-	insightsHandler := insights.NewHandler(insightsService)
+
 
 	searchTermGen := ai.NewSearchTermGenerator()
 	youtubeVideoFinder, err := discovery.NewYoutubeVideoFinder()
@@ -79,18 +78,15 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 		log.Fatalf("Error when attempting to initialize youtubeVideoFinder, error: %+v\n", err)
 	}
 	videoInsightsService := insights.NewService(insightsRepo, searchTermGen, planAdapter, planAdapter, youtubeVideoFinder)
-	videoInsightsHandler := insights.NewHandler(videoInsightsService)
 
 	notesRepo := notes.NewRepository(db)
 	notesGen := ai.NewNotesGenerator()
 	notesService := notes.NewService(notesRepo, notesGen, planAdapter, planAdapter)
-	notesHandler := notes.NewHandler(notesService, planAdapter)
 
 	// calendar-service is remote — gateway proxies /api/plans/:id/calendar
 	// through calendargw via gRPC. Calendar-service calls plan-service on
 	// its own for ownership checks + item reads.
 	calendarGwClient := calendargw.NewClient(registry)
-	calendarGwHandler := calendargw.NewHandler(calendarGwClient)
 
 	// --- PROTECTED ROUTES (auth middleware) ---
 
@@ -109,10 +105,17 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	// stated trade, since the swaggo document that used to describe it was
 	// removed outright (ADR-0006 §5).
 	MountSerialized(router, APIDeps{
-		Profile:    authClient,
-		Users:      authClient,
-		Plans:      planGwClient,
-		Checklists: planGwClient,
+		Profile:        authClient,
+		Users:          authClient,
+		Plans:          planGwClient,
+		Checklists:     planGwClient,
+		Notes:          notesService,
+		NotesOwnership: planAdapter,
+
+		Suggestions:      insightsService,
+		VideoSuggestions: videoInsightsService,
+		Analytics:        userAnalyticsService,
+		Calendar:         calendarGwClient,
 	})
 
 	// Plan routes are SERIALIZED (FS-0004, I-0016) and registered above via
@@ -120,28 +123,16 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 
 	// Checklist routes are SERIALIZED (FS-0004, I-0017), registered above.
 
-	// -- User Analytics Routes --
-	userAnalyticsRoutes := protected.Group("/analytics")
-	userAnalyticsRoutes.GET("/user/:userId", userAnalyticsHandler.GetUserAnalytics)
+	// Analytics and insights routes are SERIALIZED (FS-0004, I-0019), registered
+	// above via MountSerialized. Their gin registrations are deleted, not left
+	// alongside: gin panics on duplicate route registration.
 
-	// -- Insight Routes --
-	insightsRoutes := protected.Group("/insights")
-	insightsRoutes.GET("/checklist-suggestion", insightsHandler.GenerateSuggestions)
-	insightsRoutes.GET("/checklist-suggestion-daily", insightsHandler.GenerateDailySuggestions)
-	insightsRoutes.GET("/suggest-videos", videoInsightsHandler.GenerateSuggestedVideoLinks)
+	// Notes routes are SERIALIZED (FS-0004, I-0018), registered above via
+	// MountSerialized. Their gin registrations are deleted, not left alongside:
+	// gin panics on duplicate route registration, and serialization is
+	// replacement, not coexistence per path.
 
-	// -- Notes Routes --
-	notesRoutes := protected.Group("/plans/:id/notes")
-	notesRoutes.GET("", notesHandler.GetAll)
-	notesRoutes.GET("/:noteId", notesHandler.GetByID)
-	notesRoutes.POST("", notesHandler.Create)
-	notesRoutes.PATCH("/:noteId", notesHandler.Update)
-	notesRoutes.DELETE("/:noteId", notesHandler.Delete)
-	notesRoutes.POST("/generate-ai", notesHandler.GenerateAINotes)
-
-	// -- Calendar Routes (proxied to calendar-service via gRPC) --
-	calendarRoutes := protected.Group("/plans/:id/calendar")
-	calendarRoutes.GET("", calendarGwHandler.GetCalendar)
+	// Calendar routes are SERIALIZED (FS-0004, I-0019), registered above.
 
 	// --- JOBS ---
 	// Daily reset is now a gRPC call to plan-service.DailyReset (via the adapter).

@@ -109,8 +109,9 @@ export function NoteCard({
   };
 
   const getRelatedTasks = () => {
-    if (!note.relatedTaskIds || note.relatedTaskIds.length === 0) return [];
-    return checklistItems.filter(task => note.relatedTaskIds.includes(task.id));
+    const relatedTaskIds = note.relatedTaskIds;
+    if (!relatedTaskIds || relatedTaskIds.length === 0) return [];
+    return checklistItems.filter(task => relatedTaskIds.includes(task.id));
   };
 
   const formatDate = (dateString: string) => {

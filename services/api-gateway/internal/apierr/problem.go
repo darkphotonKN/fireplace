@@ -2,11 +2,12 @@ package apierr
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
+	"github.com/danielgtaylor/huma/v2"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 	"github.com/darkphotonKN/fireplace/common/errcode"
-	"github.com/danielgtaylor/huma/v2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -25,11 +26,11 @@ import (
 // application/problem+json; omitting it silently degrades to application/json
 // while still passing any test that asserts only on status and body.
 type Problem struct {
-	Type   string              `json:"type,omitempty" doc:"URI reference identifying the problem type"`
-	Title  string              `json:"title,omitempty" doc:"Short, stable summary of the problem type"`
-	Status int                 `json:"status,omitempty" doc:"HTTP status code"`
-	Detail string              `json:"detail,omitempty" doc:"Explanation specific to this occurrence"`
-	Code   errcode.Code        `json:"code" doc:"Stable domain error code — switch on THIS, not on detail" example:"NOT_FOUND"`
+	Type   string       `json:"type,omitempty" doc:"URI reference identifying the problem type"`
+	Title  string       `json:"title,omitempty" doc:"Short, stable summary of the problem type"`
+	Status int          `json:"status,omitempty" doc:"HTTP status code"`
+	Detail string       `json:"detail,omitempty" doc:"Explanation specific to this occurrence"`
+	Code   errcode.Code `json:"code" doc:"Stable domain error code — switch on THIS, not on detail" example:"NOT_FOUND"`
 	// NOT omitempty: FS-0002 R16 requires errors[] to be PRESENT and empty for
 	// downstream failures, so the FE never has to null-check it. omitempty would
 	// drop a zero-length slice entirely.
@@ -93,6 +94,8 @@ func CodeFor(err error) errcode.Code {
 		errors.Is(err, commonconstants.ErrConstraintViolation),
 		errors.Is(err, commonconstants.ErrUUIDCouldNotBeParsed):
 		return errcode.ValidationFailed
+	case errors.Is(err, commonconstants.ErrNotImplemented):
+		return errcode.NotImplemented
 	case errors.Is(err, commonconstants.ErrUnauthorized):
 		return errcode.Unauthenticated
 	case errors.Is(err, commonconstants.ErrForbidden):
@@ -105,6 +108,14 @@ func CodeFor(err error) errcode.Code {
 // ProblemFor is the single adapter from any gateway error to problem+json.
 // It performs NO mapping of its own — StatusFor and CodeFor own that decision
 // for the whole gateway; this only re-serializes it.
+// ErrNoIdentity is the sentinel for "the identity bridge yielded nothing".
+// Unreachable behind the auth middleware, but every serialized operation still
+// maps it rather than dereferencing a missing id — the failure mode of an
+// identity lookup must be a contract-shaped 401, never a panic.
+func ErrNoIdentity() error {
+	return fmt.Errorf("%w: no identity in context", commonconstants.ErrUnauthorized)
+}
+
 func ProblemFor(op string, err error) *Problem {
 	code, msg := StatusFor(err)
 	return &Problem{
@@ -155,6 +166,8 @@ func CodeForStatus(status int) errcode.Code {
 		return errcode.NotFound
 	case http.StatusConflict:
 		return errcode.AlreadyExists
+	case http.StatusNotImplemented:
+		return errcode.NotImplemented
 	default:
 		return errcode.Internal
 	}

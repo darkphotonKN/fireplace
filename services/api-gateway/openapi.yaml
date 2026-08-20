@@ -1,5 +1,23 @@
 components:
   schemas:
+    AIMetadataPayload:
+      additionalProperties: false
+      properties:
+        confidence:
+          format: double
+          type: number
+        generatedAt:
+          type: string
+        generatedFrom:
+          type: string
+        sourceContext:
+          type: string
+      required:
+        - generatedFrom
+        - confidence
+        - sourceContext
+        - generatedAt
+      type: object
     ArchiveReq:
       additionalProperties: false
       properties:
@@ -36,6 +54,53 @@ components:
         - accessExpiresIn
         - refreshExpiresIn
         - userInfo
+      type: object
+    CalendarItemResponse:
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        done:
+          type: boolean
+        dueDate:
+          type: string
+        id:
+          type: string
+        scope:
+          type: string
+        startDate:
+          type: string
+      required:
+        - id
+        - description
+        - scope
+        - done
+        - startDate
+        - dueDate
+      type: object
+    CalendarResponse:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/CalendarItemResponse"
+          type:
+            - array
+            - "null"
+        planId:
+          type: string
+        view:
+          type: string
+        windowEnd:
+          type: string
+        windowStart:
+          type: string
+      required:
+        - planId
+        - view
+        - windowStart
+        - windowEnd
+        - items
       type: object
     ChecklistResp:
       additionalProperties: false
@@ -130,6 +195,38 @@ components:
       required:
         - description
       type: object
+    CreateNoteRequest:
+      additionalProperties: false
+      properties:
+        aiMetadata:
+          $ref: "#/components/schemas/AIMetadataPayload"
+          description: Present on AI-generated notes
+        content:
+          description: Note body
+          type: string
+        priority:
+          description: low | medium | high | critical
+          type: string
+        relatedTaskIds:
+          description: Checklist item ids this note refers to
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        tags:
+          description: Free-form tags
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        type:
+          description: user | ai | warning | insight | suggestion
+          type: string
+      required:
+        - content
+      type: object
     CreatePlanReq:
       additionalProperties: false
       properties:
@@ -157,6 +254,63 @@ components:
           type: string
         value:
           description: The value at the given location
+      type: object
+    GenerateAINotesRequest:
+      additionalProperties: false
+      properties:
+        requestType:
+          description: suggestion | warning | insight; empty or omitted means all
+          type: string
+      type: object
+    NoteResponse:
+      additionalProperties: false
+      properties:
+        aiMetadata:
+          $ref: "#/components/schemas/AIMetadataPayload"
+        content:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        id:
+          type: string
+        isDismissed:
+          type: boolean
+        isRead:
+          type: boolean
+        planId:
+          type: string
+        priority:
+          type: string
+        relatedTaskIds:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        tags:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        type:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - planId
+        - content
+        - type
+        - priority
+        - tags
+        - relatedTaskIds
+        - isRead
+        - isDismissed
+        - createdAt
+        - updatedAt
       type: object
     PlanResp:
       additionalProperties: false
@@ -378,6 +532,29 @@ components:
             - string
             - "null"
       type: object
+    UpdateNoteRequest:
+      additionalProperties: false
+      properties:
+        content:
+          description: Replaces the note body
+          type: string
+        isDismissed:
+          description: Marks the note dismissed or not
+          type: boolean
+        isRead:
+          description: Marks the note read or unread
+          type: boolean
+        priority:
+          description: low | medium | high | critical
+          type: string
+        tags:
+          description: Replaces the tag set
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      type: object
     UpdatePlanReq:
       additionalProperties: false
       properties:
@@ -399,6 +576,49 @@ components:
           type: string
         name:
           type: string
+      type: object
+    UserAnalyticsResponse:
+      additionalProperties: false
+      properties:
+        activePlansCount:
+          format: int64
+          type: integer
+        completionRate:
+          format: double
+          type: number
+        createdAt:
+          format: date-time
+          type: string
+        currentStreak:
+          format: int64
+          type: integer
+        date:
+          format: date-time
+          type: string
+        id:
+          type: string
+        tasksCompleted:
+          format: int64
+          type: integer
+        tasksTotal:
+          format: int64
+          type: integer
+        updatedAt:
+          format: date-time
+          type: string
+        userId:
+          type: string
+      required:
+        - id
+        - userId
+        - date
+        - tasksCompleted
+        - tasksTotal
+        - completionRate
+        - currentStreak
+        - activePlansCount
+        - createdAt
+        - updatedAt
       type: object
     UserResponse:
       additionalProperties: false
@@ -445,6 +665,26 @@ components:
         - createdAt
         - updatedAt
       type: object
+    VideoSuggestionResponse:
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        source:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+        url:
+          type: string
+      required:
+        - title
+        - url
+        - source
+        - type
+        - description
+      type: object
   securitySchemes:
     bearerAuth:
       bearerFormat: JWT
@@ -457,6 +697,204 @@ info:
   version: 1.0.0
 openapi: 3.1.0
 paths:
+  /api/analytics/user/{userId}:
+    get:
+      description: "Returns per-user daily completion counts, rate, and streak. NOT YET IMPLEMENTED: this operation answers 501 with code `NOT_IMPLEMENTED` until its data path lands. The success shape below is the intended contract and is unproven until then."
+      operationId: getUserAnalytics
+      parameters:
+        - description: User id
+          in: path
+          name: userId
+          required: true
+          schema:
+            description: User id
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAnalyticsResponse"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "501":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Implemented
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Get a user's daily analytics
+  /api/insights/checklist-suggestion:
+    get:
+      description: Returns one concrete, verb-first next task derived from the plan's focus and current checklist. The body is the suggestion itself.
+      operationId: getChecklistSuggestion
+      parameters:
+        - description: Plan id
+          explode: false
+          in: query
+          name: plan_id
+          schema:
+            description: Plan id
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: string
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Suggest the next checklist item
+  /api/insights/checklist-suggestion-daily:
+    get:
+      description: Returns three suggestions biased toward breaking down long-term checklist items, each nudged away from the previous so the set does not repeat itself.
+      operationId: getDailyChecklistSuggestion
+      parameters:
+        - description: Plan id
+          explode: false
+          in: query
+          name: plan_id
+          schema:
+            description: Plan id
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  type: string
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Suggest daily items from long-term work
+  /api/insights/suggest-videos:
+    get:
+      description: Generates search terms from the plan's focus and checklist, then returns one recommended video per term.
+      operationId: getSuggestedVideos
+      parameters:
+        - description: Plan id
+          explode: false
+          in: query
+          name: plan_id
+          schema:
+            description: Plan id
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/VideoSuggestionResponse"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Suggest learning videos for a plan
   /api/plans:
     get:
       description: Returns every plan owned by the authenticated user.
@@ -725,7 +1163,7 @@ paths:
         - bearerAuth: []
       summary: Delete a plan
     get:
-      description: Returns one plan by id. Ownership is enforced by plan-service, which answers 403 when the caller does not own it.
+      description: "Returns one plan by id. NOTE: per-user authorization is not implemented yet (FS-0005) — any authenticated caller can currently read any plan by id. 403 is listed because it is the status this operation will use once ownership is enforced."
       operationId: getPlan
       parameters:
         - description: Plan id
@@ -850,6 +1288,78 @@ paths:
       security:
         - bearerAuth: []
       summary: Update a plan
+  /api/plans/{id}/calendar:
+    get:
+      description: Returns the plan's scheduled checklist items for one window. `view` selects granularity (`week` or `month`) and `date` anchors the window; omitting `date` uses the current week or month.
+      operationId: getCalendar
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: "Window granularity: week or month. Unrecognised values are forwarded to calendar-service, not rejected"
+          explode: false
+          in: query
+          name: view
+          schema:
+            description: "Window granularity: week or month. Unrecognised values are forwarded to calendar-service, not rejected"
+            type: string
+        - description: "Anchor date: YYYY-MM-DD for week, YYYY-MM for month. Defaults to today's window when omitted"
+          explode: false
+          in: query
+          name: date
+          schema:
+            description: "Anchor date: YYYY-MM-DD for week, YYYY-MM for month. Defaults to today's window when omitted"
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarResponse"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Get a plan's Gantt calendar window
   /api/plans/{id}/checklists:
     get:
       description: Returns non-archived items. `scope` and `type` are optional filters. Omitting a filter and sending it empty are equivalent — both return every value.
@@ -1480,6 +1990,422 @@ paths:
       security:
         - bearerAuth: []
       summary: Set or clear a checklist item's dates
+  /api/plans/{id}/notes:
+    get:
+      description: Returns the plan's notes, optionally filtered. `tags` is repeatable — `?tags=a&tags=b` filters on both. Omitting a filter and sending it empty are equivalent. For `isRead`/`isDismissed`, any value other than `true` reads as false.
+      operationId: listNotes
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: Filter by note type; omit (or send empty) for all
+          explode: false
+          in: query
+          name: type
+          schema:
+            description: Filter by note type; omit (or send empty) for all
+            type: string
+        - description: Filter by priority; omit (or send empty) for all
+          explode: false
+          in: query
+          name: priority
+          schema:
+            description: Filter by priority; omit (or send empty) for all
+            type: string
+        - description: Filter by read state. Any value other than 'true' reads as false; omit for no filter
+          explode: false
+          in: query
+          name: isRead
+          schema:
+            description: Filter by read state. Any value other than 'true' reads as false; omit for no filter
+            type: string
+        - description: Filter by dismissed state. Any value other than 'true' reads as false; omit for no filter
+          explode: false
+          in: query
+          name: isDismissed
+          schema:
+            description: Filter by dismissed state. Any value other than 'true' reads as false; omit for no filter
+            type: string
+        - description: Filter to notes referencing this task id
+          explode: false
+          in: query
+          name: relatedTaskId
+          schema:
+            description: Filter to notes referencing this task id
+            type: string
+        - description: Repeatable. ?tags=a&tags=b filters on both
+          explode: true
+          in: query
+          name: tags
+          schema:
+            description: Repeatable. ?tags=a&tags=b filters on both
+            items:
+              type: string
+            type:
+              - array
+              - "null"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/NoteResponse"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: List a plan's notes
+    post:
+      description: Creates a note on the plan and returns it. Answers 201.
+      operationId: createNote
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNoteRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteResponse"
+          description: Created
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Create a note
+  /api/plans/{id}/notes/generate-ai:
+    post:
+      description: Generates notes from the plan's focus and checklist. `requestType` selects one kind; an empty value or `{}` generates all. A request with no body at all is rejected with 400.
+      operationId: generateAINotes
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateAINotesRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/NoteResponse"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Generate AI notes for a plan
+  /api/plans/{id}/notes/{noteId}:
+    delete:
+      description: Deletes a note. Answers 204 with no body.
+      operationId: deleteNote
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: Note id
+          in: path
+          name: noteId
+          required: true
+          schema:
+            description: Note id
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Delete a note
+    get:
+      description: Returns one note. Answers 404 when the note is not in the given plan, whether or not it exists elsewhere.
+      operationId: getNote
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: Note id
+          in: path
+          name: noteId
+          required: true
+          schema:
+            description: Note id
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteResponse"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Get a note
+    patch:
+      description: Applies a partial update. Omitted fields are left unchanged.
+      operationId: updateNote
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: Note id
+          in: path
+          name: noteId
+          required: true
+          schema:
+            description: Note id
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNoteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteResponse"
+          description: OK
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Update a note
   /api/plans/{id}/toggle-daily-reset:
     patch:
       description: Flips dailyReset and returns the updated plan. Takes no body.

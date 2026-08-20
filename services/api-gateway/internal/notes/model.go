@@ -50,11 +50,11 @@ type Note struct {
 
 // CreateNoteReq represents a request to create a new note
 type CreateNoteReq struct {
-	Content        string     `json:"content" binding:"required"`
-	Type           string     `json:"type,omitempty"`
-	Priority       string     `json:"priority,omitempty"`
-	Tags           []string   `json:"tags,omitempty"`
-	RelatedTaskIDs []string   `json:"relatedTaskIds,omitempty"`
+	Content        string      `json:"content" binding:"required"`
+	Type           string      `json:"type,omitempty"`
+	Priority       string      `json:"priority,omitempty"`
+	Tags           []string    `json:"tags,omitempty"`
+	RelatedTaskIDs []string    `json:"relatedTaskIds,omitempty"`
 	AIMetadata     *AIMetadata `json:"aiMetadata,omitempty"`
 }
 
@@ -74,10 +74,10 @@ type GenerateAINotesReq struct {
 
 // FilterOptions for querying notes
 type FilterOptions struct {
-	Type           string   `json:"type,omitempty"`
-	Priority       string   `json:"priority,omitempty"`
-	Tags           []string `json:"tags,omitempty"`
-	IsRead         *bool    `json:"isRead,omitempty"`
-	IsDismissed    *bool    `json:"isDismissed,omitempty"`
-	RelatedTaskID  string   `json:"relatedTaskId,omitempty"`
+	Type          string   `json:"type,omitempty"`
+	Priority      string   `json:"priority,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+	IsRead        *bool    `json:"isRead,omitempty"`
+	IsDismissed   *bool    `json:"isDismissed,omitempty"`
+	RelatedTaskID string   `json:"relatedTaskId,omitempty"`
 }

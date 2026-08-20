@@ -9,15 +9,13 @@ import {
   deleteChecklistItem,
   scheduleChecklistItem,
   ChecklistItem,
-  getChecklistSuggestion,
   scope,
   ScopeEnum,
-  getDailyInsights,
   archiveChecklistItem,
   fetchArchivedChecklist,
   ChecklistResponse,
-  ChecklistSuggestionResponse,
 } from '@/services/api';
+import { getChecklistSuggestion, getDailyInsights } from '@/api/insights';
 import { getPlan, toggleDailyReset } from '@/api/plans';
 import { useParams } from 'next/navigation';
 import DatePicker from 'react-datepicker';
@@ -593,9 +591,8 @@ export default function Todo({
 
     try {
       setIsFetchingSuggestion(true);
-      const response: ChecklistSuggestionResponse =
-        await getChecklistSuggestion(planId, taskType as 'daily' | 'longterm');
-      setSuggestion(response.result);
+      const suggestion = await getChecklistSuggestion(planId);
+      setSuggestion(suggestion);
     } catch (error) {
       console.error('Failed to get suggestion:', error);
     } finally {
@@ -659,8 +656,8 @@ export default function Todo({
       }
 
       const response = await getDailyInsights(planId);
-      if (response && response.result) {
-        setDailyInsights(response.result);
+      if (response.length > 0) {
+        setDailyInsights(response);
       } else {
         // Clear insights if API returns empty results
         setDailyInsights([]);
@@ -979,22 +976,23 @@ export default function Todo({
     }
   };
 
-  // Fetch plan details including dailyReset
+  // Fetch plan metadata (dailyReset). This effect owns PLAN state only — it
+  // must never touch `todos`. The taskType effect above is the single writer
+  // of the checklist, and it is the only one that knows which scope this
+  // instance is showing. This effect used to also fetch scope 'daily' and
+  // setTodos with the result; because it does not depend on taskType, on a
+  // <Todo fixedTaskType="longterm" /> instance it overwrote the long-term list
+  // with daily items once its slower Promise.all settled — making a
+  // just-created long-term item vanish on reload even though it had persisted.
   useEffect(() => {
     const loadPlanDetails = async () => {
       if (!planId) return;
 
-      console.log('@DailyReset fetching plan details');
       try {
-        const [checklistItems, planResponse] = await Promise.all([
-          fetchChecklist(planId, 'daily'),
-          getPlan(planId),
-        ]);
-        setTodos(checklistItems);
+        const planResponse = await getPlan(planId);
         // Bare resource, not planResponse.result — serialized (FS-0004).
         setDailyReset(planResponse.dailyReset);
       } catch (error) {
-        console.log('@DailyReset Error fetching plan details');
         console.error('Error fetching plan details:', error);
       }
     };

@@ -76,7 +76,7 @@ export function NotesContainer({
 
   // Get all unique tags
   const allTags = Array.from(
-    new Set(state.notes.flatMap(note => note.tags))
+    new Set(state.notes.flatMap(note => note.tags ?? []))
   );
 
   // Filter notes based on current filter settings
@@ -97,7 +97,7 @@ export function NotesContainer({
     // Filter by tags
     if (state.selectedTags.length > 0) {
       notes = notes.filter(n =>
-        state.selectedTags.some(tag => n.tags.includes(tag))
+        state.selectedTags.some(tag => (n.tags ?? []).includes(tag))
       );
     }
 

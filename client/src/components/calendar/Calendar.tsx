@@ -12,8 +12,8 @@ import {
 import {
   CalendarItem,
   CalendarView,
-  getPlanCalendar,
 } from "@/services/api";
+import { getPlanCalendar } from "@/api/calendar";
 import {
   formatViewAnchor,
   getDaysInWindow,
@@ -68,7 +68,7 @@ export function Calendar({ planId, className = "", compact = false }: CalendarPr
     getPlanCalendar(planId, view, date)
       .then((res) => {
         if (cancelled) return;
-        setItems(res.result?.items ?? []);
+        setItems(res.items ?? []);
       })
       .catch((err) => {
         if (cancelled) return;

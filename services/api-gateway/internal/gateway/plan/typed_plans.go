@@ -2,11 +2,8 @@ package plangw
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strconv"
-
-	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 
 	"github.com/danielgtaylor/huma/v2"
 	pb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
@@ -115,7 +112,7 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 	}, func(ctx context.Context, _ *struct{}) (*PlanListOutput, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
-			return nil, apierr.ProblemFor("list plans", errNoIdentity())
+			return nil, apierr.ProblemFor("list plans", apierr.ErrNoIdentity())
 		}
 		plans, err := c.ListPlans(ctx, userID)
 		if err != nil {
@@ -136,7 +133,7 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 	}, func(ctx context.Context, in *SearchPlansInput) (*SearchOutput, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
-			return nil, apierr.ProblemFor("search plans", errNoIdentity())
+			return nil, apierr.ProblemFor("search plans", apierr.ErrNoIdentity())
 		}
 		results, err := c.SearchPlans(ctx, userID, SearchParam{
 			Term:   in.Term,
@@ -165,7 +162,7 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 	}, func(ctx context.Context, in *ListSharedInput) (*PlanListOutput, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
-			return nil, apierr.ProblemFor("list shared plans", errNoIdentity())
+			return nil, apierr.ProblemFor("list shared plans", apierr.ErrNoIdentity())
 		}
 		plans, err := c.ListSharedPlans(ctx, userID, in.Limit, in.Offset)
 		if err != nil {
@@ -177,15 +174,15 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 	huma.Register(api, huma.Operation{
 		OperationID: "getPlan", Method: http.MethodGet, Path: "/api/plans/{id}",
 		Middlewares: mw, Security: secured,
-		Summary:     "Get a plan",
+		Summary: "Get a plan",
 		Description: "Returns one plan by id. NOTE: per-user authorization is not implemented yet " +
 			"(FS-0005) — any authenticated caller can currently read any plan by id. 403 is listed " +
 			"because it is the status this operation will use once ownership is enforced.",
-		Errors:      errs,
+		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDInput) (*PlanOutput, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
-			return nil, apierr.ProblemFor("get plan", errNoIdentity())
+			return nil, apierr.ProblemFor("get plan", apierr.ErrNoIdentity())
 		}
 		plan, err := c.GetPlan(ctx, in.ID, userID)
 		if err != nil {
@@ -207,7 +204,7 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 	}, func(ctx context.Context, in *CreatePlanInput) (*PlanOutput, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
-			return nil, apierr.ProblemFor("create plan", errNoIdentity())
+			return nil, apierr.ProblemFor("create plan", apierr.ErrNoIdentity())
 		}
 		plan, err := c.CreatePlan(ctx, userID, in.Body)
 		if err != nil {
@@ -225,7 +222,7 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 	}, func(ctx context.Context, in *UpdatePlanInput) (*PlanOutput, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
-			return nil, apierr.ProblemFor("update plan", errNoIdentity())
+			return nil, apierr.ProblemFor("update plan", apierr.ErrNoIdentity())
 		}
 		plan, err := c.UpdatePlan(ctx, in.ID, userID, in.Body)
 		if err != nil {
@@ -244,7 +241,7 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 	}, func(ctx context.Context, in *PlanIDInput) (*PlanOutput, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
-			return nil, apierr.ProblemFor("toggle daily_reset", errNoIdentity())
+			return nil, apierr.ProblemFor("toggle daily_reset", apierr.ErrNoIdentity())
 		}
 		plan, err := c.ToggleDailyReset(ctx, in.ID, userID)
 		if err != nil {
@@ -263,7 +260,7 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 	}, func(ctx context.Context, in *PlanIDInput) (*DeleteOutput, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
-			return nil, apierr.ProblemFor("delete plan", errNoIdentity())
+			return nil, apierr.ProblemFor("delete plan", apierr.ErrNoIdentity())
 		}
 		if err := c.DeletePlan(ctx, in.ID, userID); err != nil {
 			return nil, apierr.ProblemFor("delete plan", err)
@@ -285,10 +282,3 @@ func derefPlans(in []*PlanResp) []PlanResp {
 }
 
 func itoa(i int) string { return strconv.Itoa(i) }
-
-// errNoIdentity is the sentinel for "the identity bridge yielded nothing",
-// which should be unreachable behind the auth middleware but must still map to
-// a contract-shaped error rather than a nil-pointer panic.
-func errNoIdentity() error {
-	return fmt.Errorf("%w: no identity in context", commonconstants.ErrUnauthorized)
-}

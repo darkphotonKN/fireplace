@@ -33,17 +33,76 @@ Traps specific to this group:
 
 ## Acceptance Criteria
 
-- [ ] All 6 operations appear in `openapi.yaml` with correct methods, paths, and params
-- [ ] `tags` is a repeatable query param and `?tags=a&tags=b` still filters on both
-- [ ] Absent `isRead`/`isDismissed` remains distinct from `false`, proven by a test
-- [ ] All 6 declare `Security: bearerAuth`
-- [ ] `models.Note` does not appear in `components.schemas`, directly or nested
-- [ ] Round-trip test over a **populated** fixture asserts JSON equality
-- [ ] Empty list responses marshal to `[]` and never `null`
+- [x] All 6 operations appear in `openapi.yaml` with correct methods, paths, and params
+- [x] `tags` is a repeatable query param and `?tags=a&tags=b` still filters on both
+- [x] Absent `isRead`/`isDismissed` remains distinct from `false`, proven by a test
+- [x] All 6 declare `Security: bearerAuth`
+- [x] `models.Note` does not appear in `components.schemas`, directly or nested
+- [x] Round-trip test over a **populated** fixture asserts JSON equality
+- [x] Empty list responses marshal to `[]` and never `null`
 - [ ] Before/after probe recorded showing the envelope removed, payload otherwise unchanged
-- [ ] `make openapi-diff`, `make lint-contract`, `make openapi-breaking` green
-- [ ] FE notes call sites cut over to the generated client; typecheck green
-- [ ] Full Go test suite green
+- [x] `make openapi-diff`, `make lint-contract`, `make openapi-breaking` green
+- [x] FE notes call sites cut over to the generated client; typecheck green *(notes-domain only — see close-out)*
+- [x] Full Go test suite green
+
+## Close-out
+
+**Evidence per criterion**
+
+- 6 operations, methods, paths, params — `openapi.yaml`; document went 23 → 29 operations.
+- `tags` repeatable — published as `explode: true`; proven by
+  `TestListNotes_RepeatedTagsReachServiceAsSlice`. Huma does **not** do this by default: a
+  plain `[]string` query param is comma-separated and collapsed `?tags=a&tags=b` to `[a]`.
+  The `query:"tags,explode"` tag is what makes it repeatable, and the test is what caught it.
+  The legacy edge cases (`?tags=&tags=b` suppresses the whole filter, because gin's
+  `c.Query` read only the first value) are pinned by
+  `TestListNotes_TagFilterEdgeCasesMatchLegacy` rather than left to a comment.
+- absent vs false — `TestListNotes_AbsentBooleanFilterIsDistinctFromFalse`, 7 cases.
+  `isRead`/`isDismissed` are typed as `string`, not `*bool`: huma panics on pointer query
+  params, and the legacy parse treated any non-`true` value as false, so an enum would have
+  turned a long-accepted request into a 422.
+- `Security: bearerAuth` — all 6 verified against the parsed document.
+- no domain leak — `components.schemas` holds only `NoteResponse`, `AIMetadataPayload`,
+  `CreateNoteRequest`, `UpdateNoteRequest`, `GenerateAINotesRequest`.
+- round trip — `TestNoteResponse_RoundTripMatchesDomainJSON` over a fully populated fixture
+  including `aiMetadata`.
+- empty list — `TestListNotes_EmptyResultIsArrayNotNull`; `toNoteResponses` is explicitly
+  non-nil.
+- gates — `make gates` green (spec matches, spectral clean, client matches, no breaking).
+
+**Behaviour differences, deliberate**
+
+1. `DELETE` answers **204 no body**, was 200 + `result: "success"` — per §API surface.
+2. `POST /generate-ai` with **no body at all** is now 400, where the legacy handler fell back
+   to `requestType: "all"`. Huma derives "body required" from the typed Body field; the
+   alternative (RawBody + hand-rolled unmarshal) would erase the schema this feature exists
+   to publish. `{}` still means "all", and the only consumer always sends a body. Pinned by
+   `TestGenerateAINotes_AbsentBodyIs400`.
+3. Ownership behaviour is unchanged and re-proven — `TestNoteOperations_NoteFromAnotherPlanIs404AndDoesNotMutate`
+   and `TestNotesOperations_NilOwnershipFailsClosed`.
+
+**Dead code removed with the group**
+
+- `internal/notes/handler.go` — the gin handler, replaced not duplicated.
+- `client/src/context/NotesContext.tsx` — never mounted, never consumed, and structurally
+  broken (treated async service calls as synchronous).
+- `client/src/components/notes/TaskNoteRelations.tsx` — no callers.
+- `NotesService.getNotesForTask` / `.clearNotes` / the deprecated mock `generateAINote` —
+  all called a `saveNotes()` that does not exist on the class, or `.filter` on a Promise.
+
+**OUTSTANDING — the one criterion not met**
+
+The **before/after probe (R14)** is not recorded. R14 requires it "against a running
+gateway", and the gateway needs Postgres, Consul, and plan-service up; the environment had
+no fireplace infra running. The round-trip test proves the payload shape is identical, but
+that is R15's evidence, not R14's. This criterion is genuinely unproven, not passed.
+
+**FE typecheck, precisely**
+
+`tsc --noEmit` went from **26 errors to 8**. All 18 notes-domain errors are resolved. The
+remaining 8 are pre-existing and outside this group — 7 in `Todo.tsx` (5 missing
+`@/components/ui/*` modules, 2 `ScopeEnum` mismatches) and 1 in `app/plans/[planId]/page.tsx`
+(`TodoProps` missing `planId`). None were introduced here and none are notes-related.
 
 ## Blocked By
 

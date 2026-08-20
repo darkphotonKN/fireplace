@@ -6,7 +6,11 @@ import (
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/apierr"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
 	authgw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/auth"
+	calendargw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/calendar"
 	plangw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/plan"
+	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/insights"
+	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/notes"
+	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/useranalytics"
 	"github.com/gin-gonic/gin"
 )
 
@@ -46,6 +50,23 @@ type APIDeps struct {
 	Users      authgw.UsersClient
 	Plans      plangw.PlansClient
 	Checklists plangw.ChecklistsClient
+
+	// Notes is a gateway-LOCAL domain: unlike the fields above it is not a
+	// downstream client but this service's own service object, paired with the
+	// ownership checker its operations authorize against.
+	Notes          notes.NotesService
+	NotesOwnership notes.PlanOwnership
+
+	// insights is served in-process today; these two seams are what the gRPC
+	// repoint will swap out (ADR-0002 slice ⓪ established the contract first).
+	// Two, not one: the router builds a separate service per generator.
+	Suggestions      insights.SuggestionsService
+	VideoSuggestions insights.VideoSuggestionsService
+
+	// Analytics may be nil — its operation answers 501 before consulting it.
+	Analytics useranalytics.AnalyticsService
+
+	Calendar calendargw.CalendarClient
 }
 
 // Doc surface paths. Public by design: the contract is browsable without a
@@ -136,6 +157,10 @@ func RegisterAPI(engine *gin.Engine, deps APIDeps, protect func(huma.Context, fu
 	authgw.RegisterUsersOperations(api, deps.Users, protect, Secured)
 	plangw.RegisterPlanOperations(api, deps.Plans, protect, Secured)
 	plangw.RegisterChecklistOperations(api, deps.Checklists, protect, Secured)
+	notes.RegisterNotesOperations(api, deps.Notes, deps.NotesOwnership, protect, Secured)
+	insights.RegisterInsightsOperations(api, deps.Suggestions, deps.VideoSuggestions, protect, Secured)
+	useranalytics.RegisterAnalyticsOperations(api, deps.Analytics, protect, Secured)
+	calendargw.RegisterCalendarOperations(api, deps.Calendar, protect, Secured)
 	return api
 }
 

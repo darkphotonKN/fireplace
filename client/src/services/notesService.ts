@@ -1,8 +1,20 @@
-import { Note, NoteType, NotePriority, CreateNoteRequest, UpdateNoteRequest, TaskNoteRelation, WarningNote } from '@/types/notes';
-import { ChecklistItem, authFetch } from './api';
-import { config } from '@/config/environment';
+import { Note, NoteType, NotePriority, CreateNoteRequest, UpdateNoteRequest, TaskNoteRelation } from '@/types/notes';
+import { ChecklistItem } from './api';
+import { ApiError } from '@/api/client';
+import * as notesApi from '@/api/notes';
 
-const API_BASE_URL = config.apiBaseUrl;
+/**
+ * Notes is SERIALIZED (FS-0004, I-0018): every call below goes through the
+ * generated client in `@/api/notes`, never through raw fetch. The
+ * `{statusCode, message, result}` envelope is gone, so responses are used
+ * directly instead of being unwrapped from `.result`.
+ *
+ * The 404-tolerant signatures (`updateNote` -> null, `deleteNote` -> false) are
+ * preserved: the generated client throws an ApiError, and that is translated
+ * back here so callers keep the contract they already had.
+ */
+const isNotFound = (err: unknown): boolean =>
+  err instanceof ApiError && err.status === 404;
 
 export class NotesService {
   private static instance: NotesService;
@@ -16,68 +28,32 @@ export class NotesService {
     return NotesService.instance;
   }
 
-  // API Operations
+  // API Operations — all through the generated client.
   async createNote(planId: string, request: CreateNoteRequest): Promise<Note> {
-    const response = await authFetch(`${API_BASE_URL}/api/plans/${planId}/notes`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to create note: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.result;
+    return (await notesApi.createNote(planId, request)) as Note;
   }
 
   async loadNotes(planId: string): Promise<Note[]> {
-    const response = await authFetch(`${API_BASE_URL}/api/plans/${planId}/notes`);
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch notes: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.result || [];
+    return (await notesApi.listNotes(planId)) as Note[];
   }
 
   async updateNote(planId: string, noteId: string, updates: UpdateNoteRequest): Promise<Note | null> {
-    const response = await authFetch(`${API_BASE_URL}/api/plans/${planId}/notes/${noteId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(updates),
-    });
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        return null;
-      }
-      throw new Error(`Failed to update note: ${response.statusText}`);
+    try {
+      return (await notesApi.updateNote(planId, noteId, updates)) as Note;
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
     }
-
-    const data = await response.json();
-    return data.result;
   }
 
   async deleteNote(planId: string, noteId: string): Promise<boolean> {
-    const response = await authFetch(`${API_BASE_URL}/api/plans/${planId}/notes/${noteId}`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        return false;
-      }
-      throw new Error(`Failed to delete note: ${response.statusText}`);
+    try {
+      await notesApi.deleteNote(planId, noteId);
+      return true;
+    } catch (err) {
+      if (isNotFound(err)) return false;
+      throw err;
     }
-
-    return true;
   }
 
   // Tag Generation
@@ -112,129 +88,9 @@ export class NotesService {
     tasks: ChecklistItem[],
     planFocus: string
   ): Promise<Note[]> {
-    const response = await authFetch(`${API_BASE_URL}/api/plans/${planId}/notes/generate-ai`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        requestType: 'all' // Generate all types of notes
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to generate AI notes: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.result || [];
+    // requestType 'all' generates every kind, matching the previous behaviour.
+    return (await notesApi.generateAINotes(planId, 'all')) as Note[];
   }
-
-  // Mock AI Note Generation (DEPRECATED - kept for backwards compatibility)
-  private async generateAINote(
-    planId: string,
-    context: {
-      tasks: ChecklistItem[];
-      planFocus: string;
-      requestType: 'suggestion' | 'warning' | 'insight';
-    }
-  ): Promise<Note> {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 400));
-
-    const { tasks, planFocus, requestType } = context;
-    let content = '';
-    let priority: NotePriority = 'medium';
-    let type: NoteType = 'ai';
-    let relatedTaskIds: string[] = [];
-    let tags: string[] = [];
-
-    switch (requestType) {
-      case 'warning':
-        const overdueTasks = tasks.filter(t => {
-          if (t.done) return false;
-          const due = t.dueDate ?? t.scheduledTime;
-          return due && new Date(due) < new Date();
-        });
-        if (overdueTasks.length > 0) {
-          content = `⚠️ You have ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}. Consider reprioritizing or breaking them down into smaller steps.`;
-          priority = overdueTasks.length > 2 ? 'high' : 'medium';
-          relatedTaskIds = overdueTasks.map(t => t.id);
-          tags = ['overdue', 'warning'];
-        } else if (tasks.filter(t => !t.done).length > 10) {
-          content = `📝 You have a lot of pending tasks. Consider archiving completed items and focusing on your top 3-5 priorities for today.`;
-          priority = 'medium';
-          tags = ['productivity', 'focus'];
-        } else {
-          content = `✅ Your task list is well-managed. Keep up the great work on "${planFocus}"!`;
-          priority = 'low';
-          tags = ['positive', 'progress'];
-        }
-        type = 'warning';
-        break;
-
-      case 'insight':
-        const completedToday = tasks.filter(t => t.done);
-        const completionRate = tasks.length > 0 ? (completedToday.length / tasks.length) * 100 : 0;
-
-        if (completionRate > 70) {
-          content = `🎯 Excellent progress! You've completed ${Math.round(completionRate)}% of your tasks. Consider adding new challenges for ${planFocus}.`;
-          priority = 'low';
-          tags = ['achievement', 'progress'];
-        } else if (completionRate > 40) {
-          content = `📊 You're making steady progress on ${planFocus}. Focus on completing 2-3 more tasks to build momentum.`;
-          priority = 'medium';
-          tags = ['progress', 'momentum'];
-        } else {
-          content = `💡 Consider breaking down complex tasks in ${planFocus} into smaller, actionable steps to improve completion rate.`;
-          priority = 'medium';
-          tags = ['strategy', 'productivity'];
-        }
-        type = 'insight';
-        break;
-
-      case 'suggestion':
-        const unscheduledTasks = tasks.filter(t => !t.done && !t.scheduledTime);
-        if (unscheduledTasks.length > 0) {
-          content = `📅 You have ${unscheduledTasks.length} unscheduled tasks. Consider scheduling them to better manage your time for ${planFocus}.`;
-          relatedTaskIds = unscheduledTasks.slice(0, 3).map(t => t.id);
-          tags = ['scheduling', 'planning'];
-        } else {
-          content = `🚀 All tasks are scheduled! Consider reviewing your long-term goals for ${planFocus} and adding new objectives.`;
-          tags = ['goals', 'planning'];
-        }
-        type = 'suggestion';
-        break;
-    }
-
-    const note: Note = {
-      id: `ai_note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      content,
-      type,
-      tags,
-      relatedTaskIds,
-      planId,
-      priority,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      aiMetadata: {
-        generatedFrom: 'task_analysis',
-        confidence: 0.75 + Math.random() * 0.2,
-        sourceContext: `Generated from ${tasks.length} tasks in ${planFocus}`,
-        generatedAt: new Date().toISOString()
-      },
-      isRead: false,
-      isDismissed: false
-    };
-
-    // Save the generated note
-    const notes = this.loadNotes(planId);
-    notes.push(note);
-    this.saveNotes(planId, notes);
-
-    return note;
-  }
-
 
   // Filter notes
   filterNotes(notes: Note[], criteria: {
@@ -246,10 +102,10 @@ export class NotesService {
   }): Note[] {
     return notes.filter(note => {
       if (criteria.tags && criteria.tags.length > 0) {
-        if (!criteria.tags.some(tag => note.tags.includes(tag))) return false;
+        if (!criteria.tags.some(tag => (note.tags ?? []).includes(tag))) return false;
       }
       if (criteria.type && note.type !== criteria.type) return false;
-      if (criteria.relatedTaskId && !note.relatedTaskIds.includes(criteria.relatedTaskId)) return false;
+      if (criteria.relatedTaskId && !(note.relatedTaskIds ?? []).includes(criteria.relatedTaskId)) return false;
       if (criteria.priority && note.priority !== criteria.priority) return false;
       if (criteria.isRead !== undefined && note.isRead !== criteria.isRead) return false;
 
@@ -257,18 +113,12 @@ export class NotesService {
     });
   }
 
-  // Get related notes for a task
-  getNotesForTask(planId: string, taskId: string): Note[] {
-    const notes = this.loadNotes(planId);
-    return notes.filter(note => note.relatedTaskIds.includes(taskId));
-  }
-
   // Generate task-note relationships
   generateTaskNoteRelations(tasks: ChecklistItem[], notes: Note[]): TaskNoteRelation[] {
     const relations: TaskNoteRelation[] = [];
 
     notes.forEach(note => {
-      note.relatedTaskIds.forEach(taskId => {
+      (note.relatedTaskIds ?? []).forEach(taskId => {
         const task = tasks.find(t => t.id === taskId);
         if (task) {
           let relationshipType: TaskNoteRelation['relationshipType'] = 'suggestion_for';
@@ -300,10 +150,5 @@ export class NotesService {
     });
 
     return relations;
-  }
-
-  // Clear all notes for a plan
-  clearNotes(planId: string): void {
-    this.saveNotes(planId, []);
   }
 }

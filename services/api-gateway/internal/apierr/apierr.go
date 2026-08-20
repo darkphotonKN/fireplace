@@ -51,6 +51,10 @@ func StatusFor(err error) (int, string) {
 		return http.StatusUnauthorized, "unauthorized"
 	case errors.Is(err, commonconstants.ErrForbidden):
 		return http.StatusForbidden, "forbidden"
+	case errors.Is(err, commonconstants.ErrNotImplemented):
+		// 501, not 500: the operation is published and will work once its data
+		// path lands. A client can tell "not built yet" from "we broke".
+		return http.StatusNotImplemented, "not implemented"
 	default:
 		return http.StatusInternalServerError, "internal error"
 	}

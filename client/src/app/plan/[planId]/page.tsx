@@ -4,17 +4,11 @@ import { Card } from "@/components/ui/card";
 import Todo from "@/components/Todo";
 import { NotesContainer } from "@/components/notes/NotesContainer";
 import { CalendarCard } from "@/components/calendar/CalendarCard";
+import { getSuggestedVideos, type VideoSuggestion } from "@/api/insights";
 import { useEffect, useState, use } from "react";
 import { PlanDetailData } from "@/services/api";
 import { getPlan } from "@/api/plans";
 
-interface VideoSuggestion {
-  title: string;
-  url: string;
-  source: string;
-  type: string;
-  description: string;
-}
 
 // Extract video ID from YouTube URL
 const getYouTubeThumbnail = (url: string) => {
@@ -74,19 +68,7 @@ export default function PlanDetail({
       setVideoSuggestions([]);
 
       try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/insights/suggest-videos?plan_id=${planId}`,
-          {
-            credentials: "include",
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch video suggestions");
-        }
-
-        const data = await response.json();
-        setVideoSuggestions(data.result || []);
+        setVideoSuggestions(await getSuggestedVideos(planId));
       } catch (error) {
         console.error("Error fetching video suggestions:", error);
         setError("Failed to load video suggestions");
