@@ -110,7 +110,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	grpcServer := config.SetupServices(db, ch, registry, redisClient)
+	grpcServer, err := config.SetupServices(db, ch, registry, redisClient)
+	if err != nil {
+		log.Fatalf("Failed to set up services: %v", err)
+	}
 
 	go func() {
 		slog.Info("insights-service gRPC server starting", "port", grpcAddr)

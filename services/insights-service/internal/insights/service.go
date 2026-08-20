@@ -17,16 +17,16 @@ import (
 // requests from the LLM. Ported from the gateway behaviour.
 const dailySuggestionCount = 3
 
-// ErrGeneratorNotConfigured is returned by StubContentGenerator until the real
-// OpenAI-backed generator is migrated from the api-gateway. It is intentionally
-// a plain (non-sentinel) error so the gRPC mapper reports it as Internal — a
-// clear "this path isn't wired yet" signal during the migration.
-var ErrGeneratorNotConfigured = errors.New("insights: content generator not configured")
-
-// ContentGenerator is the LLM seam: anything that turns a prompt into text. The
-// gateway's OpenAI-backed generator will implement this once migrated in.
+// ContentGenerator is the LLM seam: anything that turns a prompt into text.
+// Implemented by ai.Generator, which pairs a fixed system prompt with a client.
 type ContentGenerator interface {
 	Generate(prompt string) (string, error)
+}
+
+// VideoFinder resolves generated search terms into concrete videos. Implemented
+// by the ported YouTube finder; the composition root supplies the concrete.
+type VideoFinder interface {
+	FindVideos(ctx context.Context, searchTerms []string) ([]Video, error)
 }
 
 // PlanGateway is the slice of plan-service this package depends on. Tests can
@@ -43,28 +43,33 @@ type Repository interface {
 }
 
 type Service struct {
-	plans        PlanGateway
-	gen          ContentGenerator
-	inboxService InboxService
-	cache        Cache
-	repo         Repository
-	db           *sqlx.DB
+	plans PlanGateway
+	// Two generators, one per system prompt — mirroring the gateway, which built
+	// a separate insights service around each. checklistGen backs the suggestion
+	// RPCs; searchTermGen backs the video search-term step.
+	checklistGen  ContentGenerator
+	searchTermGen ContentGenerator
+	videos        VideoFinder
+	inboxService  InboxService
+	cache         Cache
+	repo          Repository
+	db            *sqlx.DB
 }
 
-func NewService(plans PlanGateway, gen ContentGenerator, cache Cache, repo Repository, db *sqlx.DB) *Service {
-	return &Service{plans: plans, gen: gen, cache: cache, repo: repo, db: db}
+func NewService(plans PlanGateway, checklistGen, searchTermGen ContentGenerator, videos VideoFinder, cache Cache, repo Repository, db *sqlx.DB) *Service {
+	return &Service{
+		plans:         plans,
+		checklistGen:  checklistGen,
+		searchTermGen: searchTermGen,
+		videos:        videos,
+		cache:         cache,
+		repo:          repo,
+		db:            db,
+	}
 }
 
 type InboxService interface {
 	CreateTx(ctx context.Context, tx *sqlx.Tx, eventID uuid.UUID) error
-}
-
-// StubContentGenerator is a placeholder ContentGenerator used until the real
-// OpenAI integration is migrated. Every call returns ErrGeneratorNotConfigured.
-type StubContentGenerator struct{}
-
-func (StubContentGenerator) Generate(prompt string) (string, error) {
-	return "", ErrGeneratorNotConfigured
 }
 
 const (
@@ -177,7 +182,7 @@ func (s *Service) GenerateSuggestion(ctx context.Context, planID, userID uuid.UU
 		return "", fmt.Errorf("insights: generate suggestion: %w", err)
 	}
 
-	res, err := s.gen.Generate(buildChecklistPrompt(pc, ""))
+	res, err := s.checklistGen.Generate(buildChecklistPrompt(pc, ""))
 	if err != nil {
 		return "", fmt.Errorf("insights: generate suggestion: %w", err)
 	}
@@ -201,7 +206,7 @@ func (s *Service) GenerateDailySuggestions(ctx context.Context, planID, userID u
 		if i > 0 {
 			prompt = fmt.Sprintf("%s\nAlso, don't choose one closely related to this, as it has already been added: %s", base, suggestions[i-1])
 		}
-		res, err := s.gen.Generate(prompt)
+		res, err := s.checklistGen.Generate(prompt)
 		if err != nil {
 			return nil, fmt.Errorf("insights: generate daily suggestions: %w", err)
 		}
@@ -222,13 +227,31 @@ func (s *Service) SuggestVideos(ctx context.Context, planID, userID uuid.UUID) (
 		return nil, fmt.Errorf("insights: suggest videos: %w", err)
 	}
 
-	searchTerms, err := s.gen.Generate(buildVideoSearchPrompt(pc))
+	raw, err := s.searchTermGen.Generate(buildVideoSearchPrompt(pc))
 	if err != nil {
 		return nil, fmt.Errorf("insights: suggest videos: generate search terms: %w", err)
 	}
-	_ = searchTerms // fed into the video finder once that is migrated in.
 
-	return []Video{}, nil
+	// The prompt asks for one search term per line. Blank lines are dropped: a
+	// trailing newline is common in LLM output and an empty term would otherwise
+	// become an empty search query whose results are returned as recommendations.
+	searchTerms := make([]string, 0, dailySuggestionCount)
+	for _, term := range strings.Split(raw, "\n") {
+		if t := strings.TrimSpace(term); t != "" {
+			searchTerms = append(searchTerms, t)
+		}
+	}
+
+	if len(searchTerms) == 0 {
+		return []Video{}, nil
+	}
+
+	videos, err := s.videos.FindVideos(ctx, searchTerms)
+	if err != nil {
+		return nil, fmt.Errorf("insights: suggest videos: find videos: %w", err)
+	}
+
+	return videos, nil
 }
 
 // buildChecklistPrompt assembles the checklist-suggestion prompt from plan
