@@ -590,13 +590,13 @@ Plane 2 (gRPC) additions: `insights.InsightsService.GenerateDraft(seed, plan_typ
 - Adaptive profile from completion history.
 - Calendar-derived plan seeding.
 - Changes to the insights schema — that is the insights persistence scope.
-  **Known gap, surfaced during I-0022 and not closed here:** this FS's Summary depends on items
-  being materialized *from persisted insights*, but `generated_insights.insight_type` is
-  `CHECK (insight_type IN ('suggestion','daily','video'))` — there is no type for an initial item
-  set, and today's code writes these rows as `'suggestion'` with empty content. Adding that type
-  belongs to the insights persistence scope, which is still unwritten, so **no issue in the
-  I-0021..I-0036 set covers it.** It blocks nothing on plan-service's side (the consumer reads the
-  *event*, not the table) but I-0029 cannot persist honestly until it exists.
+  **Where a generated item set is stored inside insights-service is owner-lane and runs in
+  parallel** — deliberately not covered here, and not a gap in this plan. Noted only so nobody
+  re-derives it: `generated_insights.insight_type` is currently
+  `CHECK (insight_type IN ('suggestion','daily','video'))`, so an initial item set has no type yet
+  and today's code writes those rows as `'suggestion'`. It has **no bearing on this FS's lane** —
+  plan-service consumes the `insight.generated` *event* and never reads that table. The event is
+  the entire contract between the two lanes; the storage behind it is insights' business.
 - Model selection per call, beyond noting which calls are high- versus low-frequency (R2).
 - DLQ **replay** tooling. The DLQ receives messages; nothing reads it back. R29's accepted cost
   depends on this staying out of scope.
