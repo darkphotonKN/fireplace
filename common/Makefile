@@ -10,4 +10,5 @@ gen:
 		api/proto/calendar/calendar.proto \
 		api/proto/insights/insights.proto \
 		api/proto/events/auth.proto \
-		api/proto/events/plan.proto
+		api/proto/events/plan.proto \
+		api/proto/events/insights.proto

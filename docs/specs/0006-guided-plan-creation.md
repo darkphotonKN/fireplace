@@ -127,8 +127,16 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   thing is *not* a row the worker already selects for update; that is not the case here.
   Recorded because the two locks are easy to conflate and solve different problems.
 - **R24.** `correlation_id` (whole chain) and `causation_id` (immediate parent) propagate
-  through both hops. They are envelope concerns, so `commonbroker.Message` grows a headers
-  field rather than every event proto growing two columns.
+  through both hops as **envelope** concerns, not as two more columns on every event proto.
+  `correlation_id` rides AMQP's **native correlation-id property**; `causation_id` rides a
+  header, since AMQP has no native equivalent.
+  *Corrected during I-0022:* an earlier draft of this requirement said `commonbroker.Message`
+  "exposes only `MessageId, ContentType, Body, DeliveryMode` — no headers field" and had to grow
+  one. That was read off the publish-worker's call site, which sets only those four, not off the
+  struct. `Message` already carried both `CorrelationId` and `Headers`, and `AmqpPublisher`
+  already passed them through. The real gap was **key discipline** — nothing stopped one service
+  writing `causation_id` and another reading `causationId`, and a missing header reads as an
+  empty string rather than an error, so the break would have been silent.
 - **R25.** Retry transport is **TTL-tiered DLX** with **exponential tiers 10s / 20s / 40s /
   80s / 160s** — five retry queues plus the DLQ — not native requeue. A bare
   `Nack(requeue)` redelivers the original message and increments nothing; `x-death` is populated

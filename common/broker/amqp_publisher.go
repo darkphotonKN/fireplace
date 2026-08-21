@@ -17,9 +17,12 @@ func NewAmqpPublisher(ch *amqp.Channel) *AmqpPublisher {
 	return &AmqpPublisher{ch: ch}
 }
 
-func (p *AmqpPublisher) PublishWithContext(_ context.Context, exchange, key string, msg Message) error {
-
-	amqpMessageParam := amqp.Publishing{
+// toPublishing maps our transport-neutral Message onto amqp's own. Split out of
+// PublishWithContext so the mapping is testable without a live broker — the
+// channel is a concrete *amqp.Channel, so anything left inline here can only be
+// exercised against a running RabbitMQ.
+func toPublishing(msg Message) amqp.Publishing {
+	return amqp.Publishing{
 		MessageId:     msg.MessageId,
 		ContentType:   msg.ContentType,
 		Body:          msg.Body,
@@ -27,7 +30,8 @@ func (p *AmqpPublisher) PublishWithContext(_ context.Context, exchange, key stri
 		CorrelationId: msg.CorrelationId,
 		Headers:       msg.Headers,
 	}
-
-	return p.ch.Publish(exchange, key, false, false, amqpMessageParam)
 }
 
+func (p *AmqpPublisher) PublishWithContext(_ context.Context, exchange, key string, msg Message) error {
+	return p.ch.Publish(exchange, key, false, false, toPublishing(msg))
+}

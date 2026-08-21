@@ -1,0 +1,60 @@
+syntax = "proto3";
+package events;
+
+option go_package = "github.com/darkphotonKN/fireplace/common/api/proto/events";
+
+// Insight domain events — emitted by insights-service onto the "insights.events"
+// exchange (FS-0006 R18, R19a-d).
+//
+// Both messages are FACTS: named for what happened, never for what should happen
+// next. insights-service does not know plan-service consumes them (ADR-0008).
+
+// GeneratedItem is the CREATABLE SUBSET of a checklist item — deliberately the
+// same shape as one, minus everything the database owns. No id, plan_id, status,
+// done, created_at or updated_at: those are assigned by the materializing
+// transaction, not carried on the wire.
+//
+// There is intentionally NO sequence field. ARRAY ORDER IS SEQUENCE. An explicit
+// field could disagree with the order it sits in; order cannot disagree with
+// itself (FS-0006 R19c).
+//
+// There are intentionally NO dates. AI auto-scheduling of start_date / due_date
+// is an unshipped plan-service capability; materialized items arrive unscheduled
+// (FS-0006 R19d).
+message GeneratedItem {
+  string description = 1;
+
+  // "daily" | "longterm" — plan-service's checklist scope.
+  string scope = 2;
+
+  // "task" | "note".
+  string type = 3;
+
+  // Index into the SAME items array identifying this item's parent, because no
+  // row IDs exist before the materialization transaction opens (FS-0006 R19b).
+  //
+  // `optional` is load-bearing: without it, proto3 cannot distinguish "no parent"
+  // from "parent is index 0", and index 0 is a legal parent.
+  optional int32 parent_index = 4;
+}
+
+// InsightGeneratedEvent carries the generated items themselves, so plan-service
+// materializes without calling back and never depends on insights being
+// reachable (FS-0006 R19).
+message InsightGeneratedEvent {
+  string plan_id = 1;
+  string user_id = 2;
+  repeated GeneratedItem items = 3;
+}
+
+// InsightGenerationFailedEvent is published when TRANSIENT retries are exhausted
+// — not for poison messages, which dead-letter instead (FS-0006 R26, R27).
+//
+// failure_class travels with it because "failed" alone cannot drive the two
+// things that depend on it: what the user is told, and whether a retry action is
+// offered at all (FS-0006 R37).
+message InsightGenerationFailedEvent {
+  string plan_id = 1;
+  string user_id = 2;
+  string failure_class = 3;
+}
