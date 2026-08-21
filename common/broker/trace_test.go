@@ -36,3 +36,24 @@ func TestToPublishing_CarriesTraceAcrossTheWire(t *testing.T) {
 		t.Errorf("the rest of the envelope did not survive: %+v", p)
 	}
 }
+
+// WithCausation advertises value semantics — value receiver in, value out, and a
+// doc comment saying "returns a copy". Headers is a map, so without an explicit
+// clone the write lands in the CALLER's map and every message derived from a
+// shared base cross-contaminates. The failure is silent and it corrupts the one
+// signal you would use to debug it.
+func TestMessage_WithCausation_DoesNotMutateTheOriginal(t *testing.T) {
+	base := Message{MessageId: "m", Headers: map[string]any{"pre": "existing"}}
+
+	derived := base.WithCausation("child-1")
+
+	if got := CausationIDFrom(base.Headers); got != "" {
+		t.Errorf("base was mutated: want no causation id on the original, got %q", got)
+	}
+	if got := CausationIDFrom(derived.Headers); got != "child-1" {
+		t.Errorf("derived lost its causation id: got %q", got)
+	}
+	if derived.Headers["pre"] != "existing" {
+		t.Error("pre-existing headers did not survive the clone")
+	}
+}

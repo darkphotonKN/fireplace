@@ -9,8 +9,16 @@ option go_package = "github.com/darkphotonKN/fireplace/common/api/proto/events";
 // Both messages are FACTS: named for what happened, never for what should happen
 // next. insights-service does not know plan-service consumes them (ADR-0008).
 
-// GeneratedItem is the CREATABLE SUBSET of a checklist item — deliberately the
-// same shape as one, minus everything the database owns. No id, plan_id, status,
+// InsightItem is one item out of a generated Insight — the CREATABLE SUBSET of a
+// checklist item, deliberately the same shape as one, minus everything the
+// database owns.
+//
+// Named for its ORIGIN, not its destination. It is never persisted in this
+// shape: it exists for exactly one hop and is dead the instant the materializing
+// transaction commits. Calling it a "generated item" would collide with
+// plan-service's `generated` item STATUS (CONTEXT.md), which is the term
+// ADR-0007 leans on when deciding what a regeneration is allowed to destroy —
+// and that is the last word in this design that should be ambiguous. No id, plan_id, status,
 // done, created_at or updated_at: those are assigned by the materializing
 // transaction, not carried on the wire.
 //
@@ -21,7 +29,7 @@ option go_package = "github.com/darkphotonKN/fireplace/common/api/proto/events";
 // There are intentionally NO dates. AI auto-scheduling of start_date / due_date
 // is an unshipped plan-service capability; materialized items arrive unscheduled
 // (FS-0006 R19d).
-message GeneratedItem {
+message InsightItem {
   string description = 1;
 
   // "daily" | "longterm" — plan-service's checklist scope.
@@ -44,7 +52,36 @@ message GeneratedItem {
 message InsightGeneratedEvent {
   string plan_id = 1;
   string user_id = 2;
-  repeated GeneratedItem items = 3;
+  repeated InsightItem items = 3;
+}
+
+// FailureClass is the vocabulary for WHY a plan's generation ended badly.
+//
+// It is an enum rather than a free string because it crosses a service boundary
+// and the consumer switches on it to pick user-facing copy and to decide whether
+// a retry action appears at all (FS-0006 R37). A free string lets the producer
+// and the consumer disagree with nothing to catch it — the same silent drift the
+// rest of this package exists to prevent.
+//
+// Values are added only for failures the system actually produces, never
+// speculatively. Note the absence of a "poison"/"bug" class: that path
+// dead-letters and publishes no event, so it never travels on this wire
+// (FS-0006 R29). plan-service sets STALLED locally from its sweeper rather than
+// receiving it, but the vocabulary is shared so the client sees one set of
+// values whatever produced them.
+enum FailureClass {
+  // Zero value, and deliberately not retryable — see Retryable(). A producer
+  // that leaves it unset is a bug, and the consumer must fail toward the
+  // conservative answer rather than offering a button that spends money.
+  FAILURE_CLASS_UNSPECIFIED = 0;
+
+  // Transient failures survived the full backoff ladder (FS-0006 R27).
+  // Nothing is broken, so retrying on the spot is the fastest recovery.
+  FAILURE_CLASS_GENERATION_EXHAUSTED = 1;
+
+  // No outcome ever arrived and the sweeper gave up (FS-0006 R31). A panic or
+  // OOM runs no error handler, so nothing reported; the work may simply be gone.
+  FAILURE_CLASS_STALLED = 2;
 }
 
 // InsightGenerationFailedEvent is published when TRANSIENT retries are exhausted
@@ -56,5 +93,5 @@ message InsightGeneratedEvent {
 message InsightGenerationFailedEvent {
   string plan_id = 1;
   string user_id = 2;
-  string failure_class = 3;
+  FailureClass failure_class = 3;
 }

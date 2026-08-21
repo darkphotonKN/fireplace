@@ -22,11 +22,19 @@ const CausationIDHeader = "x-causation-id"
 // WithCausation returns a copy of the message carrying the id of the event that
 // caused it. Safe on a zero-value Message: the Headers map is created on demand,
 // so callers never have to remember to initialise it.
+//
+// The map is CLONED, not shared. A value receiver copies the struct but not the
+// map it points at, so writing straight through would mutate the caller's
+// headers — and every message derived from a common base would overwrite each
+// other's causation id. That failure is silent, and what it corrupts is the
+// trace you would use to find it.
 func (m Message) WithCausation(eventID string) Message {
-	if m.Headers == nil {
-		m.Headers = map[string]any{}
+	headers := make(map[string]any, len(m.Headers)+1)
+	for k, v := range m.Headers {
+		headers[k] = v
 	}
-	m.Headers[CausationIDHeader] = eventID
+	headers[CausationIDHeader] = eventID
+	m.Headers = headers
 	return m
 }
 

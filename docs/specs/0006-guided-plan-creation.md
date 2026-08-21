@@ -590,6 +590,13 @@ Plane 2 (gRPC) additions: `insights.InsightsService.GenerateDraft(seed, plan_typ
 - Adaptive profile from completion history.
 - Calendar-derived plan seeding.
 - Changes to the insights schema — that is the insights persistence scope.
+  **Known gap, surfaced during I-0022 and not closed here:** this FS's Summary depends on items
+  being materialized *from persisted insights*, but `generated_insights.insight_type` is
+  `CHECK (insight_type IN ('suggestion','daily','video'))` — there is no type for an initial item
+  set, and today's code writes these rows as `'suggestion'` with empty content. Adding that type
+  belongs to the insights persistence scope, which is still unwritten, so **no issue in the
+  I-0021..I-0036 set covers it.** It blocks nothing on plan-service's side (the consumer reads the
+  *event*, not the table) but I-0029 cannot persist honestly until it exists.
 - Model selection per call, beyond noting which calls are high- versus low-frequency (R2).
 - DLQ **replay** tooling. The DLQ receives messages; nothing reads it back. R29's accepted cost
   depends on this staying out of scope.
