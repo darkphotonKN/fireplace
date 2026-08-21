@@ -55,7 +55,10 @@ GO_MCP_CODE_TEMPLATES.md
 GO_MCP_PROJECT_TEMPLATE.md
 GO_MCP_TEMPLATE_SUMMARY.md
 setup-go-mcp-project.sh
-.claude/
+.claude/*
+# ...but the skills symlink is tracked, so `git worktree add` materialises it.
+# Ignored files never travel to a new worktree; tracked ones do.
+!.claude/skills
 
 # Air hot-reload tmp dirs — match the directory and everything inside,
 # at any depth (e.g. services/auth-service/tmp/main).
