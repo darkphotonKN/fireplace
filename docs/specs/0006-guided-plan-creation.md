@@ -552,6 +552,7 @@ does not restate or generalise it.
 |---|---|---|
 | `GENERATION_FAILED` | **503** | insights was reachable but could not generate; no plan was created. Client keeps the seed and offers retry. Shares 503 with `SERVICE_UNAVAILABLE` (insights *unreachable*) — both retryable, different copy. Status is the coarse signal, the code is the precise one (ADR-0004). |
 | `GENERATION_COOLDOWN` | 429 | Retry requested inside the cooldown or past the attempt cap. |
+| `NOT_IMPLEMENTED` | 501 | **Interim, not permanent.** `mode=guided` while the `GenerateDraft` RPC has not landed. Already in `common/errcode` and wired through `apierr.StatusFor`/`CodeFor`; its own comment calls it "a DELIVERY statement, not a failure — the operation is published in the contract with its success shape declared, but its data path has not landed yet." `mode=custom` is unaffected. Falling through to 500 or 503 here would tell the client something broke when nothing did. |
 
 **502 was considered and rejected.** `apierr.httpForCode` has no 502 branch, so it would widen
 the seam for a single case. **500 was also rejected**, and for a stronger reason: per
@@ -591,7 +592,13 @@ Plane 2 (gRPC) additions: `insights.InsightsService.GenerateDraft(seed, plan_typ
 
 ## Ownership split for `/spec-to-issues`
 
-**Flagged as the owner's — do not assign:**
+**Owner-lane work is filed as issues, marked `[HUMAN]`, and excluded from `/develop`** — not
+left unfiled. Filing keeps the dependency graph complete: `blocked_by` cannot reference an issue
+that does not exist, and untracked work is invisible work. Each carries a do-not-develop banner in
+its body, which survives a tracker migration in a way a custom label or frontmatter field would
+not (`docs/agents/README.md` carries over only title / body / labels / blocked_by).
+
+**Flagged as the owner's — file, mark `[HUMAN]`, never assign to an agent:**
 
 - The publish legs on both hops: outbox drain, publish-worker, and `insight.generated` /
   `insight.generation_failed` publishing.
