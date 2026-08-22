@@ -42,14 +42,14 @@ function Dashboard() {
             Welcome back, {user?.name || "there"}.
           </h1>
           <p className="opacity-80">
-            Let&apos;s continue your journey.
+            Pick up where you left off.
           </p>
         </div>
 
         {/* Focus Selection Section */}
         <div className="flex flex-col items-center justify-center min-h-[50vh]">
           <h2 className="text-3xl font-medium text-center mb-12">
-            What will be your focus of the day?
+            What&apos;s your focus today?
           </h2>
 
           {/* Plan Type Cards */}
@@ -64,7 +64,7 @@ function Dashboard() {
             >
               <h3 className="text-xl font-medium mb-2">Project</h3>
               <p className="text-base opacity-80">
-                Focus on building and improving your projects
+                Something you&apos;re building
               </p>
             </button>
             <button
@@ -77,13 +77,13 @@ function Dashboard() {
             >
               <h3 className="text-xl font-medium mb-2">Learning</h3>
               <p className="text-base opacity-80">
-                Focus on acquiring new skills and knowledge
+                Something you&apos;re learning
               </p>
             </button>
           </div>
           {typeError && (
             <p className="text-red-400 text-base mb-4 -mt-8">
-              Please select a plan type first
+              Pick project or learning first
             </p>
           )}
 
@@ -93,7 +93,7 @@ function Dashboard() {
               type="text"
               value={focusText}
               onChange={(e) => setFocusText(e.target.value)}
-              placeholder="Enter your focus. E.g. building a movie app, learning microservices..."
+              placeholder="e.g. building a movie app, or learning microservices"
               className="w-full px-4 py-3 text-xl bg-transparent border-b border-foreground/20 focus:border-[rgb(247,111,83)]/60 outline-none text-foreground placeholder:text-foreground/40 transition-colors"
             />
           </div>

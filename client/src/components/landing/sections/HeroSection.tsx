@@ -31,8 +31,8 @@ export default function HeroSection() {
       </p>
 
       <p className="mx-auto mt-6 max-w-xl text-base text-muted-foreground">
-        The long arc of a project and the short list for today, in one place — with an
-        honest look back when the day closes.
+        The whole shape of a project, and the four things you&apos;re doing about it today.
+        When the day closes, you write down how it actually went.
       </p>
 
       <div className="mt-10 flex items-center justify-center gap-4">
