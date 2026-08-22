@@ -19,8 +19,8 @@ export default function ReturnSection() {
       <h2 className="text-2xl font-bold md:text-3xl">Tomorrow, the same fire.</h2>
 
       <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">
-        Plan it, work it, close it honestly, and let it point at what comes next. Then sit
-        down and do it again.
+        Plan it, work it, close it honestly. What you wrote down is where tomorrow&apos;s
+        list starts. Then you sit down and do it again.
       </p>
 
       {/* One primary action, not a matched pair. By here the visitor is warm,

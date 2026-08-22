@@ -9,8 +9,8 @@ export default function PlanSection() {
       heading="Every arc gets a plan."
       body={
         <>
-          Not a flat list of things to do. A plan holds the whole shape of the work — what
-          comes first, what waits on it, and roughly when each part lands.
+          Not a flat list of things to do. A plan carries the shape of the work: what comes
+          first, what sits under it, and what has a date on it.
         </>
       }
       art={<PlanCardMock />}

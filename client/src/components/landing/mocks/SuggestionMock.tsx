@@ -15,8 +15,8 @@ export default function SuggestionMock() {
         Noticed
       </p>
       <p className="mt-3 text-base leading-relaxed text-foreground">
-        <span className="font-bold">&ldquo;{GATEWAY_TASK}&rdquo;</span> has moved three days
-        running. Want it first tomorrow, while the day is still yours?
+        <span className="font-bold">&ldquo;{GATEWAY_TASK}&rdquo;</span> has slipped three days
+        running. Put it first tomorrow?
       </p>
     </Mock>
   );
