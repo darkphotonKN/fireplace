@@ -1,6 +1,6 @@
 ---
 id: I-0041
-status: open
+status: done
 implements: ADR-0012
 blocked_by: [I-0040]
 labels: [enhancement]

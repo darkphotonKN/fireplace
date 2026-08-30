@@ -1,0 +1,61 @@
+# LOCAL DEVELOPMENT ONLY.
+#
+# Compose loads this automatically, so `docker compose up` gives you the
+# convenient local setup. Production explicitly does NOT load it:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# ADR-0012 §3 puts only the gateway on the host in production. That posture
+# lives in the base file, which publishes nothing at all; everything below is
+# the local convenience the ADR explicitly allows.
+
+services:
+  # Direct access to the gateway, no Caddy and no TLS in front of it.
+  api-gateway:
+    ports:
+      - "8080:8080"
+
+  # Infrastructure published so psql / redis-cli / the management UI reach it
+  # from the host. None of these are exposed in production.
+  postgres:
+    ports:
+      - "5500:5432"
+
+  fireplace-rabbitmq:
+    ports:
+      - "5683:5672"
+      - "15683:15672"   # management UI
+
+  redis:
+    ports:
+      - "6380:6379"
+
+  # Test tier — mirrors production exactly (ADR-0010 §5) so tests exercise the
+  # grant model instead of routing around it. A separate SERVER, not just
+  # separate databases, so a test that drops and recreates can never reach dev
+  # data by mistyping a name. Local and CI only; the VPS runs no test instance.
+  postgres-test:
+    image: postgres:17
+    container_name: fireplace_postgres_test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      DB_SUFFIX: _test
+      GATEWAY_OWNER_PASSWORD: owner
+      GATEWAY_APP_PASSWORD: app
+      PLANS_OWNER_PASSWORD: owner
+      PLANS_APP_PASSWORD: app
+      INSIGHTS_OWNER_PASSWORD: owner
+      INSIGHTS_APP_PASSWORD: app
+    ports:
+      - "6500:5432"
+    volumes:
+      - fireplace_pgdata_test:/var/lib/postgresql/data
+      - ./scripts/db/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    restart: "no"
+    networks:
+      - fireplace-network
+
+volumes:
+  fireplace_pgdata_test:

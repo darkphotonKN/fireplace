@@ -111,6 +111,8 @@ the first time.**
   `file://migrations` source noted in ADR-0010, network addressing — can only appear in
   production. Mitigated by being able to run the compose stack locally, not eliminated.
 - **No CI/CD is specified here.** Deployment mechanics are deliberately left open; this ADR fixes
-  the topology, not the pipeline.
+  the topology, not the pipeline. The realized mechanism — a three-file compose split with the
+  production posture in the base and local convenience in an auto-loaded override — is documented
+  in `deploy/README.md`.
 - **Secrets management names no tool.** "Out of the repository" is the constraint. The mechanism
   is an implementation choice, and one that should not be over-built for a single box.

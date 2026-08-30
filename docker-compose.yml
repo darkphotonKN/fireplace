@@ -14,12 +14,9 @@ services:
   fireplace-rabbitmq:
     image: "rabbitmq:3-management"
     container_name: fireplace-rabbitmq
-    ports:
-      - "5683:5672"
-      - "15683:15672"
     environment:
       - RABBITMQ_DEFAULT_USER=fireplace
-      - RABBITMQ_DEFAULT_PASS=fireplace
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-fireplace}
     volumes:
       - fireplace-rabbitmq-data:/var/lib/rabbitmq
     # The app tier gates on this being HEALTHY, not merely started: RabbitMQ
@@ -37,8 +34,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: fireplace-redis
-    ports:
-      - "6380:6379"
     command: redis-server --appendonly yes
     volumes:
       - fireplace-redis-data:/data
@@ -67,16 +62,14 @@ services:
     container_name: fireplace_postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPER_PASSWORD:-postgres}
       POSTGRES_DB: postgres
-      GATEWAY_OWNER_PASSWORD: owner
-      GATEWAY_APP_PASSWORD: app
-      PLANS_OWNER_PASSWORD: owner
-      PLANS_APP_PASSWORD: app
-      INSIGHTS_OWNER_PASSWORD: owner
-      INSIGHTS_APP_PASSWORD: app
-    ports:
-      - "5500:5432"
+      GATEWAY_OWNER_PASSWORD: ${GATEWAY_OWNER_PASSWORD:-owner}
+      GATEWAY_APP_PASSWORD: ${GATEWAY_APP_PASSWORD:-app}
+      PLANS_OWNER_PASSWORD: ${PLANS_OWNER_PASSWORD:-owner}
+      PLANS_APP_PASSWORD: ${PLANS_APP_PASSWORD:-app}
+      INSIGHTS_OWNER_PASSWORD: ${INSIGHTS_OWNER_PASSWORD:-owner}
+      INSIGHTS_APP_PASSWORD: ${INSIGHTS_APP_PASSWORD:-app}
     volumes:
       - fireplace_pgdata:/var/lib/postgresql/data
       - ./scripts/db/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
@@ -87,34 +80,6 @@ services:
       retries: 10
     networks:
       - fireplace-network
-
-  # Test tier — mirrors production exactly (ADR-0010 §5) so tests exercise the
-  # grant model instead of routing around it. A separate SERVER, not just
-  # separate databases, so a test that drops and recreates can never reach dev
-  # data by mistyping a name. Local and CI only; the VPS runs no test instance.
-  postgres-test:
-    image: postgres:17
-    container_name: fireplace_postgres_test
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
-      DB_SUFFIX: _test
-      GATEWAY_OWNER_PASSWORD: owner
-      GATEWAY_APP_PASSWORD: app
-      PLANS_OWNER_PASSWORD: owner
-      PLANS_APP_PASSWORD: app
-      INSIGHTS_OWNER_PASSWORD: owner
-      INSIGHTS_APP_PASSWORD: app
-    ports:
-      - "6500:5432"
-    volumes:
-      - fireplace_pgdata_test:/var/lib/postgresql/data
-      - ./scripts/db/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
-    restart: "no"
-    networks:
-      - fireplace-network
-
 
   # --- Application tier (ADR-0012 §1) ---
   #
@@ -140,7 +105,7 @@ services:
       DB_PORT: 5432
       DB_NAME: fireplace_gateway
       DB_OWNER_USER: fireplace_gateway_owner
-      DB_OWNER_PASSWORD: owner
+      DB_OWNER_PASSWORD: ${GATEWAY_OWNER_PASSWORD:-owner}
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
@@ -157,12 +122,12 @@ services:
       DB_PORT: 5432
       DB_NAME: fireplace_gateway
       DB_USER: fireplace_gateway_app
-      DB_PASSWORD: app
+      DB_PASSWORD: ${GATEWAY_APP_PASSWORD:-app}
       # Static discovery — container names, resolved by Docker DNS.
       PLAN_SERVICE_ADDR: plan-service:7103
       INSIGHTS_SERVICE_ADDR: insights-service:7106
       RABBITMQ_USER: fireplace
-      RABBITMQ_PASS: fireplace
+      RABBITMQ_PASS: ${RABBITMQ_PASSWORD:-fireplace}
       RABBITMQ_HOST: fireplace-rabbitmq
       RABBITMQ_PORT: 5672
       OTEL_ENABLED: "false"
@@ -171,9 +136,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ACCESS_TOKEN_TTL: 24h
       REFRESH_TOKEN_TTL: 168h
-    # The ONLY service published to the host. Caddy fronts this in I-0041.
-    ports:
-      - "8080:8080"
+    # NOT published here. In production Caddy fronts it (docker-compose.prod.yml);
+    # locally docker-compose.override.yml publishes 8080 directly.
     depends_on:
       gateway-migrate: { condition: service_completed_successfully }
       fireplace-rabbitmq: { condition: service_healthy }
@@ -189,7 +153,7 @@ services:
       DB_PORT: 5432
       DB_NAME: fireplace_plans
       DB_OWNER_USER: fireplace_plans_owner
-      DB_OWNER_PASSWORD: owner
+      DB_OWNER_PASSWORD: ${PLANS_OWNER_PASSWORD:-owner}
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
@@ -207,9 +171,9 @@ services:
       DB_PORT: 5432
       DB_NAME: fireplace_plans
       DB_USER: fireplace_plans_app
-      DB_PASSWORD: app
+      DB_PASSWORD: ${PLANS_APP_PASSWORD:-app}
       RABBITMQ_USER: fireplace
-      RABBITMQ_PASS: fireplace
+      RABBITMQ_PASS: ${RABBITMQ_PASSWORD:-fireplace}
       RABBITMQ_HOST: fireplace-rabbitmq
       RABBITMQ_PORT: 5672
       OTEL_ENABLED: "false"
@@ -228,7 +192,7 @@ services:
       DB_PORT: 5432
       DB_NAME: fireplace_insights
       DB_OWNER_USER: fireplace_insights_owner
-      DB_OWNER_PASSWORD: owner
+      DB_OWNER_PASSWORD: ${INSIGHTS_OWNER_PASSWORD:-owner}
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
@@ -246,10 +210,10 @@ services:
       DB_PORT: 5432
       DB_NAME: fireplace_insights
       DB_USER: fireplace_insights_app
-      DB_PASSWORD: app
+      DB_PASSWORD: ${INSIGHTS_APP_PASSWORD:-app}
       PLAN_SERVICE_ADDR: plan-service:7103
       RABBITMQ_USER: fireplace
-      RABBITMQ_PASS: fireplace
+      RABBITMQ_PASS: ${RABBITMQ_PASSWORD:-fireplace}
       RABBITMQ_HOST: fireplace-rabbitmq
       RABBITMQ_PORT: 5672
       REDIS_ADDR: fireplace-redis:6379

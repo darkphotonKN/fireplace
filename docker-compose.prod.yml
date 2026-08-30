@@ -1,0 +1,91 @@
+# PRODUCTION overlay. Not loaded automatically — that is deliberate.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Omitting docker-compose.override.yml is what keeps the local dev ports off the
+# host. This file adds the only public entrypoint (Caddy) and turns every
+# dev-defaulted secret into a required variable, so a missing one fails at
+# `compose up` instead of booting production on a password committed to git.
+
+services:
+  # The single public entrypoint (ADR-0012 §3). Everything else — Postgres,
+  # RabbitMQ, Redis, plan-service, insights-service, and the gateway itself —
+  # publishes no host port and is reachable only on the internal network.
+  caddy:
+    image: caddy:2-alpine
+    container_name: fireplace_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      FIREPLACE_DOMAIN: ${FIREPLACE_DOMAIN:?FIREPLACE_DOMAIN must be set}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL must be set}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # certificates — losing this re-issues them and can hit rate limits
+      - caddy_config:/config
+    depends_on:
+      - api-gateway
+    networks:
+      - fireplace-network
+
+  # --- Secrets become REQUIRED (ADR-0012 §5) ---------------------------------
+  # The base file defaults these so local dev works out of the box. Here they
+  # have no default: a missing value stops the deploy.
+
+  postgres:
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_SUPER_PASSWORD:?POSTGRES_SUPER_PASSWORD must be set}
+      GATEWAY_OWNER_PASSWORD: ${GATEWAY_OWNER_PASSWORD:?GATEWAY_OWNER_PASSWORD must be set}
+      GATEWAY_APP_PASSWORD: ${GATEWAY_APP_PASSWORD:?GATEWAY_APP_PASSWORD must be set}
+      PLANS_OWNER_PASSWORD: ${PLANS_OWNER_PASSWORD:?PLANS_OWNER_PASSWORD must be set}
+      PLANS_APP_PASSWORD: ${PLANS_APP_PASSWORD:?PLANS_APP_PASSWORD must be set}
+      INSIGHTS_OWNER_PASSWORD: ${INSIGHTS_OWNER_PASSWORD:?INSIGHTS_OWNER_PASSWORD must be set}
+      INSIGHTS_APP_PASSWORD: ${INSIGHTS_APP_PASSWORD:?INSIGHTS_APP_PASSWORD must be set}
+
+  fireplace-rabbitmq:
+    environment:
+      - RABBITMQ_DEFAULT_USER=fireplace
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+
+  gateway-migrate:
+    environment:
+      DB_OWNER_PASSWORD: ${GATEWAY_OWNER_PASSWORD:?GATEWAY_OWNER_PASSWORD must be set}
+
+  api-gateway:
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      DB_PASSWORD: ${GATEWAY_APP_PASSWORD:?GATEWAY_APP_PASSWORD must be set}
+      RABBITMQ_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set}
+
+  plan-migrate:
+    environment:
+      DB_OWNER_PASSWORD: ${PLANS_OWNER_PASSWORD:?PLANS_OWNER_PASSWORD must be set}
+
+  plan-service:
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      DB_PASSWORD: ${PLANS_APP_PASSWORD:?PLANS_APP_PASSWORD must be set}
+      RABBITMQ_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+
+  insights-migrate:
+    environment:
+      DB_OWNER_PASSWORD: ${INSIGHTS_OWNER_PASSWORD:?INSIGHTS_OWNER_PASSWORD must be set}
+
+  insights-service:
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      DB_PASSWORD: ${INSIGHTS_APP_PASSWORD:?INSIGHTS_APP_PASSWORD must be set}
+      RABBITMQ_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set}
+
+volumes:
+  caddy_data:
+  caddy_config:
