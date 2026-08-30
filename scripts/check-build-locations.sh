@@ -30,7 +30,7 @@ SERVICES=(
   "services/api-gateway:bin/app"
   "services/auth-service:bin/auth-service"
   "services/calendar-service:bin/calendar-service"
-  "services/example-service:bin/example-service"
+  "services/insights-service:bin/insights-service"
   "services/plan-service:bin/plan-service"
 )
 

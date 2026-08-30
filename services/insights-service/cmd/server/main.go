@@ -25,8 +25,9 @@ var (
 	collectorEndpoint = commonhelpers.GetEnvString("COLLECTOR_ENDPOINT", "localhost:4317")
 
 	serviceName = "insights"
-	// gRPC port — ordinal 6 in the 710X scheme (auth 7101, example 7102,
-	// plan 7103, calendar 7104, orchestrator 7105, insights 7106).
+	// gRPC port — ordinal 6 in the 710X scheme (auth 7101, plan 7103,
+	// calendar 7104, insights 7106). 7102 and 7105 were example-service
+	// and orchestrator-service, freed when they were deleted (ADR-0009 §2).
 	grpcAddr       = commonhelpers.GetEnvString("GRPC_INSIGHTS_ADDR", "7106")
 	consulAddr     = commonhelpers.GetEnvString("CONSUL_ADDR", "localhost:8520")
 	serviceVersion = commonhelpers.GetEnvString("SERVICE_VERSION", "1.0.0")

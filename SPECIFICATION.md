@@ -14,8 +14,6 @@
 | plan-service         | Plan                                   | [services/plan-service/SPECIFICATION.md](services/plan-service/SPECIFICATION.md)                 |
 | calendar-service     | Calendar                               | [services/calendar-service/SPECIFICATION.md](services/calendar-service/SPECIFICATION.md)         |
 | insights-service     | Insights                               | [services/insights-service/SPECIFICATION.md](services/insights-service/SPECIFICATION.md)         |
-| orchestrator-service | — (scaffold)                           | [services/orchestrator-service/SPECIFICATION.md](services/orchestrator-service/SPECIFICATION.md) |
-| example-service      | — (scaffold)                           | [services/example-service/SPECIFICATION.md](services/example-service/SPECIFICATION.md)           |
 | client               | Frontend (Next.js)                     | [client/SPECIFICATION.md](client/SPECIFICATION.md)                                               |
 
 ## Shared code

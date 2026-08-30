@@ -13,7 +13,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/sashabaranov/go-openai v1.39.0
+	github.com/sashabaranov/go-openai v1.42.0
 	golang.org/x/net v0.57.0
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11

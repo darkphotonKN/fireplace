@@ -5,8 +5,6 @@ use (
 	./services/api-gateway
 	./services/auth-service
 	./services/calendar-service
-	./services/example-service
 	./services/insights-service
-	./services/orchestrator-service
 	./services/plan-service
 )
