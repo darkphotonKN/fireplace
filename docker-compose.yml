@@ -61,76 +61,66 @@ services:
       - fireplace-network
 
   # Monolith DB. Becomes api-gateway-db once Phase 2 lands.
-  db:
+  # --- PostgreSQL: ONE instance, THREE databases (ADR-0010) ---
+  #
+  # fireplace_gateway / fireplace_plans / fireplace_insights. Not three schemas
+  # in one database: PostgreSQL cannot query across databases, so the isolation
+  # is enforced by the planner rather than by grant hygiene. Roles, grants and
+  # extensions are created by scripts/db/init-databases.sh on FIRST BOOT of an
+  # empty volume — change that script and you must `docker compose down -v`.
+  #
+  # plan-service and insights-service must never share a database (ADR-0010 §3):
+  # the effectively-once guarantee rests on producer and consumer being unable
+  # to enlist in one transaction.
+  postgres:
     image: postgres:17
-    container_name: flow_db
+    container_name: fireplace_postgres
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: fireplace_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      GATEWAY_OWNER_PASSWORD: owner
+      GATEWAY_APP_PASSWORD: app
+      PLANS_OWNER_PASSWORD: owner
+      PLANS_APP_PASSWORD: app
+      INSIGHTS_OWNER_PASSWORD: owner
+      INSIGHTS_APP_PASSWORD: app
     ports:
-      - "5556:5432"
+      - "5500:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - fireplace_pgdata:/var/lib/postgresql/data
+      - ./scripts/db/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - fireplace-network
 
-  # Plan Service Database (ordinal 3)
-  plan-service-db:
+  # Test tier — mirrors production exactly (ADR-0010 §5) so tests exercise the
+  # grant model instead of routing around it. A separate SERVER, not just
+  # separate databases, so a test that drops and recreates can never reach dev
+  # data by mistyping a name. Local and CI only; the VPS runs no test instance.
+  postgres-test:
     image: postgres:17
-    container_name: fireplace_plan_service_db
+    container_name: fireplace_postgres_test
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: fireplace_plan_service_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      DB_SUFFIX: _test
+      GATEWAY_OWNER_PASSWORD: owner
+      GATEWAY_APP_PASSWORD: app
+      PLANS_OWNER_PASSWORD: owner
+      PLANS_APP_PASSWORD: app
+      INSIGHTS_OWNER_PASSWORD: owner
+      INSIGHTS_APP_PASSWORD: app
     ports:
-      - "5303:5432"
+      - "6500:5432"
     volumes:
-      - fireplace_plan_service_pgdata:/var/lib/postgresql/data
-    networks:
-      - fireplace-network
-
-  plan-service-test-db:
-    image: postgres:17
-    container_name: fireplace_plan_service_test_db
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: fireplace_plan_service_test_db
-    ports:
-      - "6303:5432"
-    volumes:
-      - fireplace_plan_service_test_pgdata:/var/lib/postgresql/data
-    restart: "no"
-    networks:
-      - fireplace-network
-
-  # Insights Service Database (ordinal 6)
-  insights-service-db:
-    image: postgres:17
-    container_name: fireplace_insights_service_db
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: fireplace_insights_service_db
-    ports:
-      - "5306:5432"
-    volumes:
-      - fireplace_insights_service_pgdata:/var/lib/postgresql/data
-    networks:
-      - fireplace-network
-
-  insights-service-test-db:
-    image: postgres:17
-    container_name: fireplace_insights_service_test_db
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: fireplace_insights_service_test_db
-    ports:
-      - "6306:5432"
-    volumes:
-      - fireplace_insights_service_test_pgdata:/var/lib/postgresql/data
+      - fireplace_pgdata_test:/var/lib/postgresql/data
+      - ./scripts/db/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     restart: "no"
     networks:
       - fireplace-network
@@ -143,8 +133,5 @@ volumes:
   fireplace-consul-data:
   fireplace-rabbitmq-data:
   fireplace-redis-data:
-  pgdata:
-  fireplace_plan_service_pgdata:
-  fireplace_plan_service_test_pgdata:
-  fireplace_insights_service_pgdata:
-  fireplace_insights_service_test_pgdata:
+  fireplace_pgdata:
+  fireplace_pgdata_test:

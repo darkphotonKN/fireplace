@@ -1,18 +1,12 @@
 package config
 
 import (
-	"database/sql"
-	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"strconv"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -43,29 +37,13 @@ func InitDB() *sqlx.DB {
 		panic(fmt.Errorf("failed to ping database: %w", err))
 	}
 
-	runMigrations(db.DB, dbname)
+	// Migrations are NOT run here (ADR-0010 §4) — see ./cmd/migrate.
+	// This connection is <db>_app and holds no DDL.
 
 	slog.Info("Connected to database", slog.String("dbname", dbname))
 	return db
 }
 
-func runMigrations(db *sql.DB, dbname string) {
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
-	if err != nil {
-		log.Fatalf("Could not create postgres driver: %v", err)
-	}
-
-	m, err := migrate.NewWithDatabaseInstance("file://migrations", dbname, driver)
-	if err != nil {
-		log.Fatalf("Could not create migrate instance: %v", err)
-	}
-
-	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		log.Fatalf("Could not run migrations: %v", err)
-	}
-
-	slog.Info("Migrations completed successfully")
-}
 
 func getEnvAsString(key, defaultValue string) string {
 	if v := os.Getenv(key); v != "" {
