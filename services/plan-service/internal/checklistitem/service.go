@@ -258,7 +258,7 @@ func (s *service) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item, e
 }
 
 // ListInDateWindow returns items whose date range overlaps the given window.
-// Used by calendar-service over gRPC.
+// Used by the gateway's calendar read model over gRPC.
 func (s *service) ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error) {
 	items, err := s.repo.ListInDateWindow(ctx, planID, windowStart, windowEnd)
 	if err != nil {

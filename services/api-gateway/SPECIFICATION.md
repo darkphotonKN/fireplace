@@ -20,6 +20,11 @@ The api-gateway is the **only HTTP surface** in the Fireplace platform — the e
 - [ ] Password change / reset flow → FS-none
 - [ ] Refresh-token revocation → FS-none
 
+## Calendar
+
+- [x] Per-plan Gantt calendar read-model → FS-none
+- [ ] `calendar_entries` slot pinning and recommendations → FS-none
+
 ## Contract
 
 - [x] Legacy enveloped REST surface → FS-none
@@ -65,7 +70,7 @@ Full REST catalog exposed by the gateway. All routes are under base path `/api`.
 | DELETE | `/api/plans/:id/checklists/:checklist_id` | JWT | plan-service | Delete item |
 | PATCH | `/api/plans/:id/checklists/:checklist_id/dates` | JWT | plan-service | Update start/due dates |
 | PATCH | `/api/plans/:id/checklists/:checklist_id/archive` | JWT | plan-service | Archive item |
-| GET | `/api/plans/:id/calendar` | JWT | calendar-service | Calendar read-model (`?view=week\|month&date=`) |
+| GET | `/api/plans/:id/calendar` | JWT | **gateway-local** | Calendar read-model (`?view=week\|month&date=`) |
 | GET | `/api/insights/checklist-suggestion` | JWT | insights domain | routing only; spec in insights-service |
 | GET | `/api/insights/checklist-suggestion-daily` | JWT | insights domain | routing only; spec in insights-service |
 | GET | `/api/insights/suggest-videos` | JWT | insights domain | routing only; spec in insights-service |
@@ -156,6 +161,42 @@ No `refresh_tokens` table — refresh tokens are stateless JWTs.
 
 > Not in scope: avatar, timezone, notifications, public profiles.
 
+## Owned Feature: Calendar
+
+Folded back in from calendar-service under ADR-0009 §1 (`internal/gateway/calendar`).
+Renders a **Plan Calendar** window for a single plan by aggregating checklist-item date
+data owned by plan-service. It owns **no data** and performs no mutations.
+
+**Domain terms.** **Plan Calendar** — per-plan Gantt-style calendar positioning a plan's
+checklist items by `start_date`/`due_date`. **Gantt Bar** — a bar spanning
+`start_date..due_date` inclusive. **Single-Day Chip** — a one-cell marker when only one
+date is set or both are equal. **Window** — the `[start, end]` range derived from `view` +
+`date`.
+
+**Read model.** Input `(planID, userID, view, date)`:
+
+1. `view` defaults to `"month"` when empty.
+2. `view=month`, `date=YYYY-MM` → `first-of-month .. last-of-month`. `view=week`,
+   `date=YYYY-MM-DD` → the **Sunday..Saturday** week containing `date`. Any other view, or
+   an unparseable date for the view → `ErrInvalidInput`.
+3. Ownership is asserted against plan-service; failure short-circuits.
+4. Items come from plan-service's `ListItemsInDateWindow`.
+5. Each item formats to a `CalendarItem` with dates as `"YYYY-MM-DD"` or `""` when null.
+
+**Window-intersection and archived-item filtering happen inside plan-service**, not here —
+the gateway passes the resolved window and formats whatever comes back.
+
+Both hops go through the gateway's existing plan client. calendar-service carried its own
+gRPC connection to plan-service; folding it into a process that already had one would have
+meant two connections to the same service, so `ListItemsInDateWindow` was added to the
+existing client instead.
+
+**No `calendar_entries` table.** calendar-service created one for a future slot-pinning and
+recommendations feature, and its own spec recorded that no running code read or wrote it.
+It was **not** recreated in the gateway DB during the fold — recreating dead schema during a
+consolidation would contradict the point of it. The capability line above stays unchecked;
+whenever slot pinning is built, it brings its own migration.
+
 ## Owned Feature: Notes
 
 ⏳ Strangler: currently owned by the gateway; a candidate for future extraction.
@@ -214,6 +255,5 @@ Per-user daily productivity metrics (`internal/useranalytics`), backed by the `u
 ## Owned elsewhere (cross-refs)
 
 - **Plans, checklist items, daily-reset logic, Gantt/search data** → plan-service.
-- **Calendar read-model** → calendar-service.
 - **AI insights / video suggestions** → insights-service. The `/api/insights/*` routes remain here because the gateway is the only HTTP surface, but they now proxy to insights-service over gRPC via `internal/gateway/insights`. The in-process implementation (`internal/insights` service + repository, `internal/discovery`, `internal/concepts`, and the checklist/search-term generators) was **deleted** when the routes were repointed — the strangler cleanup is done. What remains under `internal/insights` is the gateway's own typed HTTP transport layer, and `internal/ai` now serves **Notes only**.
 - **Landing page + all UI** → client (React/Next.js).

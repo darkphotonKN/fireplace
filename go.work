@@ -3,7 +3,6 @@ go 1.25.0
 use (
 	./common
 	./services/api-gateway
-	./services/calendar-service
 	./services/insights-service
 	./services/plan-service
 )

@@ -1,4 +1,4 @@
-package calendar
+package calendargw
 
 import (
 	"context"
@@ -10,28 +10,43 @@ import (
 	"github.com/google/uuid"
 )
 
+// The calendar domain runs IN-PROCESS in the gateway (ADR-0009 §1).
+// calendar-service was folded back in, so there is no gRPC hop to calendar —
+// though plan-service is still remote, and PlanGateway is how this reaches it.
+//
+// Calendar owns no data. Its former database held only calendar_entries for a
+// not-yet-built slot-pinning feature; the read model is assembled entirely from
+// plan-service's checklist items.
+
 const dateLayout = "2006-01-02"
 
-// PlanGateway is the slice of plan-service this package needs.
-// Tests can substitute a fake.
+// PlanGateway is the slice of plan-service this package needs. Declared at the
+// consumer so the gateway's plan client is free to grow methods nobody here
+// calls, and so tests can substitute a fake.
 type PlanGateway interface {
 	AssertPlanOwnership(ctx context.Context, planID, userID uuid.UUID) error
 	ListItemsInDateWindow(ctx context.Context, planID, userID uuid.UUID, windowStart, windowEnd time.Time) ([]*planpb.ChecklistItem, error)
 }
 
-type Service struct {
+// LocalClient satisfies CalendarClient against plan-service directly. It is the
+// seam the gRPC Client used to occupy.
+//
+// The service-layer CalendarItem/GetCalendarOutput pair that calendar-service
+// carried is gone: those types were field-identical to the transport types in
+// model.go, and the handler's only job was copying one into the other. With the
+// process boundary removed, that hop had nothing left to justify it.
+type LocalClient struct {
 	plans PlanGateway
 }
 
-func NewService(plans PlanGateway) *Service {
-	return &Service{plans: plans}
+func NewLocalClient(plans PlanGateway) *LocalClient {
+	return &LocalClient{plans: plans}
 }
 
 // GetCalendar resolves the requested window, verifies plan ownership against
-// plan-service, fetches checklist items overlapping the window, and formats
-// the response. The actual item data lives in plan-service-db; calendar
-// keeps its own DB only for the future calendar_entries (slot pinning + recs).
-func (s *Service) GetCalendar(ctx context.Context, planID, userID uuid.UUID, view, date string) (*GetCalendarOutput, error) {
+// plan-service, fetches checklist items overlapping the window, and formats the
+// response.
+func (c *LocalClient) GetCalendar(ctx context.Context, planID, userID uuid.UUID, view, date string) (*GetCalendarResp, error) {
 	if view == "" {
 		view = "month"
 	}
@@ -40,11 +55,11 @@ func (s *Service) GetCalendar(ctx context.Context, planID, userID uuid.UUID, vie
 		return nil, fmt.Errorf("calendar: get calendar: %w", err)
 	}
 
-	if err := s.plans.AssertPlanOwnership(ctx, planID, userID); err != nil {
+	if err := c.plans.AssertPlanOwnership(ctx, planID, userID); err != nil {
 		return nil, fmt.Errorf("calendar: get calendar: %w", err)
 	}
 
-	items, err := s.plans.ListItemsInDateWindow(ctx, planID, userID, windowStart, windowEnd)
+	items, err := c.plans.ListItemsInDateWindow(ctx, planID, userID, windowStart, windowEnd)
 	if err != nil {
 		return nil, fmt.Errorf("calendar: get calendar: fetch items: %w", err)
 	}
@@ -70,8 +85,8 @@ func (s *Service) GetCalendar(ctx context.Context, planID, userID uuid.UUID, vie
 		})
 	}
 
-	return &GetCalendarOutput{
-		PlanID:      planID,
+	return &GetCalendarResp{
+		PlanID:      planID.String(),
 		View:        view,
 		WindowStart: windowStart.Format(dateLayout),
 		WindowEnd:   windowEnd.Format(dateLayout),
@@ -80,7 +95,7 @@ func (s *Service) GetCalendar(ctx context.Context, planID, userID uuid.UUID, vie
 }
 
 // resolveWindow translates (view, date) into a [start, end] date range.
-// Ported verbatim from the monolith's calendar service.
+// Ported verbatim from the monolith's calendar service, via calendar-service.
 func resolveWindow(view, date string) (time.Time, time.Time, error) {
 	switch view {
 	case "month":
@@ -88,9 +103,7 @@ func resolveWindow(view, date string) (time.Time, time.Time, error) {
 		if err != nil {
 			return time.Time{}, time.Time{}, fmt.Errorf("%w: invalid date for month view, expected YYYY-MM: %v", commonconstants.ErrInvalidInput, err)
 		}
-		start := t
-		end := t.AddDate(0, 1, -1)
-		return start, end, nil
+		return t, t.AddDate(0, 1, -1), nil
 	case "week":
 		t, err := time.ParseInLocation(dateLayout, date, time.UTC)
 		if err != nil {
@@ -98,8 +111,7 @@ func resolveWindow(view, date string) (time.Time, time.Time, error) {
 		}
 		offset := int(t.Weekday()) // Sunday=0, Saturday=6
 		start := t.AddDate(0, 0, -offset)
-		end := start.AddDate(0, 0, 6)
-		return start, end, nil
+		return start, start.AddDate(0, 0, 6), nil
 	default:
 		return time.Time{}, time.Time{}, fmt.Errorf("%w: invalid view: must be 'week' or 'month'", commonconstants.ErrInvalidInput)
 	}

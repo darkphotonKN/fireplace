@@ -24,7 +24,8 @@ import (
 
 // SetupRouter wires every domain handler, mounts public + protected route
 // groups, and starts background jobs. The registry is used by `gateway/*`
-// clients to discover downstream services (auth-service, plan-service).
+// clients to discover the remaining downstream services (plan-service,
+// insights-service); auth and calendar are in-process (ADR-0009 §1).
 //
 // After Phase 4c, no plan/checklist data lives in this DB — plan-service owns
 // it, reached via the planGw client + adapter.
@@ -92,10 +93,11 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 	notesGen := ai.NewNotesGenerator()
 	notesService := notes.NewService(notesRepo, notesGen, planAdapter, planAdapter)
 
-	// calendar-service is remote — gateway proxies /api/plans/:id/calendar
-	// through calendargw via gRPC. Calendar-service calls plan-service on
-	// its own for ownership checks + item reads.
-	calendarGwClient := calendargw.NewClient(registry)
+	// The calendar domain runs IN-PROCESS (ADR-0009 §1) — calendar-service was
+	// folded back in. It owns no data: the read model is assembled entirely from
+	// plan-service's checklist items, reached through the SAME plan client
+	// everything else here uses rather than a second connection of its own.
+	calendarGwClient := calendargw.NewLocalClient(planGwClient)
 
 	// --- PROTECTED ROUTES (auth middleware) ---
 

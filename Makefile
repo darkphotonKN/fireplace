@@ -2,7 +2,7 @@
 # this one is for cross-service tasks: building everything, verifying build
 # outputs, cleaning all artefacts, proto codegen.
 
-SERVICES = api-gateway calendar-service insights-service plan-service
+SERVICES = api-gateway insights-service plan-service
 
 .PHONY: build-all clean-builds check-builds proto-gen list-services
 

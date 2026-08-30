@@ -32,9 +32,10 @@ func main() {
 	db := config.InitDB()
 	defer db.Close()
 
-	// consul registry — used by gateway/* clients to discover downstream
-	// services (auth-service, plan-service, etc.). The gateway itself does
-	// not register, since it's only invoked externally over HTTP.
+	// consul registry — used by gateway/* clients to discover the remaining
+	// downstream services (plan-service, insights-service). Auth and calendar
+	// run in-process now (ADR-0009 §1) and are not discovered. The gateway
+	// itself does not register, since it's only invoked externally over HTTP.
 	consulAddr := commonhelpers.GetEnvString("CONSUL_ADDR", "localhost:8520")
 	registry, err := consul.NewRegistry(consulAddr, "api-gateway")
 	if err != nil {

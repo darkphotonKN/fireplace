@@ -262,7 +262,7 @@ func (r *repository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item
 
 // ListInDateWindow returns non-archived items for a plan whose
 // [start_date, due_date] range intersects [windowStart, windowEnd].
-// Items with both dates null are excluded. Used by calendar-service.
+// Items with both dates null are excluded. Used by the gateway's calendar read model.
 func (r *repository) ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
