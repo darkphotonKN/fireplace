@@ -45,8 +45,8 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
 ### Creation paths
 
 - **R7.** Both paths are **one operation on one resource** — `POST /api/plans` — discriminated
-  by a required `mode` field (`guided` | `custom`). Guided and custom differ in *how the draft is
-  obtained*, not in what is created, so they are not separate resources.
+  by a required `mode` field (`guided` | `custom`). Guided and custom differ in _how the draft is
+  obtained_, not in what is created, so they are not separate resources.
 - **R7a.** **Custom** (`mode=custom`) takes `planDraft` in the request body. No generation step.
 - **R8.** **Guided** (`mode=guided`) takes a short `seed` line, and plan-service calls
   insights-service to generate the whole draft. The generated text is what is persisted as
@@ -65,7 +65,7 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   the existing client pattern: one cached `*grpc.ClientConn`, never dialled per RPC, with
   gRPC status codes translated into local domain sentinels.
 - **R12.** insights-service gains a **planless** generation RPC — `GenerateDraft(seed,
-  plan_type) → draft`. Planless because no plan exists yet, so unlike every other method on
+plan_type) → draft`. Planless because no plan exists yet, so unlike every other method on
   that service it cannot begin by fetching Plan Context.
 - **R13.** The `GenerateDraft` call happens **outside** the database transaction. Folding it
   into `ExecTx` alongside the outbox write would hold a Postgres transaction open for the
@@ -114,8 +114,8 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   spares the database a transaction for a redelivered event while Redis is up. It is never the
   authority — `(event_id, consumer)` decides — so its whole contract is "cheap negative answer,
   no positive guarantee." plan-service gains a Redis dependency it has not had
-  (`plan-service/CLAUDE.md` still says *"No Redis"* and needs updating).
-- **R23b.** **The claim must fail open.** A Redis error is *not* a duplicate. Only an
+  (`plan-service/CLAUDE.md` still says _"No Redis"_ and needs updating).
+- **R23b.** **The claim must fail open.** A Redis error is _not_ a duplicate. Only an
   unambiguous "the key already exists" may short-circuit; an unreachable or erroring Redis falls
   through to the database, which is the authority. Implementations must distinguish
   `(acquired=false, err=nil)` — a real duplicate — from `(acquired=false, err!=nil)` — Redis
@@ -124,13 +124,13 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   same outbox are separated by `FOR UPDATE SKIP LOCKED` in `GetUnpublished` — in-database, exact
   rather than best-effort, and free because the relay is already taking that row lock. A
   resource-keyed distributed lock (`lock:<resource>:<id>`) is the correct tool when the contended
-  thing is *not* a row the worker already selects for update; that is not the case here.
+  thing is _not_ a row the worker already selects for update; that is not the case here.
   Recorded because the two locks are easy to conflate and solve different problems.
 - **R24.** `correlation_id` (whole chain) and `causation_id` (immediate parent) propagate
   through both hops as **envelope** concerns, not as two more columns on every event proto.
   `correlation_id` rides AMQP's **native correlation-id property**; `causation_id` rides a
   header, since AMQP has no native equivalent.
-  *Corrected during I-0022:* an earlier draft of this requirement said `commonbroker.Message`
+  _Corrected during I-0022:_ an earlier draft of this requirement said `commonbroker.Message`
   "exposes only `MessageId, ContentType, Body, DeliveryMode` — no headers field" and had to grow
   one. That was read off the publish-worker's call site, which sets only those four, not off the
   struct. `Message` already carried both `CorrelationId` and `Headers`, and `AmqpPublisher`
@@ -150,13 +150,13 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   fastest recovery is the user regenerating on the spot" false by twenty minutes.
 - **R25b.** Exhaustion ends **the generation job, not the plan**. The plan row was committed at
   t=0 (R9) and stays — usable, with its draft, and with items the user may add by hand. This is
-  graceful degradation of the *feature*: the capability is reduced, the plan is not.
+  graceful degradation of the _feature_: the capability is reduced, the plan is not.
 
 ### Failure handling
 
 - **R26.** Two **disjoint** terminal outcomes. A message ends in exactly one; they never both
   fire.
-- **R27.** *Path 1 — transient errors, retries exhausted.* insights-service publishes
+- **R27.** _Path 1 — transient errors, retries exhausted._ insights-service publishes
   `insight.generation_failed` rather than DLQ'ing; plan-service moves the plan to `failed`; the
   user gets a retry action on the page they are already on. Nothing is broken, so the fastest
   recovery is the user regenerating on the spot — a DLQ entry waiting on an operator is strictly
@@ -165,10 +165,10 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   exhausted attempt — the count lives in message metadata and the plan status is owned by
   plan-service — so there is no dual write to be atomic with. **Publish before ack**: if the
   publish fails, do not ack, and let RabbitMQ redeliver. The unacked message is the durable
-  record. *This holds only while insights-service stays stateless about failures; the moment it
+  record. _This holds only while insights-service stays stateless about failures; the moment it
   writes anything locally about a failed attempt, the dual-write problem returns and so does the
-  outbox.*
-- **R29.** *Path 2 — bugs, parse errors, unexpected exceptions.* Not retryable; goes to DLQ. The
+  outbox._
+- **R29.** _Path 2 — bugs, parse errors, unexpected exceptions._ Not retryable; goes to DLQ. The
   user is told something went wrong and needs a fix. No user retry on this path.
 - **R30.** A **separate delivery-count ceiling** guards the terminal branch, distinct from the
   generation retry count. Not-acking is reserved strictly for "the failure publish itself
@@ -230,13 +230,13 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
 - **R43a.** **Touching a child promotes its parent.** When an item moves `generated → touched`,
   its parent — if `generated` — moves to `touched` in the same transaction. Two-tier nesting caps
   the depth at one hop, so no recursion is possible.
-- **R43b.** *Why this rule exists:* `checklist_items.parent_id` is
+- **R43b.** _Why this rule exists:_ `checklist_items.parent_id` is
   `REFERENCES checklist_items(id) ON DELETE CASCADE` (migration 000019). Without R43a, deleting a
   `generated` parent would cascade into a `touched` child and destroy the user's work — through
   the FK, silently, via the very actions (R43, R46) this FS calls ADR-0007-safe. Promoting the
   parent removes it from the deletable set, so the cascade can never reach protected data. The
   predicate stays `status='generated'` everywhere; no descendant subquery is needed anywhere.
-- **R43c.** *Accepted consequence:* a parent's own text becomes un-regenerable once any of its
+- **R43c.** _Accepted consequence:_ a parent's own text becomes un-regenerable once any of its
   children is edited, even though nobody edited the parent. That is the conservative direction,
   and ADR-0007 is a conservative rule.
 - **R44.** "Touched" means any user-initiated mutation: description, `done`, dates, re-parent,
@@ -307,16 +307,16 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
 - **R61.** **The ticker is still the correctness guarantee.** It runs unconditionally — not as a
   fallback armed by a failed signal. The signal is purely a latency optimization and must always
   be safely droppable.
-- **R62.** *Rationale, recorded so it is not "simplified" later:* the signal is silently absent in
+- **R62.** _Rationale, recorded so it is not "simplified" later:_ the signal is silently absent in
   cases undetectable at the send site — process death between commit and notify, a full channel,
   an outbox row written by another process or by hand, or a new code path that forgets to notify.
   None of these produces an error. The relay therefore cannot know a signal was owed and never
   arrived, and can never skip polling on that basis. If the signal ever becomes the delivery
   mechanism rather than a hint, a dropped signal strands a row — reintroducing the dual-write
   problem the outbox exists to eliminate.
-- **R63.** The channel is `chan struct{}` with **buffer 1**. *Not unbuffered:* an unbuffered send
+- **R63.** The channel is `chan struct{}` with **buffer 1**. _Not unbuffered:_ an unbuffered send
   succeeds only if a receiver is blocked at that exact instant, so a notify arriving while the
-  relay is mid-drain would be dropped — the case where the signal matters most. *Not larger:* the
+  relay is mid-drain would be dropped — the case where the signal matters most. _Not larger:_ the
   signal carries no information; ten notifies mean what one means — go look. Buffer 1 is a
   one-slot latch meaning "work arrived while you weren't looking," and one bit is all the state
   there is.
@@ -342,7 +342,7 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
   doing both, rather than two things a caller has to remember to pair. A new write path that
   forgets to notify degrades silently to ticker latency, with no error anywhere.
 - **R69.** The polling interval is **10 seconds**, replacing `time.Minute * 2`
-  (`plan-service/config/services.go:40`). This is a *loosening* relative to the ~2s the relay
+  (`plan-service/config/services.go:40`). This is a _loosening_ relative to the ~2s the relay
   would need if the ticker were the only pickup path — the signal takes the ticker off the
   critical path, so it only has to catch rare misses. Two minutes was defensible only while
   nothing user-facing waited on the outbox.
@@ -511,26 +511,26 @@ Vocabulary is `services/plan-service/CONTEXT.md` and `services/insights-service/
 
 ## Edge States
 
-| Scenario | Behaviour |
-| --- | --- |
-| Insights returns nothing usable | Plan reaches `ready` with zero items — a valid end state, not a failure. Showing an error for a non-error trains people to ignore errors. |
-| Plan deleted while generation is in flight | The materialization consumer checks the plan exists inside its transaction; if it is gone, **ack and drop, log at info**. Terminal, not an error, not DLQ — the user deleted it deliberately. |
-| Plan deleted, insights still generating | insights-service's write has no FK to `plans` (separate database), so it succeeds and leaves an orphan `generated_insights` row. Accepted: it is a cache, and the retention scan handles it. |
-| `insight.generated` redelivered | Inbox insert conflicts, the transaction rolls back, the consumer acks. Items exist once. |
-| `insight.generation_failed` redelivered | Guarded update matches zero rows; status unchanged, no second effect. |
-| Failure event arrives after the sweeper already failed the plan | Guarded update matches zero rows — the plan is already `failed`. First writer wins, and both agree on the outcome. |
-| Failure publish itself fails repeatedly | Terminal-branch ceiling stops the loop. Without it the message returns already at max attempts and spins with no backoff. |
-| Consumer panics mid-generation | No handler runs, so no failure event and no DLQ decision. The sweeper is the only thing that notices. |
-| Bug-class failure with no DLQ replay | **Accepted cost, stated not hidden:** that plan gets zero items *permanently*, not "until it's fixed." Copy must not promise eventual recovery. |
-| User retries during cooldown | Refused before any LLM call, with the remaining cooldown surfaced. |
-| User retries past the attempt cap | Refused; the plan stays `failed` and the retry affordance is withdrawn rather than left dead. |
-| Regeneration on a plan where every item is touched | Adds new items only; nothing is replaced. A legitimate no-delete outcome. |
-| User edits an item while materialization is committing | Materialization writes in one transaction; the edit either precedes it (item is `authored`, untouched by materialization) or follows it (`generated → touched`). No interleaved state is observable. |
-| Insights unreachable at guided creation | 503; no plan row; the client keeps the seed. |
-| Insights unreachable at retry | Retry accepted (it is asynchronous), and the chain fails normally into `failed` — the retry path does not need insights to be reachable at the moment of the click. |
-| Draft edited while items are generating | Allowed. The in-flight generation used the draft as it was at request time; the opt-in regenerate offer appears once the plan leaves `generating`. |
-| Existing plans at migration time | `status='ready'`, all items `authored`. No chain runs for them and no regeneration can touch their items. |
-| Empty `{}` PATCH on a plan | Valid no-op — every `UpdatePlanReq` field carries `omitempty` (contract-patterns §5). |
+| Scenario                                                        | Behaviour                                                                                                                                                                                            |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Insights returns nothing usable                                 | Plan reaches `ready` with zero items — a valid end state, not a failure. Showing an error for a non-error trains people to ignore errors.                                                            |
+| Plan deleted while generation is in flight                      | The materialization consumer checks the plan exists inside its transaction; if it is gone, **ack and drop, log at info**. Terminal, not an error, not DLQ — the user deleted it deliberately.        |
+| Plan deleted, insights still generating                         | insights-service's write has no FK to `plans` (separate database), so it succeeds and leaves an orphan `generated_insights` row. Accepted: it is a cache, and the retention scan handles it.         |
+| `insight.generated` redelivered                                 | Inbox insert conflicts, the transaction rolls back, the consumer acks. Items exist once.                                                                                                             |
+| `insight.generation_failed` redelivered                         | Guarded update matches zero rows; status unchanged, no second effect.                                                                                                                                |
+| Failure event arrives after the sweeper already failed the plan | Guarded update matches zero rows — the plan is already `failed`. First writer wins, and both agree on the outcome.                                                                                   |
+| Failure publish itself fails repeatedly                         | Terminal-branch ceiling stops the loop. Without it the message returns already at max attempts and spins with no backoff.                                                                            |
+| Consumer panics mid-generation                                  | No handler runs, so no failure event and no DLQ decision. The sweeper is the only thing that notices.                                                                                                |
+| Bug-class failure with no DLQ replay                            | **Accepted cost, stated not hidden:** that plan gets zero items _permanently_, not "until it's fixed." Copy must not promise eventual recovery.                                                      |
+| User retries during cooldown                                    | Refused before any LLM call, with the remaining cooldown surfaced.                                                                                                                                   |
+| User retries past the attempt cap                               | Refused; the plan stays `failed` and the retry affordance is withdrawn rather than left dead.                                                                                                        |
+| Regeneration on a plan where every item is touched              | Adds new items only; nothing is replaced. A legitimate no-delete outcome.                                                                                                                            |
+| User edits an item while materialization is committing          | Materialization writes in one transaction; the edit either precedes it (item is `authored`, untouched by materialization) or follows it (`generated → touched`). No interleaved state is observable. |
+| Insights unreachable at guided creation                         | 503; no plan row; the client keeps the seed.                                                                                                                                                         |
+| Insights unreachable at retry                                   | Retry accepted (it is asynchronous), and the chain fails normally into `failed` — the retry path does not need insights to be reachable at the moment of the click.                                  |
+| Draft edited while items are generating                         | Allowed. The in-flight generation used the draft as it was at request time; the opt-in regenerate offer appears once the plan leaves `generating`.                                                   |
+| Existing plans at migration time                                | `status='ready'`, all items `authored`. No chain runs for them and no regeneration can touch their items.                                                                                            |
+| Empty `{}` PATCH on a plan                                      | Valid no-op — every `UpdatePlanReq` field carries `omitempty` (contract-patterns §5).                                                                                                                |
 
 ---
 
@@ -543,24 +543,24 @@ Error rows below follow the **existing** `apierr.StatusFor` / `CodeFor` mapping,
 maps gRPC `Unavailable → 503 SERVICE_UNAVAILABLE` correctly (contract-patterns §9) — this FS
 does not restate or generalise it.
 
-| Op | Method + Path | Query/Params | Request body | Response | Errors |
-|----|---------------|--------------|--------------|----------|--------|
-| `createPlan` *(changed)* | POST `/api/plans` | — | `name` (req), `planType` (req), `mode` (req, `guided`\|`custom`), `planDraft` (opt, 1–20000), `seed` (opt, 10–500), `description` (opt) — `focus` **removed** | 201 `PlanResp` | 400 `VALIDATION_FAILED`, 401, 422, 503 `SERVICE_UNAVAILABLE` \| `GENERATION_FAILED` |
-| `getPlanGeneration` *(new)* | GET `/api/plans/{id}/generation` | — | — | 200 `{status, failureClass?, itemCount, requestedAt}` | 401, 403, 404, 503 |
-| `retryPlanGeneration` *(new)* | POST `/api/plans/{id}/generation/retry` | — | — | 202 (no body) | 401, 403, 404, 409, 429 `GENERATION_COOLDOWN`, 503 |
-| `updatePlan` *(changed)* | PATCH `/api/plans/{id}` | — | `focus` → `planDraft`, all optional, all `omitempty` | 200 `PlanResp` | as today |
-| `listPlans` / `getPlan` *(changed)* | unchanged paths | unchanged | — | `PlanResp` gains `planDraft`, `status`, `failureClass?`; loses `focus` | as today |
-| `clearGeneratedItems` *(new)* | DELETE `/api/plans/{id}/checklists/generated` | — | — | 204 | 401, 403, 404, 503 |
-| `listChecklists` *(changed)* | unchanged path | unchanged | — | `ChecklistResp` gains `status` (`authored`\|`generated`\|`touched`) | as today |
+| Op                                  | Method + Path                                 | Query/Params | Request body                                                                                                                                                  | Response                                                               | Errors                                                                              |
+| ----------------------------------- | --------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `createPlan` _(changed)_            | POST `/api/plans`                             | —            | `name` (req), `planType` (req), `mode` (req, `guided`\|`custom`), `planDraft` (opt, 1–20000), `seed` (opt, 10–500), `description` (opt) — `focus` **removed** | 201 `PlanResp`                                                         | 400 `VALIDATION_FAILED`, 401, 422, 503 `SERVICE_UNAVAILABLE` \| `GENERATION_FAILED` |
+| `getPlanGeneration` _(new)_         | GET `/api/plans/{id}/generation`              | —            | —                                                                                                                                                             | 200 `{status, failureClass?, itemCount, requestedAt}`                  | 401, 403, 404, 503                                                                  |
+| `retryPlanGeneration` _(new)_       | POST `/api/plans/{id}/generation/retry`       | —            | —                                                                                                                                                             | 202 (no body)                                                          | 401, 403, 404, 409, 429 `GENERATION_COOLDOWN`, 503                                  |
+| `updatePlan` _(changed)_            | PATCH `/api/plans/{id}`                       | —            | `focus` → `planDraft`, all optional, all `omitempty`                                                                                                          | 200 `PlanResp`                                                         | as today                                                                            |
+| `listPlans` / `getPlan` _(changed)_ | unchanged paths                               | unchanged    | —                                                                                                                                                             | `PlanResp` gains `planDraft`, `status`, `failureClass?`; loses `focus` | as today                                                                            |
+| `clearGeneratedItems` _(new)_       | DELETE `/api/plans/{id}/checklists/generated` | —            | —                                                                                                                                                             | 204                                                                    | 401, 403, 404, 503                                                                  |
+| `listChecklists` _(changed)_        | unchanged path                                | unchanged    | —                                                                                                                                                             | `ChecklistResp` gains `status` (`authored`\|`generated`\|`touched`)    | as today                                                                            |
 
 **New error codes** (added because a real failure needs distinguishing, not speculatively —
 `docs/agents/contract.md`):
 
-| Code | Status | Meaning |
-|---|---|---|
-| `GENERATION_FAILED` | **503** | insights was reachable but could not generate; no plan was created. Client keeps the seed and offers retry. Shares 503 with `SERVICE_UNAVAILABLE` (insights *unreachable*) — both retryable, different copy. Status is the coarse signal, the code is the precise one (ADR-0004). |
-| `GENERATION_COOLDOWN` | 429 | Retry requested inside the cooldown or past the attempt cap. |
-| `NOT_IMPLEMENTED` | 501 | **Interim, not permanent.** `mode=guided` while the `GenerateDraft` RPC has not landed. Already in `common/errcode` and wired through `apierr.StatusFor`/`CodeFor`; its own comment calls it "a DELIVERY statement, not a failure — the operation is published in the contract with its success shape declared, but its data path has not landed yet." `mode=custom` is unaffected. Falling through to 500 or 503 here would tell the client something broke when nothing did. |
+| Code                  | Status  | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GENERATION_FAILED`   | **503** | insights was reachable but could not generate; no plan was created. Client keeps the seed and offers retry. Shares 503 with `SERVICE_UNAVAILABLE` (insights _unreachable_) — both retryable, different copy. Status is the coarse signal, the code is the precise one (ADR-0004).                                                                                                                                                                                              |
+| `GENERATION_COOLDOWN` | 429     | Retry requested inside the cooldown or past the attempt cap.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `NOT_IMPLEMENTED`     | 501     | **Interim, not permanent.** `mode=guided` while the `GenerateDraft` RPC has not landed. Already in `common/errcode` and wired through `apierr.StatusFor`/`CodeFor`; its own comment calls it "a DELIVERY statement, not a failure — the operation is published in the contract with its success shape declared, but its data path has not landed yet." `mode=custom` is unaffected. Falling through to 500 or 503 here would tell the client something broke when nothing did. |
 
 **502 was considered and rejected.** `apierr.httpForCode` has no 502 branch, so it would widen
 the seam for a single case. **500 was also rejected**, and for a stronger reason: per
@@ -595,7 +595,7 @@ Plane 2 (gRPC) additions: `insights.InsightsService.GenerateDraft(seed, plan_typ
   re-derives it: `generated_insights.insight_type` is currently
   `CHECK (insight_type IN ('suggestion','daily','video'))`, so an initial item set has no type yet
   and today's code writes those rows as `'suggestion'`. It has **no bearing on this FS's lane** —
-  plan-service consumes the `insight.generated` *event* and never reads that table. The event is
+  plan-service consumes the `insight.generated` _event_ and never reads that table. The event is
   the entire contract between the two lanes; the storage behind it is insights' business.
 - Model selection per call, beyond noting which calls are high- versus low-frequency (R2).
 - DLQ **replay** tooling. The DLQ receives messages; nothing reads it back. R29's accepted cost
@@ -642,21 +642,21 @@ arriving by a different door.
 
 **Gateway orchestration of guided creation** (gateway calls insights, then calls plan-service).
 Rejected: guided-versus-custom is domain logic about how a plan comes into being, and the
-platform's strangler direction moves domain logic *out* of the gateway. plan-service owning "a
+platform's strangler direction moves domain logic _out_ of the gateway. plan-service owning "a
 plan is created with a populated `plan_draft`" keeps the invariant with the aggregate root.
 
 **"plan-service dialling insights is a dependency cycle."** Raised during this session and
 **withdrawn as unfounded** — recorded so it is not raised again. `insights → plan-service`
 already exists via `PlanGateway.GetPlanContext`, making the graph bidirectional, which is
-unremarkable. None of the three things "circular dependency" means applies: *compile-time* — both
+unremarkable. None of the three things "circular dependency" means applies: _compile-time_ — both
 import `common/api/proto/*`, neither imports the other, so there is no Go import cycle;
-*startup ordering* — clients resolve through Consul and dial lazily, so neither blocks the other
-at boot; *synchronous recursion* — the guided call is planless, so insights has nothing to call
+_startup ordering_ — clients resolve through Consul and dial lazily, so neither blocks the other
+at boot; _synchronous recursion_ — the guided call is planless, so insights has nothing to call
 back for. What survives is a property of the feature, not the wiring: if insights is down,
 guided creation fails, and gateway orchestration would not have made it more available.
 
 **Two creation endpoints** (`POST /api/plans` plus `POST /api/plans/guided`). Rejected: guided
-and custom create the *same resource* and differ only in how the draft is obtained. Two endpoints
+and custom create the _same resource_ and differ only in how the draft is obtained. Two endpoints
 would have made the conditional-required rule enforceable as shape (422 rather than 400), which
 was the only argument for it — but it buys that by splitting one user-facing concept across two
 operations and putting a verb in a path. The discriminated body costs one small domain rule that
@@ -668,13 +668,13 @@ one, and `plan.items_requested` then fires carrying a one-line draft, so items g
 the degraded input too. One failure becomes two.
 
 **insights binding both `plan.created` and `plan.items_requested`.** Rejected: it makes insights
-know that "a plan was created" *implies* "items are wanted" — plan lifecycle semantics leaking
+know that "a plan was created" _implies_ "items are wanted" — plan lifecycle semantics leaking
 into the generation service. **Re-emitting `plan.created` on retry** was also rejected: it would
 give every future `plan.created` subscriber a false creation signal. The single-trigger design
 was nearly free to adopt because insights' binding is broken today and being rewritten regardless.
 
 **Two nullable timestamps for provenance** (`generated_at` / `user_edited_at`). Rejected in favour
-of the FSM: timestamps carry the same information, but nothing *prevents* `user_edited_at` being
+of the FSM: timestamps carry the same information, but nothing _prevents_ `user_edited_at` being
 cleared by a bug or a future "reset" feature. ADR-0007 claims the protection is structural, and
 only a one-way state machine with a database trigger makes that claim true. **Deriving "touched"
 by diffing against a stored original** was also rejected — it contradicts "recorded, never
@@ -685,8 +685,8 @@ maintained before either need is proven. Revisit when one plan type genuinely ne
 other does not — a real prerequisite DAG for learning plans would be that trigger.
 
 **Naming: "generation" covers two different things.** Noted and deliberately not renamed. The
-word names both the *synchronous draft call* (`GenerateDraft`, `GENERATION_FAILED`, guided mode
-only, ~15s, inside the create request) and the *asynchronous item chain*
+word names both the _synchronous draft call_ (`GenerateDraft`, `GENERATION_FAILED`, guided mode
+only, ~15s, inside the create request) and the _asynchronous item chain_
 (`/api/plans/{id}/generation`, both modes, minutes, after the response). Renaming the resource to
 `item-generation` and the code to `DRAFT_GENERATION_FAILED` was proposed and passed over. Anyone
 reading a ticket should know the URL refers only to the second.
@@ -709,7 +709,7 @@ they are fixed.
 - `NewConsumer` and `SetupAMQPInfrastructure` are never called from `cmd/server/main.go` or
   `config/services.go`.
 - **The Redis claim fails closed** (`internal/insights/service.go`). `acquired, _ :=
-  s.cache.SetNX(...)` discards the error, so an unreachable Redis yields `acquired=false`, which
+s.cache.SetNX(...)` discards the error, so an unreachable Redis yields `acquired=false`, which
   is reported as `ErrEventAlreadyProcessed`, which the consumer **acks and drops**. Every event
   is silently discarded for the duration of a Redis outage. The comment above it states the
   intent was best-effort; the code does the opposite. R23b is the fix.
