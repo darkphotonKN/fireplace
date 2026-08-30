@@ -225,11 +225,57 @@ services:
       fireplace-rabbitmq: { condition: service_healthy }
     networks: [fireplace-network]
 
+
+  # --- Backups (ADR-0012 §6) ---
+  #
+  # Daily pg_dump of all three databases to object storage, with a tested
+  # restore. Blocking before real users: an untested backup is an assumption
+  # with a cron entry, not a backup.
+  #
+  # No profile here: the base file IS the production posture, and production
+  # backs up. docker-compose.override.yml puts it behind the "backup" profile
+  # so it stays out of ordinary local development. On demand, locally:
+  #
+  #   docker compose --profile backup run --rm backup backup.sh
+  #   docker compose --profile backup run --rm backup restore.sh fireplace_plans
+  backup:
+    build: { context: ./deploy/backup }
+    image: fireplace/backup:dev
+    container_name: fireplace_backup
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      GATEWAY_OWNER_PASSWORD: ${GATEWAY_OWNER_PASSWORD:-owner}
+      PLANS_OWNER_PASSWORD: ${PLANS_OWNER_PASSWORD:-owner}
+      INSIGHTS_OWNER_PASSWORD: ${INSIGHTS_OWNER_PASSWORD:-owner}
+      # An rclone remote: s3:bucket, r2:bucket, b2:bucket, or local:/path.
+      BACKUP_REMOTE: ${BACKUP_REMOTE:-local:/backups}
+      RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      TZ: ${TZ:-UTC}
+      # rclone reads its remotes from env, so no config file needs mounting.
+      # See deploy/README.md for the per-provider variables.
+      RCLONE_CONFIG_LOCAL_TYPE: local
+      RCLONE_CONFIG_S3_TYPE: ${RCLONE_S3_TYPE:-s3}
+      RCLONE_CONFIG_S3_PROVIDER: ${RCLONE_S3_PROVIDER:-}
+      RCLONE_CONFIG_S3_ENDPOINT: ${RCLONE_S3_ENDPOINT:-}
+      RCLONE_CONFIG_S3_REGION: ${RCLONE_S3_REGION:-}
+      RCLONE_CONFIG_S3_ACCESS_KEY_ID: ${RCLONE_S3_ACCESS_KEY_ID:-}
+      RCLONE_CONFIG_S3_SECRET_ACCESS_KEY: ${RCLONE_S3_SECRET_ACCESS_KEY:-}
+    volumes:
+      # Only used by the "local:" remote — a filesystem target for drills and
+      # for a second on-box copy. It is NOT offsite and does not satisfy §6.
+      - fireplace_backups:/backups
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - fireplace-network
+
 networks:
   fireplace-network:
     name: fireplace-network
 
 volumes:
+  fireplace_backups:
   fireplace-rabbitmq-data:
   fireplace-redis-data:
   fireplace_pgdata:

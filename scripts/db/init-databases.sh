@@ -49,10 +49,17 @@ SQL
   fi
 
   psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "${db}" <<-SQL
-	-- Extensions are created here, as superuser, so migrations never depend on
-	-- the owner's right to install them.
+	-- Extensions are created AS THE OWNER, not as superuser. Both are "trusted"
+	-- in PG13+, so a database owner may install them without superuser rights.
+	--
+	-- Ownership matters for restores: a pg_dump taken with --clean emits
+	-- DROP EXTENSION, and a superuser-owned extension makes that fail with
+	-- "must be owner of extension" — so the backup restores everything except
+	-- the extensions and then stops. Found by running the restore drill.
+	SET ROLE ${owner};
 	CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 	CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+	RESET ROLE;
 
 	-- Nobody but this database's own roles gets in. PUBLIC can connect to any
 	-- database by default, which would undo the point of separate roles.
