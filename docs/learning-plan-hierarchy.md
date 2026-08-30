@@ -308,7 +308,7 @@ This is meaningful UI work; safe to skip and stay on the DB side.
 
 ## 6. Testing approach
 
-- Use the dev DB (Docker compose, port 5556) — no separate test DB
+- Use the dev DB (Docker compose, port 5500, database `fireplace_gateway`) — or the mirrored test instance on 6500 (ADR-0010)
 - Heavy use of `psql` for trigger/constraint smoke tests inside
   `BEGIN ... ROLLBACK` blocks before writing Go tests
 - Service tests follow the existing `mockRepository` pattern in

@@ -7,8 +7,10 @@ ifneq (,$(wildcard ./.env))
     export
 endif
 
-# Construct the DB_STRING dynamically
-DB_STRING=postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
+# Migrations connect as the OWNER role, never the app role (ADR-0010 §2).
+# DB_USER/DB_PASSWORD are the app credentials the SERVICE runs as and hold no
+# DDL, so using them here would fail on the first CREATE TABLE.
+DB_STRING=postgres://$(DB_OWNER_USER):$(DB_OWNER_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
 MIGRATE_COMMAND = migrate -path $(MIGRATIONS_PATH) -database "$(DB_STRING)"
 
 .PHONY: build run dev test test-unit test-integration test-preview clean \
@@ -46,11 +48,15 @@ test-preview:
 
 # --- migrations (golang-migrate) ---
 
+# up/down run the in-repo binary, so the common path needs no external tool
+# and matches exactly what the compose init container will run after I-0040.
+# The remaining targets still use the golang-migrate CLI — they are maintenance
+# operations, not part of a deploy.
 migrate-up:
-	@$(MIGRATE_COMMAND) up
+	@go run ./cmd/migrate up
 
 migrate-down:
-	@$(MIGRATE_COMMAND) down
+	@go run ./cmd/migrate down
 
 migrate-status:
 	@$(MIGRATE_COMMAND) version

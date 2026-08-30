@@ -20,7 +20,7 @@ import (
 // and checklist context it needs to build LLM prompts.
 //
 // The ClientConn is cached and reused across calls (HTTP/2 multiplexing); see
-// calendar-service's plan_client.go for the same pattern.
+// the gateway's internal/gateway/plan client for the same pattern.
 type PlanClient struct {
 	registry discovery.Registry
 	mu       sync.Mutex

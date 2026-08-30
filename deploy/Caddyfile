@@ -1,0 +1,26 @@
+# Caddy terminates TLS in front of the api-gateway (ADR-0012 §3).
+#
+# The domain comes from the environment so this file is not per-deployment.
+# Caddy obtains and renews a Let's Encrypt certificate automatically; the name
+# must already resolve to this host or the ACME challenge fails.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$FIREPLACE_DOMAIN} {
+	encode zstd gzip
+
+	# The gateway is the ONLY thing reachable from outside. Postgres, RabbitMQ,
+	# Redis, plan-service and insights-service have no published ports at all —
+	# they are reachable only on the internal Docker network.
+	reverse_proxy api-gateway:8080 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

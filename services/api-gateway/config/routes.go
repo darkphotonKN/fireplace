@@ -1,8 +1,11 @@
 package config
 
 import (
+	"log/slog"
+	"os"
 	"time"
 
+	commonbroker "github.com/darkphotonKN/fireplace/common/broker"
 	commondiscovery "github.com/darkphotonKN/fireplace/common/discovery"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/ai"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
@@ -21,11 +24,12 @@ import (
 
 // SetupRouter wires every domain handler, mounts public + protected route
 // groups, and starts background jobs. The registry is used by `gateway/*`
-// clients to discover downstream services (auth-service, plan-service).
+// clients to discover the remaining downstream services (plan-service,
+// insights-service); auth and calendar are in-process (ADR-0009 §1).
 //
 // After Phase 4c, no plan/checklist data lives in this DB — plan-service owns
 // it, reached via the planGw client + adapter.
-func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
+func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commonbroker.Publisher) *gin.Engine {
 	router := gin.Default()
 
 	router.Use(func(c *gin.Context) {
@@ -47,11 +51,25 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 
 	// --- SERVICE SETUP ---
 
-	// auth-service is remote — the gateway calls it via gRPC. Tokens are still
-	// validated locally by auth.AuthMiddleware using the shared JWT_SECRET.
+	// The auth domain runs IN-PROCESS (ADR-0009 §1) — auth-service was folded
+	// back into the gateway, so there is no gRPC hop. Tokens are still validated
+	// by auth.AuthMiddleware using the shared JWT_SECRET, and verification stays
+	// in common/auth (ADR-0009 §5) because plan-service and insights-service
+	// verify independently. Do not duplicate the verifier here.
+	//
 	// No legacy gin handler is constructed for auth: every users endpoint is
-	// serialized, so the client is consumed directly by the typed operations.
-	authClient := authgw.NewClient(registry)
+	// serialized, so LocalClient is consumed directly by the typed operations.
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		slog.Warn("JWT_SECRET is empty — issued tokens will fail validation")
+	}
+	// Token lifetimes are env-driven so each environment tunes without a code
+	// change. Defaults match the .env: 1 day access, 7 day refresh.
+	accessTTL := parseDurationOr("ACCESS_TOKEN_TTL", 24*time.Hour)
+	refreshTTL := parseDurationOr("REFRESH_TOKEN_TTL", 168*time.Hour)
+
+	authService := authgw.NewService(authgw.NewRepository(db), publisher, jwtSecret, accessTTL, refreshTTL)
+	authClient := authgw.NewLocalClient(authService)
 
 	// plan-service is remote — HTTP routes for /plans and /plans/:id/checklists
 	// proxy through plangw via gRPC. The adapter satisfies the in-process
@@ -75,10 +93,11 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	notesGen := ai.NewNotesGenerator()
 	notesService := notes.NewService(notesRepo, notesGen, planAdapter, planAdapter)
 
-	// calendar-service is remote — gateway proxies /api/plans/:id/calendar
-	// through calendargw via gRPC. Calendar-service calls plan-service on
-	// its own for ownership checks + item reads.
-	calendarGwClient := calendargw.NewClient(registry)
+	// The calendar domain runs IN-PROCESS (ADR-0009 §1) — calendar-service was
+	// folded back in. It owns no data: the read model is assembled entirely from
+	// plan-service's checklist items, reached through the SAME plan client
+	// everything else here uses rather than a second connection of its own.
+	calendarGwClient := calendargw.NewLocalClient(planGwClient)
 
 	// --- PROTECTED ROUTES (auth middleware) ---
 
@@ -135,4 +154,20 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry) *gin.Engine {
 	jobManager.StartAll()
 
 	return router
+}
+
+// parseDurationOr returns the parsed env var or fallback on error/empty.
+// Accepts standard Go duration strings: "30m", "24h", "720h". No "d" suffix —
+// use hours: 24h = 1 day, 168h = 7 days.
+func parseDurationOr(env string, fallback time.Duration) time.Duration {
+	v := os.Getenv(env)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		slog.Warn("invalid duration in env, using fallback", "env", env, "value", v, "error", err)
+		return fallback
+	}
+	return d
 }

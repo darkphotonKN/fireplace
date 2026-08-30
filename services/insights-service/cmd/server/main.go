@@ -12,7 +12,7 @@ import (
 	"github.com/darkphotonKN/fireplace/common/broker"
 	"github.com/darkphotonKN/fireplace/common/cache"
 	"github.com/darkphotonKN/fireplace/common/discovery"
-	"github.com/darkphotonKN/fireplace/common/discovery/consul"
+	"github.com/darkphotonKN/fireplace/common/discovery/static"
 	commontelemetry "github.com/darkphotonKN/fireplace/common/telemetry"
 	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/darkphotonKN/fireplace/services/insights-service/config"
@@ -25,11 +25,17 @@ var (
 	collectorEndpoint = commonhelpers.GetEnvString("COLLECTOR_ENDPOINT", "localhost:4317")
 
 	serviceName = "insights"
-	// gRPC port — ordinal 6 in the 710X scheme (auth 7101, example 7102,
-	// plan 7103, calendar 7104, orchestrator 7105, insights 7106).
+	// gRPC port — ordinal 6 in the 710X scheme (auth 7101, plan 7103,
+	// calendar 7104, insights 7106). 7102 and 7105 were example-service
+	// and orchestrator-service, freed when they were deleted (ADR-0009 §2).
 	grpcAddr       = commonhelpers.GetEnvString("GRPC_INSIGHTS_ADDR", "7106")
-	consulAddr     = commonhelpers.GetEnvString("CONSUL_ADDR", "localhost:8520")
 	serviceVersion = commonhelpers.GetEnvString("SERVICE_VERSION", "1.0.0")
+
+	// The address OTHER services reach this one on. "localhost" is correct when
+	// everything runs on the host under air, and wrong inside a container — a
+	// process binding or advertising localhost there is reachable only by
+	// itself. Compose sets this to the container name (ADR-0012 §2).
+	advertiseAddr = commonhelpers.GetEnvString("ADVERTISE_HOST", "localhost")
 	otelEnabled    = commonhelpers.GetEnvString("OTEL_ENABLED", "true") == "true"
 
 	amqpUser     = commonhelpers.GetEnvString("RABBITMQ_USER", "fireplace")
@@ -47,10 +53,9 @@ func main() {
 	db := config.InitDB()
 	defer db.Close()
 
-	registry, err := consul.NewRegistry(consulAddr, serviceName)
-	if err != nil {
-		log.Fatal("Failed to create Consul registry")
-	}
+	// Static discovery (ADR-0012 §4) — Consul is gone. Same discovery.Registry
+	// interface, so no gRPC call site changed.
+	registry := static.NewRegistry()
 
 	ctx := context.Background()
 
@@ -68,7 +73,7 @@ func main() {
 
 	instanceID := discovery.GenerateInstanceID(serviceName)
 
-	if err := registry.Register(ctx, instanceID, serviceName, "localhost:"+grpcAddr); err != nil {
+	if err := registry.Register(ctx, instanceID, serviceName, advertiseAddr+":"+grpcAddr); err != nil {
 		log.Printf("\nError when registering service:\n\n%s\n\n", err)
 		panic(err)
 	}
@@ -83,7 +88,7 @@ func main() {
 	}()
 	defer registry.Deregister(ctx, instanceID, serviceName)
 
-	listener, err := net.Listen("tcp", "localhost:"+grpcAddr)
+	listener, err := net.Listen("tcp", ":"+grpcAddr)
 	if err != nil {
 		log.Fatalf("Failed to listen at port %s: %v", grpcAddr, err)
 	}

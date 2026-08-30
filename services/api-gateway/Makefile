@@ -9,7 +9,8 @@ endif
 
 # Construct the DB_STRING dynamically
 DB_STRING=postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
-MIGRATE_COMMAND = migrate -path $(MIGRATIONS_PATH) -database "postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
+# Migrations connect as the OWNER role, never the app role (ADR-0010 §2).
+MIGRATE_COMMAND = migrate -path $(MIGRATIONS_PATH) -database "postgres://$(DB_OWNER_USER):$(DB_OWNER_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
 
 build:
 	@go build -o bin/app ./cmd/
@@ -30,11 +31,12 @@ test-preview:
 	@go tool cover -html=coverage.out
 
 # Migration commands using golang-migrate
+# up/down run the in-repo binary — no external tool on the common path.
 migrate-up:
-	@migrate -path ./migrations -database "$(DB_STRING)" up
+	@go run ./cmd/migrate up
 
 migrate-down:
-	@migrate -path ./migrations -database "$(DB_STRING)" down
+	@go run ./cmd/migrate down
 
 migrate-status:
 	@migrate -path ./migrations -database "$(DB_STRING)" version

@@ -4,6 +4,8 @@ Status: accepted
 Date: 2026-08-19
 Scope: root — governs event-driven chains spanning services; Temporal's reserved use
 Realized by: FS-0006 (the `plan.created` → `insight.generated` chain)
+Amended by: **ADR-0011** — §6 (Temporal escalation, and the calendar write-back saga).
+§§1-5 stand unchanged.
 
 ## Context
 

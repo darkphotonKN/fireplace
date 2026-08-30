@@ -393,6 +393,30 @@ func (c *Client) DeleteChecklist(ctx context.Context, id, userID uuid.UUID) erro
 
 // DailyReset triggers the cross-plan daily uncomplete sweep on plan-service.
 // Called from the gateway's nightly job in 4c.
+// ListItemsInDateWindow returns checklist items for the plan whose date range
+// intersects [windowStart, windowEnd].
+//
+// Added when calendar-service folded into the gateway (ADR-0009 §1): calendar
+// carried its own gRPC client to plan-service, and keeping it would have meant
+// two connections to the same service from one process. It reuses this
+// client's cached conn instead.
+func (c *Client) ListItemsInDateWindow(ctx context.Context, planID, userID uuid.UUID, windowStart, windowEnd time.Time) ([]*pb.ChecklistItem, error) {
+	items, err := c.checklistClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := items.ListItemsInDateWindow(ctx, &pb.ListItemsInDateWindowRequest{
+		PlanId:      planID.String(),
+		UserId:      userID.String(),
+		WindowStart: timestamppb.New(windowStart),
+		WindowEnd:   timestamppb.New(windowEnd),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
 func (c *Client) DailyReset(ctx context.Context) (int, error) {
 	items, err := c.checklistClient(ctx)
 	if err != nil {

@@ -50,8 +50,9 @@ func InitDB() *sqlx.DB {
 	db.SetConnMaxLifetime(5 * time.Minute) // Recycle connections every 5 minutes
 	db.SetConnMaxIdleTime(1 * time.Minute) // Close idle connections after 1 minute
 
-	// Run migrations
-	RunMigrations(db)
+	// Migrations are NOT run here (ADR-0010 §4). They run as <db>_owner via
+	// ./cmd/migrate, a discrete step that completes before this process starts.
+	// This connection is <db>_app, which holds no DDL and cannot migrate.
 
 	// set global instance for the database
 	return db

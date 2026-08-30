@@ -112,4 +112,4 @@ PK `(event_id, consumer)` enforces dedup. Append-only ledger — never updated (
 ## Owned elsewhere
 
 - **Plan context (focus + checklist)** → owned by **plan-service** (gRPC `GetPlan` / `ListItems` / `AssertPlanOwnership`, port 7103). insights-service owns none of this data.
-- **HTTP `/api/insights` endpoints** → exposed by **api-gateway**, which authenticates the user and proxies to this service's gRPC surface via Consul.
+- **HTTP `/api/insights` endpoints** → exposed by **api-gateway**, which authenticates the user and proxies to this service's gRPC surface, resolved from configuration (ADR-0012 §4).

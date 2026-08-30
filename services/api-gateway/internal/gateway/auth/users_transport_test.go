@@ -7,8 +7,45 @@ import (
 	"time"
 
 	pb "github.com/darkphotonKN/fireplace/common/api/proto/auth"
+	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/models"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// --- legacy reference shapes ------------------------------------------------
+//
+// These two converters produced the body the gateway published BEFORE the
+// serialization retrofit, and they are the "before" side of every comparison
+// below — the baseline that proves FS-0004 R6 preservation, not production
+// code. They lived on the authgw gRPC Client until auth-service was folded
+// back in-process (ADR-0009 §1) and that client was deleted. They moved here
+// rather than being deleted with it: without them these tests still compile
+// against nothing and silently stop checking anything.
+
+func userFromProto(u *pb.User) *models.User {
+	id, _ := uuid.Parse(u.Id)
+	return &models.User{
+		BaseDBDateModel: models.BaseDBDateModel{
+			ID:        id,
+			CreatedAt: u.CreatedAt.AsTime(),
+			UpdatedAt: u.UpdatedAt.AsTime(),
+		},
+		Email:       u.Email,
+		Name:        u.Name,
+		DisplayName: u.DisplayName,
+		Bio:         u.Bio,
+	}
+}
+
+func authRespToHTTP(r *pb.AuthResponse) *LoginResponse {
+	return &LoginResponse{
+		AccessToken:      r.AccessToken,
+		RefreshToken:     r.RefreshToken,
+		AccessExpiresIn:  r.AccessExpiresIn,
+		RefreshExpiresIn: r.RefreshExpiresIn,
+		UserInfo:         userFromProto(r.User),
+	}
+}
 
 // populatedProtoUser returns a user with EVERY field set to a distinct non-zero
 // value.

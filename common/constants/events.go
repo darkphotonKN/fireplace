@@ -24,8 +24,6 @@ const (
 	AuthEventsExchange         = "auth.events"
 	PlanEventsExchange         = "plan.events"
 	InsightsEventsExchange     = "insights.events"
-	ExampleEventsExchange      = "example.events"
-	OrchestratorEventsExchange = "orchestrator.events"
 
 	DlxEventsExchange = "dlx.exchange"
 	RetryExchange     = "retry.exchange"
@@ -74,10 +72,7 @@ const (
 * Reads as insights queue for plan.created event.
  */
 const (
-	AuthServiceEventsQueue         = "auth-service.events"
 	PlanServiceEventsQueue         = "plan-service.events"
-	ExampleServiceEventsQueue      = "example-service.events"
-	OrchestratorServiceEventsQueue = "orchestrator-service.events"
 	ApiGatewayEventsQueue          = "api-gateway.events"
 	InsightsPlanEventsQueue        = "insights-service.plan.created"
 

@@ -1,0 +1,4 @@
+# Daily backup. ADR-0012 §6 makes a TESTED restore blocking before real users;
+# this half only produces the dumps.
+# Time is UTC unless TZ is set on the container.
+0 3 * * * /usr/local/bin/backup.sh >> /proc/1/fd/1 2>&1

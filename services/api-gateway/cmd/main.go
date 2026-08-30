@@ -4,7 +4,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/darkphotonKN/fireplace/common/discovery/consul"
+	"github.com/darkphotonKN/fireplace/common/broker"
+	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	"github.com/darkphotonKN/fireplace/common/discovery/static"
 	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/config"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/logger"
@@ -30,18 +32,32 @@ func main() {
 	db := config.InitDB()
 	defer db.Close()
 
-	// consul registry — used by gateway/* clients to discover downstream
-	// services (auth-service, plan-service, etc.). The gateway itself does
-	// not register, since it's only invoked externally over HTTP.
-	consulAddr := commonhelpers.GetEnvString("CONSUL_ADDR", "localhost:8520")
-	registry, err := consul.NewRegistry(consulAddr, "api-gateway")
-	if err != nil {
-		logger.Error("Failed to connect to Consul", "error", err)
+	// Static discovery (ADR-0012 §4) — Consul is gone. Addresses come from
+	// PLAN_SERVICE_ADDR / INSIGHTS_SERVICE_ADDR; on one Docker network those are
+	// container names. Auth and calendar run in-process (ADR-0009 §1) and are
+	// not discovered at all. The gateway never registers itself: it is only ever
+	// invoked externally over HTTP.
+	registry := static.NewRegistry()
+
+	// AMQP — the gateway became an event PRODUCER when auth-service folded back
+	// in (ADR-0009 §1). It publishes user.created on auth.events; plan-service
+	// and insights-service bind queues there for user.deleted cascade-delete,
+	// so this exchange must keep being declared and published to.
+	amqpCh, closeAmqp := broker.Connect(
+		commonhelpers.GetEnvString("RABBITMQ_USER", "fireplace"),
+		commonhelpers.GetEnvString("RABBITMQ_PASS", "fireplace"),
+		commonhelpers.GetEnvString("RABBITMQ_HOST", "localhost"),
+		commonhelpers.GetEnvString("RABBITMQ_PORT", "5683"),
+	)
+	defer closeAmqp()
+	if err := broker.DeclareExchange(amqpCh, commonconstants.AuthEventsExchange, "topic"); err != nil {
+		logger.Error("Failed to declare auth.events exchange", "error", err)
 		os.Exit(1)
 	}
+	publisher := broker.NewAmqpPublisher(amqpCh)
 
 	// router setup
-	router := config.SetupRouter(db, registry)
+	router := config.SetupRouter(db, registry, publisher)
 
 	// The listen address is built with a colon exactly once. The default used to
 	// carry its own (":8080") while the address was also built with one, so an

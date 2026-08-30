@@ -27,7 +27,7 @@ import (
 // Accept interfaces, return structs: *Client satisfies this, and a test double
 // satisfies it without a gRPC connection. Registration previously took the
 // concrete *Handler, which made every acceptance criterion in I-0004/I-0005
-// untestable without a live auth-service — develop's "missing interface" gate.
+// untestable without a live auth backend — develop's "missing interface" gate.
 type ProfileClient interface {
 	GetProfileProto(ctx context.Context, id uuid.UUID) (*pb.User, error)
 	UpdateProfileProto(ctx context.Context, id uuid.UUID, req UpdateProfileRequest) (*pb.User, error)
