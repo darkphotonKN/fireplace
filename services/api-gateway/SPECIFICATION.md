@@ -6,7 +6,7 @@
 
 ## Role
 
-The api-gateway is the **only HTTP surface** in the Fireplace platform — the edge/BFF the frontend client talks to. It terminates HTTP (Gin), authenticates every protected request at the edge with the shared JWT, and proxies to the gRPC domain services (plan, insights) discovered via Consul. Domains owned *inside* the gateway: **Users & Identity**, **Notes**, and **User Analytics** — the first of these folded back in from auth-service under ADR-0009 §1. Everything else it exposes is a routing entry to a downstream service (see cross-refs at the bottom).
+The api-gateway is the **only HTTP surface** in the Fireplace platform — the edge/BFF the frontend client talks to. It terminates HTTP (Gin), authenticates every protected request at the edge with the shared JWT, and proxies to the gRPC domain services (plan, insights), resolved from configuration over Docker DNS (ADR-0012 §4). Domains owned *inside* the gateway: **Users & Identity**, **Notes**, and **User Analytics** — the first of these folded back in from auth-service under ADR-0009 §1. Everything else it exposes is a routing entry to a downstream service (see cross-refs at the bottom).
 
 ## Users
 

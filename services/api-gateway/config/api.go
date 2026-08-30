@@ -18,7 +18,7 @@ import (
 //
 // THE SPLIT THAT MAKES CODE-FIRST GENERATION POSSIBLE:
 //
-//	SetupRouter(db, registry)  = WIRING. Needs Postgres, Consul, an API key,
+//	SetupRouter(db, registry)  = WIRING. Needs Postgres, RabbitMQ, an API key,
 //	                             and starts cron jobs. Cannot run in CI.
 //	RegisterAPI(engine, deps)  = REGISTRATION. Pure. Reads type signatures only.
 //	                             cmd/openapi calls THIS to emit the spec.

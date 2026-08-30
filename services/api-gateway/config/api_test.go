@@ -24,7 +24,7 @@ import (
 // These exercise the REAL registration path (MountSerialized -> RegisterAPI),
 // not a hand-built lookalike. That is what the SetupRouter/RegisterAPI split
 // bought: the spike could only test a shape-equivalent engine because the real
-// router needed Postgres, Consul and an API key. This does not.
+// router needed Postgres, RabbitMQ and an API key. This does not.
 
 const testSecret = "test-secret"
 

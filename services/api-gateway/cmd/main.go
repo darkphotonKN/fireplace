@@ -6,7 +6,7 @@ import (
 
 	"github.com/darkphotonKN/fireplace/common/broker"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
-	"github.com/darkphotonKN/fireplace/common/discovery/consul"
+	"github.com/darkphotonKN/fireplace/common/discovery/static"
 	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/config"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/logger"
@@ -32,16 +32,12 @@ func main() {
 	db := config.InitDB()
 	defer db.Close()
 
-	// consul registry — used by gateway/* clients to discover the remaining
-	// downstream services (plan-service, insights-service). Auth and calendar
-	// run in-process now (ADR-0009 §1) and are not discovered. The gateway
-	// itself does not register, since it's only invoked externally over HTTP.
-	consulAddr := commonhelpers.GetEnvString("CONSUL_ADDR", "localhost:8520")
-	registry, err := consul.NewRegistry(consulAddr, "api-gateway")
-	if err != nil {
-		logger.Error("Failed to connect to Consul", "error", err)
-		os.Exit(1)
-	}
+	// Static discovery (ADR-0012 §4) — Consul is gone. Addresses come from
+	// PLAN_SERVICE_ADDR / INSIGHTS_SERVICE_ADDR; on one Docker network those are
+	// container names. Auth and calendar run in-process (ADR-0009 §1) and are
+	// not discovered at all. The gateway never registers itself: it is only ever
+	// invoked externally over HTTP.
+	registry := static.NewRegistry()
 
 	// AMQP — the gateway became an event PRODUCER when auth-service folded back
 	// in (ADR-0009 §1). It publishes user.created on auth.events; plan-service

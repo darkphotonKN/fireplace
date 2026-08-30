@@ -11,25 +11,6 @@ version: "3.9"
 # run side-by-side on the same machine.
 
 services:
-  fireplace-consul:
-    image: hashicorp/consul
-    container_name: fireplace-consul
-    # server_rejoin_age_max defaults to 168h: a single-node dev agent that sits
-    # idle longer than a week refuses to rejoin its own cluster and exits 1
-    # ("consider wiping your data dir"), which then panics every service at
-    # Consul registration. There is no cluster to protect here (bootstrap-expect=1,
-    # discovery only, no KV), so raise it out of the way.
-    command: >
-      agent -server -ui -node=server-1 -bootstrap-expect=1 -client=0.0.0.0
-      -hcl='server_rejoin_age_max="87600h"'
-    ports:
-      - "8520:8500"
-      - "8620:8600/udp"
-    volumes:
-      - fireplace-consul-data:/consul/data
-    networks:
-      - fireplace-network
-
   fireplace-rabbitmq:
     image: "rabbitmq:3-management"
     container_name: fireplace-rabbitmq
@@ -41,6 +22,15 @@ services:
       - RABBITMQ_DEFAULT_PASS=fireplace
     volumes:
       - fireplace-rabbitmq-data:/var/lib/rabbitmq
+    # The app tier gates on this being HEALTHY, not merely started: RabbitMQ
+    # takes ~15s to accept connections, and a service that dials it at second 2
+    # dies on connection refused.
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
     networks:
       - fireplace-network
 
@@ -125,12 +115,157 @@ services:
     networks:
       - fireplace-network
 
+
+  # --- Application tier (ADR-0012 §1) ---
+  #
+  # First containerization of the Go services. Each image carries its service
+  # binary AND ./migrate, so migrations ship with the code that expects them.
+  #
+  # Every service depends on a one-shot <svc>-migrate container completing
+  # successfully. That is what makes ADR-0010 §4 real: migrations run as
+  # <db>_owner, to completion, BEFORE the app starts, and a failed migration
+  # stops the app from starting at all rather than letting it serve traffic
+  # against a half-applied schema.
+  #
+  # Services bind :PORT, never localhost, and reach each other by container name
+  # over Docker DNS — no Consul (ADR-0012 §4).
+
+  gateway-migrate:
+    image: fireplace/api-gateway:dev
+    build: { context: ., dockerfile: services/api-gateway/Dockerfile }
+    container_name: fireplace_gateway_migrate
+    entrypoint: ["/app/migrate", "up"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: fireplace_gateway
+      DB_OWNER_USER: fireplace_gateway_owner
+      DB_OWNER_PASSWORD: owner
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+    networks: [fireplace-network]
+
+  api-gateway:
+    image: fireplace/api-gateway:dev
+    build: { context: ., dockerfile: services/api-gateway/Dockerfile }
+    container_name: fireplace_api_gateway
+    environment:
+      PORT: 8080
+      ENVIRONMENT: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: fireplace_gateway
+      DB_USER: fireplace_gateway_app
+      DB_PASSWORD: app
+      # Static discovery — container names, resolved by Docker DNS.
+      PLAN_SERVICE_ADDR: plan-service:7103
+      INSIGHTS_SERVICE_ADDR: insights-service:7106
+      RABBITMQ_USER: fireplace
+      RABBITMQ_PASS: fireplace
+      RABBITMQ_HOST: fireplace-rabbitmq
+      RABBITMQ_PORT: 5672
+      OTEL_ENABLED: "false"
+      # Secrets come from the host environment, never the repo (ADR-0012 §5).
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ACCESS_TOKEN_TTL: 24h
+      REFRESH_TOKEN_TTL: 168h
+    # The ONLY service published to the host. Caddy fronts this in I-0041.
+    ports:
+      - "8080:8080"
+    depends_on:
+      gateway-migrate: { condition: service_completed_successfully }
+      fireplace-rabbitmq: { condition: service_healthy }
+    networks: [fireplace-network]
+
+  plan-migrate:
+    image: fireplace/plan-service:dev
+    build: { context: ., dockerfile: services/plan-service/Dockerfile }
+    container_name: fireplace_plan_migrate
+    entrypoint: ["/app/migrate", "up"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: fireplace_plans
+      DB_OWNER_USER: fireplace_plans_owner
+      DB_OWNER_PASSWORD: owner
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+    networks: [fireplace-network]
+
+  plan-service:
+    image: fireplace/plan-service:dev
+    build: { context: ., dockerfile: services/plan-service/Dockerfile }
+    container_name: fireplace_plan_service
+    environment:
+      GRPC_PLAN_ADDR: 7103
+      ADVERTISE_HOST: plan-service
+      ENVIRONMENT: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: fireplace_plans
+      DB_USER: fireplace_plans_app
+      DB_PASSWORD: app
+      RABBITMQ_USER: fireplace
+      RABBITMQ_PASS: fireplace
+      RABBITMQ_HOST: fireplace-rabbitmq
+      RABBITMQ_PORT: 5672
+      OTEL_ENABLED: "false"
+    depends_on:
+      plan-migrate: { condition: service_completed_successfully }
+      fireplace-rabbitmq: { condition: service_healthy }
+    networks: [fireplace-network]
+
+  insights-migrate:
+    image: fireplace/insights-service:dev
+    build: { context: ., dockerfile: services/insights-service/Dockerfile }
+    container_name: fireplace_insights_migrate
+    entrypoint: ["/app/migrate", "up"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: fireplace_insights
+      DB_OWNER_USER: fireplace_insights_owner
+      DB_OWNER_PASSWORD: owner
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+    networks: [fireplace-network]
+
+  insights-service:
+    image: fireplace/insights-service:dev
+    build: { context: ., dockerfile: services/insights-service/Dockerfile }
+    container_name: fireplace_insights_service
+    environment:
+      GRPC_INSIGHTS_ADDR: 7106
+      ADVERTISE_HOST: insights-service
+      ENVIRONMENT: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: fireplace_insights
+      DB_USER: fireplace_insights_app
+      DB_PASSWORD: app
+      PLAN_SERVICE_ADDR: plan-service:7103
+      RABBITMQ_USER: fireplace
+      RABBITMQ_PASS: fireplace
+      RABBITMQ_HOST: fireplace-rabbitmq
+      RABBITMQ_PORT: 5672
+      REDIS_ADDR: fireplace-redis:6379
+      OTEL_ENABLED: "false"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      insights-migrate: { condition: service_completed_successfully }
+      fireplace-rabbitmq: { condition: service_healthy }
+    networks: [fireplace-network]
+
 networks:
   fireplace-network:
     name: fireplace-network
 
 volumes:
-  fireplace-consul-data:
   fireplace-rabbitmq-data:
   fireplace-redis-data:
   fireplace_pgdata:
