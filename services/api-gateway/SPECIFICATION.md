@@ -6,12 +6,19 @@
 
 ## Role
 
-The api-gateway is the **only HTTP surface** in the Fireplace platform — the edge/BFF the frontend client talks to. It terminates HTTP (Gin), authenticates every protected request at the edge with the shared JWT, and proxies to the gRPC domain services (auth, plan, calendar) discovered via Consul. Two domains still live *inside* the gateway and are owned here: **Notes** and **User Analytics**. Everything else it exposes is a routing entry to a downstream service (see cross-refs at the bottom).
+The api-gateway is the **only HTTP surface** in the Fireplace platform — the edge/BFF the frontend client talks to. It terminates HTTP (Gin), authenticates every protected request at the edge with the shared JWT, and proxies to the gRPC domain services (plan, insights) discovered via Consul. Domains owned *inside* the gateway: **Users & Identity**, **Notes**, and **User Analytics** — the first of these folded back in from auth-service under ADR-0009 §1. Everything else it exposes is a routing entry to a downstream service (see cross-refs at the bottom).
 
 ## Users
 
 - [x] Profile view and edit → FS-none
 - [x] Typed (serialized) profile surface → FS-0002
+- [x] Registration and login with email/password → FS-none
+- [x] Refresh-token exchange for a new token pair → FS-none
+- [x] User read and list → FS-none
+- [x] `user.created` / `user.deleted` published on `auth.events` → FS-none
+- [ ] `user.updated` event → FS-none
+- [ ] Password change / reset flow → FS-none
+- [ ] Refresh-token revocation → FS-none
 
 ## Contract
 
@@ -35,12 +42,12 @@ Full REST catalog exposed by the gateway. All routes are under base path `/api`.
 
 | Method | Endpoint | Auth | Routes to | Notes |
 |---|---|---|---|---|
-| POST | `/api/users/signup` | public | auth-service | Create user |
-| POST | `/api/users/signin` | public | auth-service | Login → access/refresh tokens |
-| GET | `/api/users/profile` | JWT | auth-service | Current user's profile (`sub` claim) |
-| PATCH | `/api/users/profile` | JWT | auth-service | Update name/displayName/bio |
-| GET | `/api/users/:id` | JWT | auth-service | User by id |
-| GET | `/api/users` | JWT | auth-service | List users |
+| POST | `/api/users/signup` | public | **gateway-local** | Create user |
+| POST | `/api/users/signin` | public | **gateway-local** | Login → access/refresh tokens |
+| GET | `/api/users/profile` | JWT | **gateway-local** | Current user's profile (`sub` claim) |
+| PATCH | `/api/users/profile` | JWT | **gateway-local** | Update name/displayName/bio |
+| GET | `/api/users/:id` | JWT | **gateway-local** | User by id |
+| GET | `/api/users` | JWT | **gateway-local** | List users |
 | GET | `/api/plans` | JWT | plan-service | List caller's plans |
 | GET | `/api/plans/search` | JWT | plan-service | Search plans |
 | GET | `/api/plans/shared` | JWT | plan-service | Plans shared with caller |
@@ -78,6 +85,76 @@ Full REST catalog exposed by the gateway. All routes are under base path `/api`.
 - **Token validation at the edge.** `internal/auth.AuthMiddleware` runs on the protected route group. It reads the `Authorization: Bearer <token>` header, parses/validates the JWT locally against the shared `JWT_SECRET` (no remote call to auth-service, which issues tokens with the same secret), and extracts the user id from the `sub` claim into `gin.Context`. `GetUserID` reads it back for handlers.
 - **401 Unauthorized** on: missing header, malformed header, invalid/expired token, or an unparseable user id. The response is a generic `{"statusCode":401,"message":"unauthorized"}`; the specific reason is logged server-side only.
 - **Ownership / per-user filtering** is enforced by passing the authenticated `userID` down to the domain services on writes and owner-scoped reads (e.g. plan create/update, calendar). Plan-service and calendar-service perform the actual **403 Forbidden** ownership checks (e.g. via `AssertPlanOwnership`); the gateway supplies the caller identity and never trusts a client-supplied user id.
+
+## Owned Feature: Users & Identity
+
+Folded back in from auth-service under ADR-0009 §1 — user identity, credentials, JWT
+issuance, and profiles now run in-process (`internal/gateway/auth`). The gateway both
+**issues** tokens here and **validates** them at the edge; verification itself stays shared
+in `common/auth` (ADR-0009 §5) because plan-service and insights-service verify
+independently. Do not duplicate the verifier into this package.
+
+**Domain terms.** **User** — an account: `id`, `name`, `email` (unique), bcrypt-hashed
+password, optional `display_name` + `bio`. **Access token** — short-lived JWT (type
+`access`). **Refresh token** — medium-lived JWT (type `refresh`), stateless, no server
+store. **`display_name`** — user-chosen presentation name, falling back to `name` in UI.
+
+**Business rules.**
+
+- **JWT lifecycle.** Sign-up, sign-in and refresh each issue an `access` + `refresh` pair
+  signed with the shared `JWT_SECRET`. TTLs come from env (`ACCESS_TOKEN_TTL` /
+  `REFRESH_TOKEN_TTL`); the deployed `.env` sets access 24h, refresh 168h. Code-const
+  fallbacks when unset or unparseable: access 1h, refresh 168h.
+- **bcrypt.** Passwords hashed at `bcrypt.DefaultCost` on sign-up, constant-time compared
+  on sign-in. The hash never leaves the process (JSON `-`; the list query blanks it).
+- **Account-enumeration-safe sign-in.** An unknown email and a wrong password return the
+  same `Unauthorized` result — the difference is never exposed.
+- **Cascade via events.** Deleting a user emits `user.deleted`; plan-service and
+  insights-service consume it to clean up their own data. This domain never reaches into
+  another service's tables.
+
+**Events.** Exchange `auth.events` (topic, durable); protobuf, persistent. `user.created`
+on sign-up, `user.deleted` on delete, `user.updated` a logged stub not yet published. The
+gateway became an event producer when this folded in — the exchange is declared in
+`cmd/main.go`. **Consumed:** none; auth-service's no-op consumer stub was dropped with the
+fold rather than carried over.
+
+### `users` (migration 000023)
+
+Recreated in the gateway DB by `000023_recreate_users_from_auth_service`. The gateway
+created this table in 000001 and dropped it in 000020 when auth-service was extracted;
+000023 is a forward recreation matching auth-service's schema as it stood at the fold, not
+a revert. The FK constraints 000020 dropped are **not** restored — plans live in
+plan-service's database, so `user_id` columns stay plain UUIDs with integrity enforced at
+the application/event layer.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | UUID | PK, default `uuid_generate_v4()` |
+| `name` | TEXT | NOT NULL |
+| `email` | TEXT | UNIQUE, NOT NULL |
+| `password` | TEXT | NOT NULL (bcrypt hash; Go field `HashedPassword`) |
+| `display_name` | TEXT | nullable |
+| `bio` | TEXT | nullable |
+| `created_at` / `updated_at` | TIMESTAMP | default `CURRENT_TIMESTAMP` |
+
+No `refresh_tokens` table — refresh tokens are stateless JWTs.
+
+**Edge cases.**
+
+| Scenario | Behavior |
+|---|---|
+| Sign up with existing email | Unique-constraint violation → domain conflict error |
+| Sign up missing name/email/password | `ErrInvalidInput` |
+| Sign in, unknown email | `Unauthorized` (indistinguishable from wrong password) |
+| Sign in, wrong password | `Unauthorized` |
+| Refresh with expired/invalid token | `Unauthorized` |
+| `UpdateProfile` with empty `name` | `ErrInvalidInput` |
+| `UpdateProfile` with no fields | No-op update; returns current user |
+| `GetUser` / `DeleteUser` unknown id | `NotFound` |
+| Malformed UUID | `InvalidArgument` |
+
+> Not in scope: avatar, timezone, notifications, public profiles.
 
 ## Owned Feature: Notes
 
@@ -136,7 +213,6 @@ Per-user daily productivity metrics (`internal/useranalytics`), backed by the `u
 
 ## Owned elsewhere (cross-refs)
 
-- **Users, JWT issuance, refresh tokens** → auth-service (gateway only *validates* tokens at the edge).
 - **Plans, checklist items, daily-reset logic, Gantt/search data** → plan-service.
 - **Calendar read-model** → calendar-service.
 - **AI insights / video suggestions** → insights-service. The `/api/insights/*` routes remain here because the gateway is the only HTTP surface, but they now proxy to insights-service over gRPC via `internal/gateway/insights`. The in-process implementation (`internal/insights` service + repository, `internal/discovery`, `internal/concepts`, and the checklist/search-term generators) was **deleted** when the routes were repointed — the strangler cleanup is done. What remains under `internal/insights` is the gateway's own typed HTTP transport layer, and `internal/ai` now serves **Notes only**.

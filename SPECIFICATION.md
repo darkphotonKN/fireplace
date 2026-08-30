@@ -10,7 +10,6 @@
 | Service              | Bounded context                        | Thin spec (capability index)                                                                     |
 | -------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | api-gateway          | Gateway / Edge (Notes, User Analytics) | [services/api-gateway/SPECIFICATION.md](services/api-gateway/SPECIFICATION.md)                   |
-| auth-service         | Auth                                   | [services/auth-service/SPECIFICATION.md](services/auth-service/SPECIFICATION.md)                 |
 | plan-service         | Plan                                   | [services/plan-service/SPECIFICATION.md](services/plan-service/SPECIFICATION.md)                 |
 | calendar-service     | Calendar                               | [services/calendar-service/SPECIFICATION.md](services/calendar-service/SPECIFICATION.md)         |
 | insights-service     | Insights                               | [services/insights-service/SPECIFICATION.md](services/insights-service/SPECIFICATION.md)         |

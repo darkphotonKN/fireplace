@@ -1,4 +1,4 @@
-package auth
+package authgw
 
 import (
 	"time"
@@ -32,7 +32,7 @@ type SignInInput struct {
 	Password string
 }
 
-type UpdateProfileInput struct {
+type UpdateProfileParams struct {
 	ID          uuid.UUID
 	Name        *string
 	DisplayName *string

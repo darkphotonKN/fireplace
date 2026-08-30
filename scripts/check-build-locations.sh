@@ -28,7 +28,6 @@ cd "${ROOT}"
 # (service-dir-relative-to-root, expected-binary-relative-to-service-dir)
 SERVICES=(
   "services/api-gateway:bin/app"
-  "services/auth-service:bin/auth-service"
   "services/calendar-service:bin/calendar-service"
   "services/insights-service:bin/insights-service"
   "services/plan-service:bin/plan-service"

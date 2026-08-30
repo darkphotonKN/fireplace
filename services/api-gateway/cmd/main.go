@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/darkphotonKN/fireplace/common/broker"
+	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 	"github.com/darkphotonKN/fireplace/common/discovery/consul"
 	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/config"
@@ -40,8 +42,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	// AMQP — the gateway became an event PRODUCER when auth-service folded back
+	// in (ADR-0009 §1). It publishes user.created on auth.events; plan-service
+	// and insights-service bind queues there for user.deleted cascade-delete,
+	// so this exchange must keep being declared and published to.
+	amqpCh, closeAmqp := broker.Connect(
+		commonhelpers.GetEnvString("RABBITMQ_USER", "fireplace"),
+		commonhelpers.GetEnvString("RABBITMQ_PASS", "fireplace"),
+		commonhelpers.GetEnvString("RABBITMQ_HOST", "localhost"),
+		commonhelpers.GetEnvString("RABBITMQ_PORT", "5683"),
+	)
+	defer closeAmqp()
+	if err := broker.DeclareExchange(amqpCh, commonconstants.AuthEventsExchange, "topic"); err != nil {
+		logger.Error("Failed to declare auth.events exchange", "error", err)
+		os.Exit(1)
+	}
+	publisher := broker.NewAmqpPublisher(amqpCh)
+
 	// router setup
-	router := config.SetupRouter(db, registry)
+	router := config.SetupRouter(db, registry, publisher)
 
 	// The listen address is built with a colon exactly once. The default used to
 	// carry its own (":8080") while the address was also built with one, so an

@@ -72,7 +72,6 @@ const (
 * Reads as insights queue for plan.created event.
  */
 const (
-	AuthServiceEventsQueue         = "auth-service.events"
 	PlanServiceEventsQueue         = "plan-service.events"
 	ApiGatewayEventsQueue          = "api-gateway.events"
 	InsightsPlanEventsQueue        = "insights-service.plan.created"

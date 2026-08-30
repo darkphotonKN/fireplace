@@ -1,4 +1,4 @@
-package auth
+package authgw
 
 import (
 	"context"
@@ -71,7 +71,7 @@ func (r *repository) ListAll(ctx context.Context) ([]*User, error) {
 	return users, nil
 }
 
-func (r *repository) UpdateProfile(ctx context.Context, in *UpdateProfileInput) (*User, error) {
+func (r *repository) UpdateProfile(ctx context.Context, in *UpdateProfileParams) (*User, error) {
 	set := []string{}
 	args := []any{in.ID}
 	pos := 2

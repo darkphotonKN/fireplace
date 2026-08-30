@@ -75,36 +75,6 @@ services:
     networks:
       - fireplace-network
 
-  # Auth Service Database (ordinal 1)
-  auth-service-db:
-    image: postgres:17
-    container_name: fireplace_auth_service_db
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: fireplace_auth_service_db
-    ports:
-      - "5301:5432"
-    volumes:
-      - fireplace_auth_service_pgdata:/var/lib/postgresql/data
-    networks:
-      - fireplace-network
-
-  auth-service-test-db:
-    image: postgres:17
-    container_name: fireplace_auth_service_test_db
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: fireplace_auth_service_test_db
-    ports:
-      - "6301:5432"
-    volumes:
-      - fireplace_auth_service_test_pgdata:/var/lib/postgresql/data
-    restart: "no"
-    networks:
-      - fireplace-network
-
   # Plan Service Database (ordinal 3)
   plan-service-db:
     image: postgres:17
@@ -204,8 +174,6 @@ volumes:
   fireplace-rabbitmq-data:
   fireplace-redis-data:
   pgdata:
-  fireplace_auth_service_pgdata:
-  fireplace_auth_service_test_pgdata:
   fireplace_plan_service_pgdata:
   fireplace_plan_service_test_pgdata:
   fireplace_calendar_service_pgdata:

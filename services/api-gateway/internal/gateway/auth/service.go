@@ -1,4 +1,4 @@
-package auth
+package authgw
 
 import (
 	"context"
@@ -25,7 +25,7 @@ type Repository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	ListAll(ctx context.Context) ([]*User, error)
-	UpdateProfile(ctx context.Context, in *UpdateProfileInput) (*User, error)
+	UpdateProfile(ctx context.Context, in *UpdateProfileParams) (*User, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -125,7 +125,7 @@ func (s *service) ListUsers(ctx context.Context) ([]*User, error) {
 	return users, nil
 }
 
-func (s *service) UpdateProfile(ctx context.Context, in *UpdateProfileInput) (*User, error) {
+func (s *service) UpdateProfile(ctx context.Context, in *UpdateProfileParams) (*User, error) {
 	if in.Name != nil && *in.Name == "" {
 		return nil, fmt.Errorf("%w: name cannot be empty", commonconstants.ErrInvalidInput)
 	}
