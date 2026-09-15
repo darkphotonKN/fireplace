@@ -1,6 +1,6 @@
 ---
 id: I-0045
-status: open
+status: in-progress
 implements: FS-0007
 blocked_by: [I-0044]
 labels: [feature]
@@ -18,14 +18,14 @@ pruned on the next write. Storage that is unavailable, throws, or holds corrupt 
 
 ## Acceptance Criteria
 
-- [ ] Collapsing a parent, then reloading, shows it still collapsed.
-- [ ] Long-term and daily lists of the same plan keep separate collapse state.
-- [ ] Collapse state in plan A does not affect plan B.
-- [ ] No network request is made when collapsing/expanding.
-- [ ] Removing a parent's last child (outdent/archive/delete) removes its chevron/count; reload does not error and the stale id is pruned on next write.
-- [ ] With storage throwing on access, the list renders fully expanded and collapse still works for the session.
-- [ ] Corrupt stored JSON is treated as empty and replaced on next write.
-- [ ] Regression checks from I-0043 still pass; client test suite passes.
+- [x] Collapsing a parent, then reloading, shows it still collapsed.
+- [x] Long-term and daily lists of the same plan keep separate collapse state.
+- [x] Collapse state in plan A does not affect plan B.
+- [x] No network request is made when collapsing/expanding.
+- [x] Removing a parent's last child (outdent/archive/delete) removes its chevron/count; reload does not error and the stale id is pruned on next write.
+- [x] With storage throwing on access, the list renders fully expanded and collapse still works for the session.
+- [x] Corrupt stored JSON is treated as empty and replaced on next write.
+- [x] Regression checks from I-0043 still pass; client test suite passes.
 
 ## Blocked By
 

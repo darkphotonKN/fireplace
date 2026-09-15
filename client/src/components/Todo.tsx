@@ -50,6 +50,7 @@ import {
   resolveAddBarTarget,
   visibleRows,
 } from '@/lib/nesting';
+import { loadCollapsedIds, saveCollapsedIds } from '@/lib/collapsedGroups';
 import { format } from 'date-fns';
 import {
   CalendarIcon,
@@ -146,11 +147,24 @@ export default function Todo({
   // Filter tab for All | Notes | Checklist (only used when enableTypeFilter).
   const [listTypeFilter, setListTypeFilter] = useState<ListTypeFilter>('all');
 
-  // Parent Items whose children are folded away (FS-0007 R5). In-memory for
-  // now; a parent not in the set is expanded.
+  // Parent Items whose children are folded away (FS-0007 R5), remembered per
+  // plan and list on this device (R6). A parent not in the set is expanded.
   const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(
     () => new Set()
   );
+  // Mirrors collapsedIds so several changes in one event (e.g. collapse all)
+  // build on each other instead of on a stale render's set.
+  const collapsedIdsRef = useRef<ReadonlySet<string>>(collapsedIds);
+
+  // Loaded in an effect, not the initializer: there is no storage during the
+  // server render. The list shows "Loading tasks…" until its fetch lands, so
+  // nothing renders expanded first.
+  useEffect(() => {
+    if (!planId) return;
+    const loaded = loadCollapsedIds(planId, taskType);
+    collapsedIdsRef.current = loaded;
+    setCollapsedIds(loaded);
+  }, [planId, taskType]);
 
   // Type to use when creating the next item via the add form.
   const [newTodoType, setNewTodoType] = useState<'task' | 'note'>('task');
@@ -931,13 +945,24 @@ export default function Todo({
   const setParentCollapsed = (id: string, collapsed: boolean) => {
     if (collapsed) revealedIds.current.delete(id);
     else revealedIds.current.add(id);
-    setCollapsedIds((prev) => {
-      if (prev.has(id) === collapsed) return prev;
-      const next = new Set(prev);
-      if (collapsed) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+    const prev = collapsedIdsRef.current;
+    if (prev.has(id) === collapsed) return;
+    const next = new Set(prev);
+    if (collapsed) next.add(id);
+    else next.delete(id);
+    collapsedIdsRef.current = next;
+    setCollapsedIds(next);
+
+    // Remembered here, on the user's action, not in an effect on collapsedIds:
+    // that would also fire when stored state loads, before todos arrive, and
+    // prune every id. Live parents come from the unfiltered todos so a type
+    // filter never prunes the parents it hides (R7.4).
+    if (planId) {
+      const liveParentIds = new Set(
+        todos.flatMap((t) => (t.parentId ? [t.parentId] : []))
+      );
+      saveCollapsedIds(planId, taskType, next, liveParentIds);
+    }
   };
 
   const toggleCollapsed = (id: string) =>

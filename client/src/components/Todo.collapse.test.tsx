@@ -187,3 +187,84 @@ describe('Todo collapse and expand', () => {
     ).toBe('true');
   });
 });
+
+describe('Todo remembers collapsed groups (FS-0007 R6)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchChecklist.mockImplementation(async () => ITEMS);
+  });
+
+  it('should keep a parent collapsed after the list is unmounted and mounted again, as on reload', async () => {
+    const Todo = (await import('./Todo')).default;
+    const first = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item A');
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
+    first.unmount();
+
+    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item A');
+    expect(screen.queryByText('item B')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Expand item A' })).toBeTruthy();
+  });
+
+  it('should keep the daily list expanded when the same parent id is collapsed in the long-term list', async () => {
+    // Same ids in both scopes, so only the storage key can tell them apart.
+    fetchChecklist.mockImplementation(async (_planId: string, scope: string) =>
+      ITEMS.map((t) => ({ ...t, scope }))
+    );
+    const Todo = (await import('./Todo')).default;
+    const longterm = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item A');
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
+    longterm.unmount();
+
+    render(<Todo fixedTaskType="daily" />);
+    await screen.findByText('item A');
+    expect(screen.getByText('item B')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Collapse item A' })).toBeTruthy();
+  });
+
+  it('should not touch the network when collapsing or expanding', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    await renderList();
+    const loads = fetchChecklist.mock.calls.length;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item A' }));
+
+    expect(fetchChecklist.mock.calls.length).toBe(loads);
+    expect(updateChecklistItem).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('should render fully expanded and still collapse for the session when collapse storage is blocked', async () => {
+    // Block only this feature's keys: the component's older preference reads
+    // (showDailyInsights, refreshDailyTasks) are unguarded and out of scope.
+    const blocked = (key: string) => key.startsWith('collapsedGroups:');
+    const realGet = Storage.prototype.getItem;
+    const realSet = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (
+      this: Storage,
+      key: string
+    ) {
+      if (blocked(key)) throw new DOMException('blocked', 'SecurityError');
+      return realGet.call(this, key);
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string
+    ) {
+      if (blocked(key)) throw new DOMException('blocked', 'SecurityError');
+      return realSet.call(this, key, value);
+    });
+
+    await renderList();
+    expect(screen.getByText('item B')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
+    expect(screen.queryByText('item B')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item A' }));
+    expect(screen.getByText('item B')).toBeTruthy();
+  });
+});
