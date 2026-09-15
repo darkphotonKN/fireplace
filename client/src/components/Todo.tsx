@@ -144,6 +144,7 @@ export default function Todo({
 
   const [newTodo, setNewTodo] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const newTodoInputRef = useRef<HTMLInputElement>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -566,6 +567,9 @@ export default function Todo({
       );
       setTodos((prev) => [...prev, newItem]);
       setNewTodo('');
+      // Keep the cursor in the add bar so items can be entered back to back,
+      // including when the Add button (not Enter) was used.
+      newTodoInputRef.current?.focus();
       // Add animation for the new todo
       setNewTodoAnimations((prev) => ({
         ...prev,
@@ -1653,9 +1657,22 @@ export default function Todo({
               one above. Hidden in archived view and on the daily side
               when dailyAIOnly is on (only AI suggestions populate dailies). */}
           {taskType !== 'archived' && !(dailyAIOnly && taskType === 'daily') && (
-            <div className="space-y-3 pt-2">
-              <form onSubmit={addTodo} className="flex items-center space-x-2">
-                {/* Type toggle for the next item to be created */}
+            <div className="space-y-3 pt-3">
+              {/* One hairline runs under the whole row (icon, text, button) so
+                  everything sits on the same line with py-3 of air above it.
+                  On focus an ember underline draws in from the left over it. */}
+              <form
+                onSubmit={addTodo}
+                className="group/add relative flex items-center border-b border-foreground/15 py-3 transition-colors duration-300 focus-within:border-transparent"
+              >
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 -bottom-px h-px origin-left scale-x-0 bg-gradient-to-r from-primary via-primary/60 to-primary/0 shadow-[0_0_10px_rgba(247,111,83,0.45)] transition-transform duration-500 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] group-focus-within/add:scale-x-100"
+                />
+
+                {/* Type toggle for the next item to be created. -ml-2 on a w-8
+                    hit area centres the glyph over the list's checkbox column,
+                    so the typed text starts where row text starts (24px). */}
                 <button
                   type="button"
                   onClick={() =>
@@ -1666,33 +1683,64 @@ export default function Todo({
                       ? 'Creating a task — click to switch to note'
                       : 'Creating a note — click to switch to task'
                   }
-                  className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  style={{ color: 'rgb(247, 111, 83)' }}
+                  aria-label={
+                    newTodoType === 'task'
+                      ? 'Switch to adding a note'
+                      : 'Switch to adding a task'
+                  }
+                  className="-ml-2 grid h-8 w-8 shrink-0 place-items-center rounded-full text-foreground/40 transition-colors duration-300 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 group-focus-within/add:text-primary"
                 >
-                  {newTodoType === 'task' ? (
-                    <CheckSquare className="w-4 h-4" />
-                  ) : (
-                    <FileText className="w-4 h-4" />
-                  )}
+                  {/* Both glyphs share one grid cell and cross-fade on swap. */}
+                  <CheckSquare
+                    strokeWidth={1.75}
+                    className={cn(
+                      'col-start-1 row-start-1 h-[18px] w-[18px] transition-all duration-300',
+                      newTodoType === 'task'
+                        ? 'rotate-0 scale-100 opacity-100'
+                        : '-rotate-90 scale-75 opacity-0'
+                    )}
+                  />
+                  <FileText
+                    strokeWidth={1.75}
+                    className={cn(
+                      'col-start-1 row-start-1 h-[18px] w-[18px] transition-all duration-300',
+                      newTodoType === 'note'
+                        ? 'rotate-0 scale-100 opacity-100'
+                        : 'rotate-90 scale-75 opacity-0'
+                    )}
+                  />
                 </button>
+                {/* readOnly, not disabled, while saving: a disabled input
+                    drops focus, which would break rapid back-to-back entry.
+                    addTodo already ignores submits while one is in flight. */}
                 <input
+                  ref={newTodoInputRef}
                   type="text"
                   value={newTodo}
                   onChange={(e) => setNewTodo(e.target.value)}
                   onFocus={maybeShowTabHint}
                   placeholder={
-                    newTodoType === 'note' ? 'Add a note...' : 'Add a new task...'
+                    newTodoType === 'note'
+                      ? 'Jot down a note…'
+                      : 'Add something to do…'
                   }
-                  className="flex-1 px-0 py-0 text-base bg-transparent border-b border-gray-300 dark:border-gray-600 focus:border-orange-500 dark:focus:border-orange-500 focus:outline-none"
-                  disabled={isSubmitting || isTyping}
+                  aria-label={newTodoType === 'note' ? 'New note' : 'New task'}
+                  className="h-8 min-w-0 flex-1 bg-transparent text-base leading-8 text-foreground caret-primary placeholder:italic placeholder:text-foreground/35 focus:outline-none read-only:opacity-60"
+                  readOnly={isSubmitting || isTyping}
                 />
+                {/* Quiet until there's something to add, then it warms up. */}
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-md bg-primary text-white font-semibold shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none"
+                  className={cn(
+                    'ml-3 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-60',
+                    newTodo.trim()
+                      ? 'bg-primary text-primary-foreground shadow-[0_2px_14px_-3px_rgba(247,111,83,0.6)] hover:bg-primary/90'
+                      : 'text-foreground/40 hover:bg-primary/10 hover:text-primary'
+                  )}
                   disabled={isSubmitting || isTyping}
                 >
-                  <Plus className="w-4 h-4" />
-                  {isSubmitting ? 'Adding...' : 'Add'}
+                  <Plus strokeWidth={2.25} className="h-3.5 w-3.5" />
+                  {isSubmitting ? 'Adding…' : 'Add'}
                 </button>
               </form>
 
