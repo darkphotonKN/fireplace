@@ -1,6 +1,6 @@
 ---
 id: I-0047
-status: open
+status: in-progress
 implements: FS-0007
 blocked_by: [I-0043]
 labels: [feature]
@@ -32,19 +32,19 @@ Give the add bar two positions: top level (default) and nested under a target pa
 ## Acceptance Criteria
 
 - [ ] List ending in a top-level task: Tab indents the bar under it and the rail extends; focus and typed text kept.
-- [ ] List ending in a child row: Tab nests under that child's parent.
-- [ ] Last top-level row is a note with a task above: Tab nests under that task.
-- [ ] Empty list / only notes: Tab changes nothing, focus stays in the input, focus does not move to another control.
-- [ ] Enter while nested sends `parentId` of the target in the create request and renders the item as the target's last child with the arrival animation.
-- [ ] After a nested add the bar is still nested under the same parent, empty and focused.
-- [ ] Shift+Tab while nested returns to top level; Shift+Tab at top level does nothing and keeps focus.
-- [ ] Tab while nested does nothing.
-- [ ] Reload always shows the add bar at top level.
-- [ ] Archiving, deleting, converting to note, or filtering out the target while nested returns the bar to top level with typed text intact.
-- [ ] No create request is ever sent with a `parentId` that is a note or a child item.
-- [ ] Tab hint text describes nesting the add bar under the item above and Shift+Tab to return.
-- [ ] Create failure while nested keeps the bar nested with text intact and focus in the input.
-- [ ] Regression checks from I-0043 still pass; client test suite passes.
+- [x] List ending in a child row: Tab nests under that child's parent.
+- [x] Last top-level row is a note with a task above: Tab nests under that task.
+- [x] Empty list / only notes: Tab changes nothing, focus stays in the input, focus does not move to another control.
+- [x] Enter while nested sends `parentId` of the target in the create request and renders the item as the target's last child with the arrival animation.
+- [x] After a nested add the bar is still nested under the same parent, empty and focused.
+- [x] Shift+Tab while nested returns to top level; Shift+Tab at top level does nothing and keeps focus.
+- [x] Tab while nested does nothing.
+- [x] Reload always shows the add bar at top level.
+- [x] Archiving, deleting, converting to note, or filtering out the target while nested returns the bar to top level with typed text intact.
+- [x] No create request is ever sent with a `parentId` that is a note or a child item.
+- [x] Tab hint text describes nesting the add bar under the item above and Shift+Tab to return.
+- [x] Create failure while nested keeps the bar nested with text intact and focus in the input.
+- [x] Regression checks from I-0043 still pass; client test suite passes.
 
 ## Blocked By
 
