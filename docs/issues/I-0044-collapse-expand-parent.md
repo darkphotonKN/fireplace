@@ -1,6 +1,6 @@
 ---
 id: I-0044
-status: open
+status: in-progress
 implements: FS-0007
 blocked_by: [I-0043]
 labels: [feature]
@@ -23,16 +23,16 @@ transition; reduced motion respected. State is in-memory for this slice (persist
 
 ## Acceptance Criteria
 
-- [ ] Clicking/tapping a parent's chevron hides its children; clicking again shows them. Done state and edit mode unaffected.
-- [ ] Chevron is keyboard-focusable, toggles on Enter and Space, and exposes `aria-expanded` and an action label.
+- [x] Clicking/tapping a parent's chevron hides its children; clicking again shows them. Done state and edit mode unaffected.
+- [x] Chevron is keyboard-focusable, toggles on Enter and Space, and exposes `aria-expanded` and an action label.
 - [ ] Expanded parent: chevron hidden until hover/focus on hover devices; low-opacity visible under `(hover: none)`. Collapsed parent: always visible.
-- [ ] Collapsed parent with 2 task children (1 done) and 1 note child shows `1/2`.
-- [ ] Collapsed parent with 3 note children shows `3 notes`; with 1 note child shows `1 note`.
-- [ ] No count on an expanded parent.
-- [ ] Hidden children are not in the tab order and not exposed to assistive tech.
+- [x] Collapsed parent with 2 task children (1 done) and 1 note child shows `1/2`.
+- [x] Collapsed parent with 3 note children shows `3 notes`; with 1 note child shows `1 note`.
+- [x] No count on an expanded parent.
+- [x] Hidden children are not in the tab order and not exposed to assistive tech.
 - [ ] With reduced motion enabled, toggling has no visible transition.
-- [ ] Rail (I-0043) is hidden with the children when collapsed.
-- [ ] Regression checks from I-0043 still pass; client test suite passes.
+- [x] Rail (I-0043) is hidden with the children when collapsed.
+- [x] Regression checks from I-0043 still pass; client test suite passes.
 
 ## Blocked By
 

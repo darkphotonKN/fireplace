@@ -44,9 +44,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import {
+  collapsedCount,
   findAddBarTarget,
   groupChecklistItems,
   resolveAddBarTarget,
+  visibleRows,
 } from '@/lib/nesting';
 import { format } from 'date-fns';
 import {
@@ -143,6 +145,12 @@ export default function Todo({
 
   // Filter tab for All | Notes | Checklist (only used when enableTypeFilter).
   const [listTypeFilter, setListTypeFilter] = useState<ListTypeFilter>('all');
+
+  // Parent Items whose children are folded away (FS-0007 R5). In-memory for
+  // now; a parent not in the set is expanded.
+  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
 
   // Type to use when creating the next item via the add form.
   const [newTodoType, setNewTodoType] = useState<'task' | 'note'>('task');
@@ -895,6 +903,46 @@ export default function Todo({
     return roles;
   }, [rowGroups, addBarRailParentId]);
 
+  // What the list draws: orderedRows minus the children of collapsed parents.
+  const renderedRows = useMemo(
+    () => visibleRows(rowGroups, collapsedIds),
+    [rowGroups, collapsedIds]
+  );
+
+  // Visible children of each parent that has any. Only these parents get a
+  // chevron, so a stale collapsed id on a now-childless row shows nothing.
+  const childrenOf = useMemo(
+    () =>
+      new Map(
+        rowGroups
+          .filter((g) => g.children.length > 0)
+          .map((g) => [g.item.id, g.children])
+      ),
+    [rowGroups]
+  );
+
+  const isCollapsed = (id: string) =>
+    childrenOf.has(id) && collapsedIds.has(id);
+
+  // Parents opened this session. Only their children play the reveal, so a
+  // plain page load doesn't animate every child row.
+  const revealedIds = useRef(new Set<string>());
+
+  const setParentCollapsed = (id: string, collapsed: boolean) => {
+    if (collapsed) revealedIds.current.delete(id);
+    else revealedIds.current.add(id);
+    setCollapsedIds((prev) => {
+      if (prev.has(id) === collapsed) return prev;
+      const next = new Set(prev);
+      if (collapsed) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleCollapsed = (id: string) =>
+    setParentCollapsed(id, !isCollapsed(id));
+
   // Indent a row under the nearest top-level row above it in render order.
   // We walk upward past any child rows so indenting row 3 still works after
   // row 2 has been nested under row 1 — the target is row 1.
@@ -915,6 +963,8 @@ export default function Todo({
     // pre-flight: don't try to re-parent a row that has children
     const hasChildren = todos.some((t) => t.parentId === self.id);
     if (hasChildren) return;
+    // Joining a collapsed parent opens it, so the row doesn't vanish.
+    setParentCollapsed(above.id, false);
 
     const previousParentId = self.parentId ?? null;
     // Optimistic update
@@ -1391,7 +1441,7 @@ export default function Todo({
             // space-y-4 = 16px gap so the hover-menu has room above each row;
             // divide-y adds a subtle 1px line between rows for visual structure.
             <ul className="space-y-4 divide-y divide-gray-200 dark:divide-gray-800/50 mt-4">
-              {orderedRows.map((todo, index) => (
+              {renderedRows.map((todo, index) => (
                 <li
                   key={todo.id}
                   tabIndex={0}
@@ -1403,6 +1453,10 @@ export default function Todo({
                   className={`relative flex items-center justify-between group transition-all duration-200 outline-none focus:ring-1 focus:ring-orange-500/30 rounded pt-4 first:pt-0 ${
                     guideRail.get(todo.id) === 'child' ? 'ml-6' : ''
                   } ${
+                    todo.parentId && revealedIds.current.has(todo.parentId)
+                      ? 'animate-groupReveal'
+                      : ''
+                  } ${
                     newTodoAnimations[todo.id] ? 'animate-fadeIn' : ''
                   } ${taskType === 'archived' ? 'opacity-60' : ''}`}
                 >
@@ -1413,7 +1467,7 @@ export default function Todo({
                       sit at ml-6 so their checkbox lines up with the parent's
                       text; each child's piece reaches up 17px through the
                       space-y-4 gap and its divider so the rail reads as one line. */}
-                  {guideRail.has(todo.id) && (
+                  {guideRail.has(todo.id) && !isCollapsed(todo.id) && (
                     <span
                       aria-hidden
                       data-guide-rail={guideRail.get(todo.id)}
@@ -1424,6 +1478,42 @@ export default function Todo({
                           : '-left-4 -top-[17px]'
                       )}
                     />
+                  )}
+                  {/* Collapse chevron: in the gutter left of the checkbox
+                      column so the text never moves, a 32px hit area centred
+                      on the row content (below pt-4; none on the first row).
+                      Keys stop here so the row's Tab handler can't swallow Tab
+                      and trap focus, and a click never reaches the done toggle. */}
+                  {childrenOf.has(todo.id) && (
+                    <button
+                      type="button"
+                      aria-expanded={!isCollapsed(todo.id)}
+                      aria-label={`${
+                        isCollapsed(todo.id) ? 'Expand' : 'Collapse'
+                      } ${todo.description}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCollapsed(todo.id);
+                      }}
+                      onKeyDown={(e) => e.stopPropagation()}
+                      className={cn(
+                        'absolute -left-8 top-[calc(50%+8px)] group-first:top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-foreground/40 outline-none transition-[color,opacity] duration-200 hover:text-primary focus-visible:text-primary focus-visible:ring-1 focus-visible:ring-primary/30',
+                        // Hover devices: hidden until the row is hovered or
+                        // focused. Touch: always there, quietly. Collapsed:
+                        // always fully visible so the fold can be found.
+                        isCollapsed(todo.id)
+                          ? 'opacity-100'
+                          : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-40'
+                      )}
+                    >
+                      <ChevronRight
+                        aria-hidden
+                        className={cn(
+                          'h-4 w-4 transition-transform duration-200',
+                          !isCollapsed(todo.id) && 'rotate-90'
+                        )}
+                      />
+                    </button>
                   )}
                   {editingId === todo.id ? (
                     <div className="flex items-center space-x-3 flex-1">
@@ -1535,19 +1625,28 @@ export default function Todo({
                             />
                           )}
                           <div className="flex flex-col flex-1">
-                            <label
-                              className={`text-base cursor-pointer flex-1 ${
-                                todo.done ? 'line-through opacity-70' : ''
-                              } ${
-                                todo.type === 'note'
-                                  ? 'italic text-gray-400 dark:text-gray-500'
-                                  : ''
-                              } ${
-                                newTodoAnimations[todo.id] ? 'relative' : ''
-                              }`}
-                            >
-                              {todo.description}
-                            </label>
+                            {/* The count sits right after the text, so the
+                                label no longer stretches (flex-1). */}
+                            <div className="flex items-baseline gap-2">
+                              <label
+                                className={`text-base cursor-pointer ${
+                                  todo.done ? 'line-through opacity-70' : ''
+                                } ${
+                                  todo.type === 'note'
+                                    ? 'italic text-gray-400 dark:text-gray-500'
+                                    : ''
+                                } ${
+                                  newTodoAnimations[todo.id] ? 'relative' : ''
+                                }`}
+                              >
+                                {todo.description}
+                              </label>
+                              {isCollapsed(todo.id) && (
+                                <span className="shrink-0 text-sm tabular-nums text-foreground/40 animate-in fade-in duration-200">
+                                  {collapsedCount(childrenOf.get(todo.id)!)}
+                                </span>
+                              )}
+                            </div>
                             {todo.scheduledTime && (
                               <div
                                 className={`mt-1 text-sm flex items-center ${
