@@ -43,6 +43,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
+import { groupChecklistItems } from '@/lib/nesting';
 import { format } from 'date-fns';
 import {
   CalendarIcon,
@@ -821,29 +822,30 @@ export default function Todo({
     return todos.filter((t) => (t.type ?? 'task') === listTypeFilter);
   }, [todos, enableTypeFilter, listTypeFilter, taskType]);
 
-  // Render order: top-level rows in their existing order, each followed by
-  // its children (also in existing order). Children whose parent isn't in
-  // the filtered set fall through as top-level (no visual indent).
-  const orderedRows = useMemo(() => {
-    if (!filteredTodos) return [];
-    const visibleIds = new Set(filteredTodos.map((t) => t.id));
-    const tops = filteredTodos.filter((t) => !t.parentId || !visibleIds.has(t.parentId));
-    const result: ChecklistItem[] = [];
-    for (const top of tops) {
-      result.push(top);
-      for (const t of filteredTodos) {
-        if (t.parentId === top.id) result.push(t);
-      }
-    }
-    return result;
-  }, [filteredTodos]);
-
-  // Track which parent IDs are actually rendered so children of out-of-view
-  // parents drop their visual indent.
-  const renderedParents = useMemo(
-    () => new Set(orderedRows.filter((r) => !r.parentId).map((r) => r.id)),
-    [orderedRows]
+  // Top-level rows, each with its visible children. Children whose parent
+  // isn't in the filtered set fall through as top-level (no visual indent).
+  const rowGroups = useMemo(
+    () => groupChecklistItems(filteredTodos),
+    [filteredTodos]
   );
+
+  // Render order: each top-level row followed by its children.
+  const orderedRows = useMemo(
+    () => rowGroups.flatMap((g) => [g.item, ...g.children]),
+    [rowGroups]
+  );
+
+  // Each row's place on a guide rail: a parent with visible children starts
+  // one and its children continue it. Rows not in the map draw no rail.
+  const guideRail = useMemo(() => {
+    const roles = new Map<string, 'parent' | 'child'>();
+    for (const { item, children } of rowGroups) {
+      if (children.length === 0) continue;
+      roles.set(item.id, 'parent');
+      for (const child of children) roles.set(child.id, 'child');
+    }
+    return roles;
+  }, [rowGroups]);
 
   // Indent a row under the nearest top-level row above it in render order.
   // We walk upward past any child rows so indenting row 3 still works after
@@ -1351,13 +1353,30 @@ export default function Todo({
                   // so each row's content is centred between consecutive
                   // divider lines. First row has no line above → no top padding.
                   className={`relative flex items-center justify-between group transition-all duration-200 outline-none focus:ring-1 focus:ring-orange-500/30 rounded pt-4 first:pt-0 ${
-                    todo.parentId && renderedParents.has(todo.parentId)
-                      ? 'ml-8 border-l-2 border-white/10 pl-3'
-                      : ''
+                    guideRail.get(todo.id) === 'child' ? 'ml-6' : ''
                   } ${
                     newTodoAnimations[todo.id] ? 'animate-fadeIn' : ''
                   } ${taskType === 'archived' ? 'opacity-60' : ''}`}
                 >
+                  {/* Guide rail: a 1px hairline in the add bar's resting token,
+                      on the checkbox column's centre (8px). The parent's piece
+                      starts 4px beneath its checkbox, which is centred in the
+                      content below pt-4 (no padding on the first row). Children
+                      sit at ml-6 so their checkbox lines up with the parent's
+                      text; each child's piece reaches up 17px through the
+                      space-y-4 gap and its divider so the rail reads as one line. */}
+                  {guideRail.has(todo.id) && (
+                    <span
+                      aria-hidden
+                      data-guide-rail={guideRail.get(todo.id)}
+                      className={cn(
+                        'pointer-events-none absolute bottom-0 w-px bg-foreground/15',
+                        guideRail.get(todo.id) === 'parent'
+                          ? 'left-2 top-[calc(50%+20px)] group-first:top-[calc(50%+12px)]'
+                          : '-left-4 -top-[17px]'
+                      )}
+                    />
+                  )}
                   {editingId === todo.id ? (
                     <div className="flex items-center space-x-3 flex-1">
                       <div className="flex flex-1 space-x-2">
