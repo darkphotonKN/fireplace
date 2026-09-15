@@ -43,7 +43,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
-import { groupChecklistItems } from '@/lib/nesting';
+import {
+  findAddBarTarget,
+  groupChecklistItems,
+  resolveAddBarTarget,
+} from '@/lib/nesting';
 import { format } from 'date-fns';
 import {
   CalendarIcon,
@@ -115,7 +119,7 @@ export default function Todo({
     toast({
       title: 'Tip: Tab to nest',
       description:
-        'Press Tab after typing to nest the new item under the one above. Shift+Tab to outdent.',
+        'Tab nests the add bar under the item above, so what you add goes in as its child. Shift+Tab brings it back to top level.',
       position: 'bottom-left',
     });
   };
@@ -144,6 +148,9 @@ export default function Todo({
   const [newTodoType, setNewTodoType] = useState<'task' | 'note'>('task');
 
   const [newTodo, setNewTodo] = useState('');
+  // Parent the add bar is nested under (Tab), or null at top level. Never
+  // persisted, so every load starts at top level (FS-0007 R8.10).
+  const [addBarParentId, setAddBarParentId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const newTodoInputRef = useRef<HTMLInputElement>(null);
 
@@ -564,13 +571,12 @@ export default function Todo({
         newTodo,
         planId,
         taskType as 'daily' | 'longterm',
-        { type: newTodoType }
+        // addBarParent is only ever a real top-level task, never a note or
+        // a child, so this can't ask for a nest the server would refuse.
+        { type: newTodoType, parentId: addBarParent?.id }
       );
       setTodos((prev) => [...prev, newItem]);
       setNewTodo('');
-      // Keep the cursor in the add bar so items can be entered back to back,
-      // including when the Add button (not Enter) was used.
-      newTodoInputRef.current?.focus();
       // Add animation for the new todo
       setNewTodoAnimations((prev) => ({
         ...prev,
@@ -587,6 +593,10 @@ export default function Todo({
       console.error('Failed to add todo:', error);
     } finally {
       setIsSubmitting(false);
+      // Keep the cursor in the add bar so items can be entered back to back,
+      // including when the Add button (not Enter) was used, and so a failed
+      // add leaves the text ready to retry.
+      newTodoInputRef.current?.focus();
     }
   };
 
@@ -835,17 +845,55 @@ export default function Todo({
     [rowGroups]
   );
 
+  // The add bar's target while nested, re-checked on every render so it drops
+  // out once the parent is archived, converted, outdented or filtered out.
+  const addBarParent = useMemo(
+    () => resolveAddBarTarget(rowGroups, addBarParentId),
+    [rowGroups, addBarParentId]
+  );
+  // Short enough for the placeholder; the aria-label carries the full text.
+  const addBarParentLabel =
+    addBarParent && addBarParent.description.length > 32
+      ? `${addBarParent.description.slice(0, 31).trimEnd()}…`
+      : addBarParent?.description;
+  // The rail only reaches the add bar from the last group; a target higher
+  // up still receives the child, and the input names it instead.
+  const addBarRailParentId =
+    addBarParent && rowGroups[rowGroups.length - 1]?.item.id === addBarParent.id
+      ? addBarParent.id
+      : null;
+
+  // Forget an ineligible target rather than holding it, so it can't silently
+  // re-nest the bar when, say, the type filter is switched back.
+  useEffect(() => {
+    if (addBarParentId && !addBarParent) setAddBarParentId(null);
+  }, [addBarParentId, addBarParent]);
+
+  // Tab nests the add bar under the parent above; Shift+Tab brings it back.
+  // Both are swallowed even when nothing changes, so focus never leaves the
+  // input mid-entry (R8.2–R8.8).
+  const handleAddBarKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+    if (e.shiftKey) {
+      setAddBarParentId(null);
+    } else if (!addBarParent) {
+      setAddBarParentId(findAddBarTarget(rowGroups)?.id ?? null);
+    }
+  };
+
   // Each row's place on a guide rail: a parent with visible children starts
   // one and its children continue it. Rows not in the map draw no rail.
+  // A childless parent also starts one while the add bar is joining it.
   const guideRail = useMemo(() => {
     const roles = new Map<string, 'parent' | 'child'>();
     for (const { item, children } of rowGroups) {
-      if (children.length === 0) continue;
+      if (children.length === 0 && item.id !== addBarRailParentId) continue;
       roles.set(item.id, 'parent');
       for (const child of children) roles.set(child.id, 'child');
     }
     return roles;
-  }, [rowGroups]);
+  }, [rowGroups, addBarRailParentId]);
 
   // Indent a row under the nearest top-level row above it in render order.
   // We walk upward past any child rows so indenting row 3 still works after
@@ -1682,8 +1730,22 @@ export default function Todo({
                   On focus an ember underline draws in from the left over it. */}
               <form
                 onSubmit={addTodo}
-                className="group/add relative flex items-center border-b border-foreground/15 py-3 transition-colors duration-300 focus-within:border-transparent"
+                className={cn(
+                  'group/add relative flex items-center border-b border-foreground/15 py-3 transition-[margin,border-color] duration-300 focus-within:border-transparent',
+                  addBarParent && 'ml-6'
+                )}
               >
+                {/* Nested under the last group, the bar joins its guide rail:
+                    at ml-6, -left-4 is the checkbox column (8px). The piece
+                    reaches 28px up (space-y-4 + pt-3) to the list's bottom
+                    edge and 28px down (py-3 + half of h-8) to the icon's centre. */}
+                {addBarRailParentId && (
+                  <span
+                    aria-hidden
+                    data-guide-rail="add-bar"
+                    className="pointer-events-none absolute -left-4 -top-7 h-14 w-px bg-foreground/15 animate-in fade-in duration-300"
+                  />
+                )}
                 <span
                   aria-hidden
                   className="pointer-events-none absolute inset-x-0 -bottom-px h-px origin-left scale-x-0 bg-gradient-to-r from-primary via-primary/60 to-primary/0 shadow-[0_0_10px_rgba(247,111,83,0.45)] transition-transform duration-500 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] group-focus-within/add:scale-x-100"
@@ -1738,12 +1800,17 @@ export default function Todo({
                   value={newTodo}
                   onChange={(e) => setNewTodo(e.target.value)}
                   onFocus={maybeShowTabHint}
+                  onKeyDown={handleAddBarKeyDown}
                   placeholder={
-                    newTodoType === 'note'
+                    addBarParent
+                      ? `${newTodoType === 'note' ? 'Jot a note' : 'Add'} under “${addBarParentLabel}”…`
+                      : newTodoType === 'note'
                       ? 'Jot down a note…'
                       : 'Add something to do…'
                   }
-                  aria-label={newTodoType === 'note' ? 'New note' : 'New task'}
+                  aria-label={`${newTodoType === 'note' ? 'New note' : 'New task'}${
+                    addBarParent ? ` under “${addBarParent.description}”` : ''
+                  }`}
                   className="h-8 min-w-0 flex-1 bg-transparent text-base leading-8 text-foreground caret-primary placeholder:italic placeholder:text-foreground/35 focus:outline-none read-only:opacity-60"
                   readOnly={isSubmitting || isTyping}
                 />
