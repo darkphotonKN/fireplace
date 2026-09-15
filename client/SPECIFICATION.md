@@ -20,6 +20,11 @@
 - [x] Plan creation form → FS-none
 - [ ] Guided and custom plan creation → FS-0006
 
+## Checklists
+
+- [x] Indent and outdent items → FS-none
+- [ ] Visible nesting and collapsible groups → FS-0007
+
 ## Project Overview
 
 **Name**: Flow Client
