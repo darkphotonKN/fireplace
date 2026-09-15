@@ -21,3 +21,30 @@ export function groupChecklistItems(items: ChecklistItem[]): ChecklistGroup[] {
       children: items.filter((t) => t.parentId === item.id),
     }));
 }
+
+/**
+ * Rows in render order, each top-level row followed by its children, leaving
+ * out the children of collapsed parents. Ids that aren't a rendered parent
+ * (stale, or a parent with no visible children) change nothing.
+ */
+export function visibleRows(
+  groups: ChecklistGroup[],
+  collapsedIds: ReadonlySet<string>
+): ChecklistItem[] {
+  return groups.flatMap(({ item, children }) =>
+    collapsedIds.has(item.id) ? [item] : [item, ...children]
+  );
+}
+
+/**
+ * The quiet count a collapsed parent shows after its text: done/total over its
+ * task children only, or how many notes it holds when every child is a note.
+ * Only meaningful for a parent with at least one child.
+ */
+export function collapsedCount(children: ChecklistItem[]): string {
+  const tasks = children.filter((t) => (t.type ?? 'task') === 'task');
+  if (tasks.length > 0) {
+    return `${tasks.filter((t) => t.done).length}/${tasks.length}`;
+  }
+  return children.length === 1 ? '1 note' : `${children.length} notes`;
+}

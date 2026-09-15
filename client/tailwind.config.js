@@ -114,6 +114,14 @@ module.exports = {
           '0%': { opacity: '0', transform: 'translateY(16px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        // A parent's children coming back when it expands (FS-0007 R5.6). The
+        // row grows up from its padding while fading in, so the rows below
+        // slide down instead of jumping. No fill mode: the height cap is gone
+        // the moment it ends, so tall rows are never clipped afterwards.
+        groupReveal: {
+          '0%': { opacity: '0', maxHeight: '0' },
+          '100%': { opacity: '1', maxHeight: '5rem' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
@@ -121,6 +129,7 @@ module.exports = {
         // ease-out-quint curve for a modern, snappy settle
         fadeIn: 'fadeIn 600ms cubic-bezier(0.22, 1, 0.36, 1) both',
         riseIn: 'riseIn 400ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        groupReveal: 'groupReveal 200ms cubic-bezier(0.22, 1, 0.36, 1)',
       },
     },
   },
