@@ -1,6 +1,6 @@
 ---
 id: I-0046
-status: open
+status: in-progress
 implements: FS-0007
 blocked_by: [I-0045]
 labels: [feature]
@@ -18,11 +18,11 @@ their stored state.
 
 ## Acceptance Criteria
 
-- [ ] Toggle is absent when no parent has children; present otherwise.
-- [ ] Label is "Expand all" when any rendered parent is collapsed, else "Collapse all".
-- [ ] "Collapse all" collapses every rendered parent; "Expand all" expands every rendered parent; the result survives reload.
-- [ ] Parents hidden by the active type filter keep their stored state after using the toggle.
-- [ ] Regression checks from I-0043 still pass; client test suite passes.
+- [x] Toggle is absent when no parent has children; present otherwise.
+- [x] Label is "Expand all" when any rendered parent is collapsed, else "Collapse all".
+- [x] "Collapse all" collapses every rendered parent; "Expand all" expands every rendered parent; the result survives reload.
+- [x] Parents hidden by the active type filter keep their stored state after using the toggle.
+- [x] Regression checks from I-0043 still pass; client test suite passes.
 
 ## Blocked By
 

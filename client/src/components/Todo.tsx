@@ -66,6 +66,8 @@ import {
   Info,
   CheckSquare,
   FileText,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from 'lucide-react';
 import {
   Popover,
@@ -938,18 +940,32 @@ export default function Todo({
   const isCollapsed = (id: string) =>
     childrenOf.has(id) && collapsedIds.has(id);
 
+  // Collapse/expand all acts on the parents on screen only, so parents the
+  // type filter hides keep whatever state they were remembered with (R7.4).
+  const collapsibleIds = useMemo(() => [...childrenOf.keys()], [childrenOf]);
+  const anyCollapsed = collapsibleIds.some((id) => collapsedIds.has(id));
+
   // Parents opened this session. Only their children play the reveal, so a
   // plain page load doesn't animate every child row.
   const revealedIds = useRef(new Set<string>());
 
-  const setParentCollapsed = (id: string, collapsed: boolean) => {
-    if (collapsed) revealedIds.current.delete(id);
-    else revealedIds.current.add(id);
+  // Collapse or expand several parents as one change, so "collapse all" is a
+  // single render and a single write rather than one per parent.
+  const setParentsCollapsed = (ids: readonly string[], collapsed: boolean) => {
     const prev = collapsedIdsRef.current;
-    if (prev.has(id) === collapsed) return;
     const next = new Set(prev);
-    if (collapsed) next.add(id);
-    else next.delete(id);
+    for (const id of ids) {
+      if (collapsed) {
+        revealedIds.current.delete(id);
+        next.add(id);
+      } else {
+        revealedIds.current.add(id);
+        next.delete(id);
+      }
+    }
+    // One call only ever adds or only ever removes, so equal size means the
+    // set is unchanged.
+    if (next.size === prev.size) return;
     collapsedIdsRef.current = next;
     setCollapsedIds(next);
 
@@ -964,6 +980,9 @@ export default function Todo({
       saveCollapsedIds(planId, taskType, next, liveParentIds);
     }
   };
+
+  const setParentCollapsed = (id: string, collapsed: boolean) =>
+    setParentsCollapsed([id], collapsed);
 
   const toggleCollapsed = (id: string) =>
     setParentCollapsed(id, !isCollapsed(id));
@@ -1224,6 +1243,22 @@ export default function Todo({
                   </button>
                 ))}
               </div>
+            )}
+            {/* One quiet toggle for every parent on screen (R7). */}
+            {collapsibleIds.length > 0 && (
+              <button
+                onClick={() =>
+                  setParentsCollapsed(collapsibleIds, !anyCollapsed)
+                }
+                className="flex items-center gap-1.5 text-sm text-foreground/50 transition-colors hover:text-primary"
+              >
+                {anyCollapsed ? (
+                  <ChevronsUpDown strokeWidth={1.75} className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronsDownUp strokeWidth={1.75} className="h-3.5 w-3.5" />
+                )}
+                {anyCollapsed ? 'Expand all' : 'Collapse all'}
+              </button>
             )}
             {!fixedTaskType && (
               <div className="flex items-center gap-3 text-base">

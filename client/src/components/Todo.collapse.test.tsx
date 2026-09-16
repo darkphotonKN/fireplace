@@ -268,3 +268,95 @@ describe('Todo remembers collapsed groups (FS-0007 R6)', () => {
     expect(screen.getByText('item B')).toBeTruthy();
   });
 });
+
+describe('Todo collapse and expand all (FS-0007 R7)', () => {
+  // Two parents: A holds a task, D holds a note. The Checklist filter leaves
+  // D without visible children, so only A counts as a rendered parent there.
+  const PARENTS = [
+    item('A', 'task'),
+    item('B', 'task', 'A'),
+    item('D', 'task'),
+    item('E', 'note', 'D'),
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchChecklist.mockImplementation(async () => PARENTS);
+  });
+
+  it('should offer Collapse all while every parent is expanded', async () => {
+    await renderList();
+
+    expect(screen.getByRole('button', { name: 'Collapse all' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Expand all' })).toBeNull();
+  });
+
+  it('should fold every parent on Collapse all and then offer Expand all', async () => {
+    await renderList();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+
+    expect(screen.queryByText('item B')).toBeNull();
+    expect(screen.queryByText('item E')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Expand all' })).toBeTruthy();
+  });
+
+  it('should offer Expand all when only one parent is collapsed, and open every parent', async () => {
+    await renderList();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
+
+    expect(screen.getByRole('button', { name: 'Expand all' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
+
+    expect(screen.getByText('item B')).toBeTruthy();
+    expect(screen.getByText('item E')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Collapse all' })).toBeTruthy();
+  });
+
+  it('should remember what Collapse all folded, as on reload', async () => {
+    const Todo = (await import('./Todo')).default;
+    const first = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item A');
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+    first.unmount();
+
+    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item A');
+    expect(screen.queryByText('item B')).toBeNull();
+    expect(screen.queryByText('item E')).toBeNull();
+  });
+
+  it('should not offer the toggle when no parent has children', async () => {
+    fetchChecklist.mockImplementation(async () => [
+      item('A', 'task'),
+      item('D', 'task'),
+    ]);
+    await renderList();
+
+    expect(screen.queryByRole('button', { name: /(Collapse|Expand) all/ })).toBeNull();
+  });
+
+  it('should leave the stored state of parents the filter hides untouched', async () => {
+    const Todo = (await import('./Todo')).default;
+    const first = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item A');
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+
+    // Checklist hides D's only child (a note), so D is no longer a parent here.
+    fireEvent.click(screen.getByRole('button', { name: 'Checklist' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
+    expect(screen.getByText('item B')).toBeTruthy();
+
+    // Back to All: A was expanded, D kept the state Expand all never saw.
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    expect(screen.getByText('item B')).toBeTruthy();
+    expect(screen.queryByText('item E')).toBeNull();
+
+    first.unmount();
+    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item A');
+    expect(screen.getByText('item B')).toBeTruthy();
+    expect(screen.queryByText('item E')).toBeNull();
+  });
+});
