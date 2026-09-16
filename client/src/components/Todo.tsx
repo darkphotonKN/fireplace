@@ -599,6 +599,10 @@ export default function Todo({
         // a child, so this can't ask for a nest the server would refuse.
         { type: newTodoType, parentId: addBarParent?.id }
       );
+      // A child landing in a collapsed parent would be invisible; open it so
+      // the arrival is seen, and remember that (R8.9). After the create, so a
+      // failure leaves the parent as it was.
+      if (addBarParent) setParentCollapsed(addBarParent.id, false);
       setTodos((prev) => [...prev, newItem]);
       setNewTodo('');
       // Add animation for the new todo
@@ -902,7 +906,11 @@ export default function Todo({
     if (e.shiftKey) {
       setAddBarParentId(null);
     } else if (!addBarParent) {
-      setAddBarParentId(findAddBarTarget(rowGroups)?.id ?? null);
+      const target = findAddBarTarget(rowGroups);
+      setAddBarParentId(target?.id ?? null);
+      // Joining a collapsed parent opens it, so what you type lands in view
+      // and the parent's own rail is there for the bar's to meet (R8.9).
+      if (target) setParentCollapsed(target.id, false);
     }
   };
 

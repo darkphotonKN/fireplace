@@ -260,3 +260,76 @@ describe('Todo add bar Tab to nest', () => {
     );
   });
 });
+
+describe('Todo add bar nesting into a collapsed parent (FS-0007 R8.9)', () => {
+  // A is the last group and has a child, so it is both the Tab target and
+  // collapsible.
+  const NESTED = [item('A', 'task'), item('B', 'task', 'A')];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('should open a collapsed target when the add bar nests under it', async () => {
+    const input = await renderList(NESTED);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
+    expect(screen.queryByText('item B')).toBeNull();
+
+    fireEvent.keyDown(input, { key: 'Tab' });
+
+    expect(nestedUnder()).toBe('A');
+    expect(screen.getByText('item B')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Collapse item A' })).toBeTruthy();
+    // The parent's own rail is back, so the bar's piece isn't left hanging.
+    expect(railOf('A')).toBe('parent');
+    expect(addBarRail()).not.toBeNull();
+  });
+
+  it('should open the target on a nested add when it was collapsed after nesting', async () => {
+    createChecklistItem.mockImplementation(async () => item('E', 'task', 'A'));
+    const input = await renderList(NESTED);
+    fireEvent.keyDown(input, { key: 'Tab' });
+    // Collapsed while the bar is already nested (by chevron here, the same
+    // way "Collapse all" would).
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
+    expect(screen.queryByText('item B')).toBeNull();
+    expect(nestedUnder()).toBe('A');
+
+    fireEvent.change(addInput(), { target: { value: 'item E' } });
+    fireEvent.submit(addInput().closest('form')!);
+
+    await screen.findByText('item E');
+    expect(screen.getByText('item B')).toBeTruthy();
+    expect(rowOf('E').className).toMatch(/animate-fadeIn/);
+    expect(screen.getByRole('button', { name: 'Collapse item A' })).toBeTruthy();
+  });
+
+  it('should remember that nesting opened the target', async () => {
+    const input = await renderList(NESTED);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
+    fireEvent.keyDown(input, { key: 'Tab' });
+    expect(screen.getByText('item B')).toBeTruthy();
+
+    cleanup();
+    await renderList(NESTED);
+
+    expect(screen.getByText('item B')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Collapse item A' })).toBeTruthy();
+  });
+
+  it('should not write collapse state when the target is already open', async () => {
+    const input = await renderList(NESTED);
+    // Spy after mount: the component's other preferences write on load.
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+
+    fireEvent.keyDown(input, { key: 'Tab' });
+
+    expect(nestedUnder()).toBe('A');
+    expect(
+      setItem.mock.calls.filter(([key]) =>
+        String(key).startsWith('collapsedGroups:')
+      )
+    ).toEqual([]);
+  });
+});

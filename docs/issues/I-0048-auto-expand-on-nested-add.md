@@ -1,6 +1,6 @@
 ---
 id: I-0048
-status: open
+status: in-progress
 implements: FS-0007
 blocked_by: [I-0045, I-0047]
 labels: [feature]
@@ -17,11 +17,11 @@ existing arrival animation where the user can see it.
 
 ## Acceptance Criteria
 
-- [ ] Tab nesting the add bar under a collapsed parent expands that parent.
-- [ ] A nested add into a parent that was collapsed after nesting expands it and shows the new item with the arrival animation.
-- [ ] The expansion is remembered: after reload the parent is expanded.
-- [ ] Nesting under an already-expanded parent does not write unnecessary state changes.
-- [ ] Regression checks from I-0043 still pass; client test suite passes.
+- [x] Tab nesting the add bar under a collapsed parent expands that parent.
+- [x] A nested add into a parent that was collapsed after nesting expands it and shows the new item with the arrival animation.
+- [x] The expansion is remembered: after reload the parent is expanded.
+- [x] Nesting under an already-expanded parent does not write unnecessary state changes.
+- [x] Regression checks from I-0043 still pass; client test suite passes.
 
 ## Blocked By
 
