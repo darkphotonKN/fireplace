@@ -170,6 +170,18 @@ describe('Todo collapse and expand', () => {
     expect(collapsed.className).not.toMatch(/(^|\s)opacity-0(\s|$)/);
   });
 
+  it('should keep the chevron in a gutter the list reserves, with no ring circle around it', async () => {
+    await renderList();
+    const chevron = screen.getByRole('button', { name: 'Collapse item A' });
+
+    // It hangs 32px left of the row, and the list pads that much so the
+    // button stays inside the card instead of spilling over its edge.
+    expect(chevron.className).toContain('-left-8');
+    expect(rowOf('A').closest('ul')!.className).toMatch(/(^|\s)pl-8(\s|$)/);
+    expect(chevron.className).not.toContain('rounded-full');
+    expect(chevron.className).not.toContain('ring-');
+  });
+
   it('should expand a collapsed parent when a row is indented into it, so the row stays in view', async () => {
     await renderList();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));

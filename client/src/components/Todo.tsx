@@ -1508,7 +1508,11 @@ export default function Todo({
           ) : (
             // space-y-4 = 16px gap so the hover-menu has room above each row;
             // divide-y adds a subtle 1px line between rows for visual structure.
-            <ul className="space-y-4 divide-y divide-gray-200 dark:divide-gray-800/50 mt-4">
+            // pl-8 reserves the chevron's gutter INSIDE the card: the button
+            // hangs 32px left of each row, which would otherwise spill past
+            // the card's own padding. The add form below carries the same
+            // padding so its icon stays in the checkbox column.
+            <ul className="space-y-4 divide-y divide-gray-200 dark:divide-gray-800/50 mt-4 pl-8">
               {renderedRows.map((todo, index) => (
                 <li
                   key={todo.id}
@@ -1565,7 +1569,7 @@ export default function Todo({
                       }}
                       onKeyDown={(e) => e.stopPropagation()}
                       className={cn(
-                        'absolute -left-8 top-[calc(50%+8px)] group-first:top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-foreground/40 outline-none transition-[color,opacity] duration-200 hover:text-primary focus-visible:text-primary focus-visible:ring-1 focus-visible:ring-primary/30',
+                        'absolute -left-8 top-[calc(50%+8px)] group-first:top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-foreground/40 outline-none transition-[color,background-color,opacity] duration-200 hover:text-primary focus-visible:bg-primary/10 focus-visible:text-primary',
                         // Hover devices: hidden until the row is hovered or
                         // focused. Touch: always there, quietly. Collapsed:
                         // always fully visible so the fold can be found.
@@ -1891,7 +1895,7 @@ export default function Todo({
               one above. Hidden in archived view and on the daily side
               when dailyAIOnly is on (only AI suggestions populate dailies). */}
           {taskType !== 'archived' && !(dailyAIOnly && taskType === 'daily') && (
-            <div className="space-y-3 pt-3">
+            <div className="space-y-3 pt-3 pl-8">
               {/* One hairline runs under the whole row (icon, text, button) so
                   everything sits on the same line with py-3 of air above it.
                   On focus an ember underline draws in from the left over it. */}
