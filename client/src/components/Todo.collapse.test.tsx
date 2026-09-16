@@ -182,6 +182,15 @@ describe('Todo collapse and expand', () => {
     expect(chevron.className).not.toContain('ring-');
   });
 
+  it('should ring a row only for keyboard focus, never on a click', async () => {
+    await renderList();
+
+    // Plain focus: would draw the ring when the row, its chevron or a hover
+    // action is clicked.
+    expect(rowOf('A').className).not.toMatch(/(^|\s)focus:ring-1(\s|$)/);
+    expect(rowOf('A').className).toContain('focus-visible:ring-1');
+  });
+
   it('should expand a collapsed parent when a row is indented into it, so the row stays in view', async () => {
     await renderList();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));

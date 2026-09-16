@@ -1522,7 +1522,11 @@ export default function Todo({
                   // line above it, mirroring the 16px gap below (space-y-4),
                   // so each row's content is centred between consecutive
                   // divider lines. First row has no line above → no top padding.
-                  className={`relative flex items-center justify-between group transition-all duration-200 outline-none focus:ring-1 focus:ring-orange-500/30 rounded pt-4 first:pt-0 ${
+                  // focus-visible, not focus: rows are tabIndex=0 for Tab
+                  // indent/outdent, so keyboard focus must show — but a mouse
+                  // click on the row, its chevron or a hover action should not
+                  // leave a ring drawn around the whole row.
+                  className={`relative flex items-center justify-between group transition-all duration-200 outline-none focus-visible:ring-1 focus-visible:ring-primary/30 rounded pt-4 first:pt-0 ${
                     guideRail.get(todo.id) === 'child' ? 'ml-6' : ''
                   } ${
                     todo.parentId && revealedIds.current.has(todo.parentId)
