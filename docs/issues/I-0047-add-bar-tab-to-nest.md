@@ -1,6 +1,6 @@
 ---
 id: I-0047
-status: in-progress
+status: done
 implements: FS-0007
 blocked_by: [I-0043]
 labels: [feature]
