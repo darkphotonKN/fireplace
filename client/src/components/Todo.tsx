@@ -50,6 +50,7 @@ import {
   resolveAddBarTarget,
   visibleRows,
 } from '@/lib/nesting';
+import { clampPage, pageCount, pageSlice } from '@/lib/paging';
 import { loadCollapsedIds, saveCollapsedIds } from '@/lib/collapsedGroups';
 import { format } from 'date-fns';
 import {
@@ -61,6 +62,7 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
   ChevronRight,
   ArrowUpDown,
   Info,
@@ -92,6 +94,11 @@ interface VideoSuggestion {
   type: string;
   description: string;
 }
+
+// Previous / next share their quiet register with the header's collapse-all
+// toggle (FS-0008 R5); a disabled one only dims, since it can't be hovered.
+const pageButtonClass =
+  'flex items-center transition-colors hover:text-primary focus-visible:text-primary disabled:pointer-events-none disabled:opacity-30';
 
 interface TodoProps {
   /** When set, locks taskType to this value and hides the Daily/Long-term tab buttons. */
@@ -148,6 +155,10 @@ export default function Todo({
 
   // Filter tab for All | Notes | Checklist (only used when enableTypeFilter).
   const [listTypeFilter, setListTypeFilter] = useState<ListTypeFilter>('all');
+
+  // Which page of top-level items the list is showing (FS-0008 R3). Never
+  // stored: a fresh mount starts on page 1 (R9), unlike collapse state.
+  const [page, setPage] = useState(1);
 
   // Parent Items whose children are folded away (FS-0007 R5), remembered per
   // plan and list on this device (R6). A parent not in the set is expanded.
@@ -927,10 +938,36 @@ export default function Todo({
     return roles;
   }, [rowGroups, addBarRailParentId]);
 
-  // What the list draws: orderedRows minus the children of collapsed parents.
+  // Pages are cut after the type filter, so what is paged is what is shown
+  // (R4). The page is clamped on the way out rather than only when it changes,
+  // so archiving a whole page lands on the new last page instead of an empty
+  // one (R10) even before the effect below tidies the state.
+  const totalPages = pageCount(rowGroups.length);
+  const currentPage = clampPage(page, rowGroups.length);
+  const pagedGroups = useMemo(
+    () => pageSlice(rowGroups, currentPage),
+    [rowGroups, currentPage]
+  );
+
+  // Keep the state honest once clamped, or a page the list has grown back into
+  // would resurrect the moment the items return.
+  useEffect(() => {
+    if (currentPage !== page) setPage(currentPage);
+  }, [currentPage, page]);
+
+  // A different list, or a different slice of it, always starts again at the
+  // top (R8). taskType covers the internal daily / long-term switcher; when
+  // fixedTaskType pins it, only the filter can move.
+  useEffect(() => {
+    setPage(1);
+  }, [taskType, listTypeFilter]);
+
+  // What the list draws: this page's rows minus the children of collapsed
+  // parents. Everything else — counts, the rail, collapse — stays over the
+  // whole set (R11).
   const renderedRows = useMemo(
-    () => visibleRows(rowGroups, collapsedIds),
-    [rowGroups, collapsedIds]
+    () => visibleRows(pagedGroups, collapsedIds),
+    [pagedGroups, collapsedIds]
   );
 
   // Visible children of each parent that has any. Only these parents get a
@@ -1892,6 +1929,43 @@ export default function Todo({
                 </li>
               ))}
             </ul>
+          )}
+
+          {/* Page controls, bottom-right below the list and above the add
+              bar's row of air (R5). Quiet by default, warming to primary on
+              hover and focus like the header's collapse-all toggle. Nothing at
+              all while everything fits on one page (R6). pr-1 keeps the last
+              chevron off the card's edge; pl-8 matches the list's gutter so
+              the row starts in the same column. */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-end gap-2 pl-8 pr-1 text-sm text-foreground/50">
+              <button
+                type="button"
+                onClick={() => setPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                aria-label="Previous page"
+                className={pageButtonClass}
+              >
+                <ChevronLeft strokeWidth={1.75} className="h-4 w-4" />
+              </button>
+              {/* The visible count is decoration; the live region beside it
+                  carries the announcement so it reads as a sentence (R12). */}
+              <span data-testid="page-counter" aria-hidden="true">
+                {currentPage} of {totalPages}
+              </span>
+              <span role="status" aria-live="polite" className="sr-only">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                aria-label="Next page"
+                className={pageButtonClass}
+              >
+                <ChevronRight strokeWidth={1.75} className="h-4 w-4" />
+              </button>
+            </div>
           )}
 
           {/* Add form — moved to the bottom so adding a row reads as

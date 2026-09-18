@@ -1,6 +1,6 @@
 ---
 id: I-0049
-status: open
+status: in-progress
 implements: FS-0008
 blocked_by: []
 labels: [feature]
@@ -33,18 +33,26 @@ Put the page maths in a pure helper (e.g. extend `client/src/lib/nesting.ts` or 
 
 ## Acceptance Criteria
 
-- [ ] 25 top-level items render 10 on page 1 with controls reading `1 of 3`.
-- [ ] A parent with 8 children counts as one of the ten and renders with its children on one page.
-- [ ] 10 or fewer top-level items render no page controls.
-- [ ] Previous is disabled on page 1 and next on the last page; neither is keyboard-reachable while disabled.
-- [ ] Switching the type filter returns to page 1; switching daily / long-term does too.
-- [ ] Remounting shows page 1 while collapse state is still restored.
-- [ ] Archiving every item on the last page moves the view to the new last page, never an empty one.
-- [ ] Parent counts, filter tabs and collapse state are computed over the full set while one page shows.
-- [ ] Page controls carry "Previous page" / "Next page" labels and page changes are announced politely.
-- [ ] No network request is made when changing pages.
-- [ ] Regression: FS-0007 behaviour holds (rail, chevrons, counts, remembered collapse, Tab-to-nest).
-- [ ] Client test suite passes.
+- [x] 25 top-level items render 10 on page 1 with controls reading `1 of 3`.
+- [x] A parent with 8 children counts as one of the ten and renders with its children on one page.
+- [x] 10 or fewer top-level items render no page controls.
+- [x] Previous is disabled on page 1 and next on the last page; neither is keyboard-reachable while disabled.
+- [x] Switching the type filter returns to page 1; switching daily / long-term does too.
+- [x] Remounting shows page 1 while collapse state is still restored.
+- [x] Archiving every item on the last page moves the view to the new last page, never an empty one.
+- [x] Parent counts, filter tabs and collapse state are computed over the full set while one page shows.
+- [x] Page controls carry "Previous page" / "Next page" labels and page changes are announced politely
+      — verified structurally (accessible names, `role="status"` + `aria-live="polite"` whose text
+      changes with the page); not exercised with a real screen reader.
+- [x] No network request is made when changing pages.
+- [x] Regression: FS-0007 behaviour holds (rail, chevrons, counts, remembered collapse, Tab-to-nest)
+      — the FS-0007 suites are unchanged and green. Tab-to-nest still resolves over the whole set;
+      making it page-aware is I-0051 (R15).
+- [x] Client test suite passes — 19 files / 142 tests.
+
+**Unverified (needs a browser):** the controls' visual placement bottom-right, their hover/focus
+warming, and the narrow-screen rule that they don't wrap under the add bar (FS-0008 §Edge States).
+No dev server was started for this slice.
 
 ## Blocked By
 
