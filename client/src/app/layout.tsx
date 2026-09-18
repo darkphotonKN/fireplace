@@ -12,7 +12,7 @@ const merriweather = Merriweather({
 });
 
 export const metadata: Metadata = {
-  title: 'Flow - Your Learning & Development Hub',
+  title: 'Fireplace',
   description:
     'Organize your learning journey and development projects in one place',
 };

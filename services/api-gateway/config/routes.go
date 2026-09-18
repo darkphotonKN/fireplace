@@ -39,7 +39,7 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 
 	// TODO: CORS for development, remove in PROD
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3010"},
+		AllowOrigins:     []string{"http://localhost:3010", "http://localhost:3011"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
