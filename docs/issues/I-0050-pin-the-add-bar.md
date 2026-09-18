@@ -1,6 +1,6 @@
 ---
 id: I-0050
-status: open
+status: in-progress
 implements: FS-0008
 blocked_by: []
 labels: [feature]
@@ -26,13 +26,20 @@ read correctly.
 
 ## Acceptance Criteria
 
-- [ ] The add bar stays visible at the bottom of the card while the list area scrolls.
-- [ ] The last row is fully visible and clickable, never covered by the pinned bar.
-- [ ] The bar keeps its hairline, ember underline, icon alignment and gutter.
-- [ ] Nothing clips in the daily card (`overflow-hidden`) or at narrow widths.
-- [ ] Regression: add, focus-return after add, and Tab-to-nest still work.
-- [ ] Client test suite passes.
+- [x] The add bar stays visible at the bottom of the card while the list area scrolls.
+- [x] The last row is fully visible and clickable, never covered by the pinned bar.
+- [x] The bar keeps its hairline, ember underline, icon alignment and gutter.
+- [x] Nothing clips in the daily card (`overflow-hidden`) or at narrow widths.
+- [x] Regression: add, focus-return after add, and Tab-to-nest still work.
+- [x] Client test suite passes.
 - [ ] HITL: visual sign-off on the pinned bar with a real, long plan.
+
+Ticked by `client/src/components/Todo.pinned-add-bar.test.tsx` for structure, and by
+measuring the same CSS in a throwaway static page in a real engine for the geometry jsdom
+cannot compute (bar bottom flush with the scrollport at every scroll position; last row
+fully inside it with a 16px gap and hit-testing to itself, not the bar; nothing outside the
+`overflow-hidden` card; still pinned with no horizontal scroll at a 327px card). The HITL
+criterion is left open: it needs the running app and a real long plan.
 
 ## Blocked By
 
