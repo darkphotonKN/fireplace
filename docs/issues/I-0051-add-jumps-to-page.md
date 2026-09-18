@@ -1,6 +1,6 @@
 ---
 id: I-0051
-status: open
+status: in-progress
 implements: FS-0008
 blocked_by: [I-0049, I-0050]
 labels: [feature]
@@ -24,13 +24,23 @@ Join paging (I-0049) to the add bar so adding never drops an item out of sight.
 
 ## Acceptance Criteria
 
-- [ ] On page 2 of 3, Tab nests under the last eligible top-level task of page 2.
-- [ ] Adding a child to a family on another page moves the view to that page and plays the arrival animation.
-- [ ] A top-level add moves the view to the last page and plays the arrival animation.
-- [ ] Typed text, nesting state and input focus survive a page jump caused by an add.
-- [ ] A nested add into a collapsed parent still expands it (FS-0007 R8.9) after the jump.
-- [ ] Regression: Tab / Shift+Tab, create failure keeping text and nesting, and target-ineligibility reset all still work.
-- [ ] Client test suite passes.
+- [x] On page 2 of 3, Tab nests under the last eligible top-level task of page 2.
+- [x] Adding a child to a family on another page moves the view to that page and plays the arrival animation.
+- [x] A top-level add moves the view to the last page and plays the arrival animation.
+- [x] Typed text, nesting state and input focus survive a page jump caused by an add.
+- [x] A nested add into a collapsed parent still expands it (FS-0007 R8.9) after the jump.
+- [x] Regression: Tab / Shift+Tab, create failure keeping text and nesting, and target-ineligibility reset all still work.
+- [x] Client test suite passes.
+- [ ] HITL: the jump read as following the item rather than as the list moving under you.
+
+Ticked by `client/src/components/Todo.add-page-jump.test.tsx`, with the regression row resting
+on the existing `Todo.add-bar-nest.test.tsx`, and the restored arrival assertion in
+`Todo.pinned-add-bar.test.tsx`. Two notes on what the tests can and cannot say. The arrival
+animation is asserted as the `animate-fadeIn` class on the new row, as elsewhere in this suite;
+jsdom runs no animation. And a successful add clears the input by design (FS-0007), so the
+"typed text survives" half is proved over a page change with text half-typed, while the
+add-caused jump is proved to keep the nesting and the focus. The scroll position of the list
+area is deliberately left alone on a page change — see the HITL row.
 
 ## Blocked By
 
