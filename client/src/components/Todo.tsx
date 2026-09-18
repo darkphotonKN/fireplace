@@ -1281,7 +1281,15 @@ export default function Todo({
                 ).map(([value, label]) => (
                   <button
                     key={value}
-                    onClick={() => setListTypeFilter(value)}
+                    onClick={() => {
+                      // A typed filter also says what the add bar creates
+                      // (R19, R20). Only on the click that changes the
+                      // filter, so the type icon still wins afterwards —
+                      // re-choosing the tab you are on changes nothing (R21).
+                      if (value !== 'all' && value !== listTypeFilter)
+                        setNewTodoType(value);
+                      setListTypeFilter(value);
+                    }}
                     className={`px-2 py-1 rounded transition-colors ${
                       listTypeFilter === value
                         ? 'bg-amber-500/20 text-amber-400'

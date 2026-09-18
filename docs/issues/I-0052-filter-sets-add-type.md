@@ -1,6 +1,6 @@
 ---
 id: I-0052
-status: open
+status: in-progress
 implements: FS-0008
 blocked_by: []
 labels: [feature]
@@ -22,13 +22,14 @@ and typing produces a note without flipping the icon.
 
 ## Acceptance Criteria
 
-- [ ] Choosing Notes sets the add bar to note and the placeholder follows.
-- [ ] Choosing Checklist sets it to task.
-- [ ] Choosing All leaves the current type unchanged.
-- [ ] Clicking the type icon after a filter set the type overrides it, and the override sticks.
-- [ ] Re-choosing the same filter does not fight a manual override made since.
-- [ ] Regression: filtering still filters the list, and the add bar's other behaviour is unchanged.
-- [ ] Client test suite passes.
+- [x] Choosing Notes sets the add bar to note and the placeholder follows.
+- [x] Choosing Checklist sets it to task.
+- [x] Choosing All leaves the current type unchanged.
+- [x] Clicking the type icon after a filter set the type overrides it, and the override sticks.
+- [x] Re-choosing the same filter does not fight a manual override made since — the
+      filter sets the type only on the click that changes it.
+- [x] Regression: filtering still filters the list, and the add bar's other behaviour is unchanged.
+- [x] Client test suite passes — 20 files / 146 tests.
 
 ## Blocked By
 
