@@ -129,18 +129,9 @@ describe('Todo pinned add bar (FS-0008 R13–R14)', () => {
     input.focus();
     fireEvent.change(input, { target: { value: 'item NEW' } });
     fireEvent.submit(input.closest('form')!);
-    // The row is created and appended, but this fixture is 24 items, so it
-    // lands on the last page while the view sits on page 1. Jumping to the
-    // page an add lands on is R17 (I-0051); until then the arrival is simply
-    // off-page, so this slice asserts the create and the focus hand-back.
-    await waitFor(() =>
-      expect(createChecklistItem).toHaveBeenCalledWith(
-        'item NEW',
-        'plan-1',
-        'longterm',
-        expect.objectContaining({ type: 'task' })
-      )
-    );
+    // 24 items is three pages, so the appended row lands on the last one and
+    // the view goes with it (R17) — the arrival is seen, not left off-page.
+    expect(await screen.findByText('item NEW')).toBeTruthy();
     await waitFor(() => expect(addInput().readOnly).toBe(false));
     expect(document.activeElement).toBe(addInput());
     expect(pinned().className).toMatch(/\bsticky\b/);

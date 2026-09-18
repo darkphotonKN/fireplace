@@ -50,7 +50,7 @@ import {
   resolveAddBarTarget,
   visibleRows,
 } from '@/lib/nesting';
-import { clampPage, pageCount, pageSlice } from '@/lib/paging';
+import { clampPage, pageCount, pageOfItem, pageSlice } from '@/lib/paging';
 import { loadCollapsedIds, saveCollapsedIds } from '@/lib/collapsedGroups';
 import { format } from 'date-fns';
 import {
@@ -159,6 +159,9 @@ export default function Todo({
   // Which page of top-level items the list is showing (FS-0008 R3). Never
   // stored: a fresh mount starts on page 1 (R9), unlike collapse state.
   const [page, setPage] = useState(1);
+  // An item just created, still to be caught up with: the view follows it to
+  // whatever page it landed on (R16, R17), then this clears.
+  const [pendingJumpId, setPendingJumpId] = useState<string | null>(null);
 
   // Parent Items whose children are folded away (FS-0007 R5), remembered per
   // plan and list on this device (R6). A parent not in the set is expanded.
@@ -615,6 +618,10 @@ export default function Todo({
       // failure leaves the parent as it was.
       if (addBarParent) setParentCollapsed(addBarParent.id, false);
       setTodos((prev) => [...prev, newItem]);
+      // Follow it to its page once the rows have it (R16, R17). The add bar
+      // sits outside the paged list, so its text, nesting and focus are
+      // untouched by the move (R18).
+      setPendingJumpId(newItem.id);
       setNewTodo('');
       // Add animation for the new todo
       setNewTodoAnimations((prev) => ({
@@ -884,8 +891,48 @@ export default function Todo({
     [rowGroups]
   );
 
+  // Pages are cut after the type filter, so what is paged is what is shown
+  // (R4). The page is clamped on the way out rather than only when it changes,
+  // so archiving a whole page lands on the new last page instead of an empty
+  // one (R10) even before the effect below tidies the state.
+  // Derived above the add bar, not below the rail, because the bar now reads
+  // the current page: Tab targets what is on screen (R15).
+  const totalPages = pageCount(rowGroups.length);
+  const currentPage = clampPage(page, rowGroups.length);
+  const pagedGroups = useMemo(
+    () => pageSlice(rowGroups, currentPage),
+    [rowGroups, currentPage]
+  );
+
+  // Keep the state honest once clamped, or a page the list has grown back into
+  // would resurrect the moment the items return.
+  useEffect(() => {
+    if (currentPage !== page) setPage(currentPage);
+  }, [currentPage, page]);
+
+  // A different list, or a different slice of it, always starts again at the
+  // top (R8). taskType covers the internal daily / long-term switcher; when
+  // fixedTaskType pins it, only the filter can move.
+  useEffect(() => {
+    setPage(1);
+  }, [taskType, listTypeFilter]);
+
+  // A row lands where the list puts it, which is rarely the page being looked
+  // at, so the view goes to meet it and the arrival is seen (R16, R17). Read
+  // once the rows already hold it, so one rule covers both a child joining a
+  // family paged away and a top-level item appended to the end. An item the
+  // current filter hides has no page to go to, and nothing moves.
+  useEffect(() => {
+    if (!pendingJumpId) return;
+    const landed = pageOfItem(rowGroups, pendingJumpId);
+    if (landed) setPage(landed);
+    setPendingJumpId(null);
+  }, [pendingJumpId, rowGroups]);
+
   // The add bar's target while nested, re-checked on every render so it drops
   // out once the parent is archived, converted, outdented or filtered out.
+  // Over the whole set, not the page: a target paged away is still eligible,
+  // and an add jumps back to it (R16).
   const addBarParent = useMemo(
     () => resolveAddBarTarget(rowGroups, addBarParentId),
     [rowGroups, addBarParentId]
@@ -895,10 +942,12 @@ export default function Todo({
     addBarParent && addBarParent.description.length > 32
       ? `${addBarParent.description.slice(0, 31).trimEnd()}…`
       : addBarParent?.description;
-  // The rail only reaches the add bar from the last group; a target higher
-  // up still receives the child, and the input names it instead.
+  // The rail only reaches the add bar from the group directly above it, which
+  // is the last one on the page (R15); a target higher up, or on another page,
+  // still receives the child, and the input names it instead.
   const addBarRailParentId =
-    addBarParent && rowGroups[rowGroups.length - 1]?.item.id === addBarParent.id
+    addBarParent &&
+    pagedGroups[pagedGroups.length - 1]?.item.id === addBarParent.id
       ? addBarParent.id
       : null;
 
@@ -922,7 +971,9 @@ export default function Todo({
     if (e.shiftKey) {
       setAddBarParentId(null);
     } else if (!addBarParent) {
-      const target = findAddBarTarget(rowGroups);
+      // The page's groups, not the whole set: the gesture means "the item
+      // above", and the item above is the last one on screen (R15).
+      const target = findAddBarTarget(pagedGroups);
       setAddBarParentId(target?.id ?? null);
       // Joining a collapsed parent opens it, so what you type lands in view
       // and the parent's own rail is there for the bar's to meet (R8.9).
@@ -942,30 +993,6 @@ export default function Todo({
     }
     return roles;
   }, [rowGroups, addBarRailParentId]);
-
-  // Pages are cut after the type filter, so what is paged is what is shown
-  // (R4). The page is clamped on the way out rather than only when it changes,
-  // so archiving a whole page lands on the new last page instead of an empty
-  // one (R10) even before the effect below tidies the state.
-  const totalPages = pageCount(rowGroups.length);
-  const currentPage = clampPage(page, rowGroups.length);
-  const pagedGroups = useMemo(
-    () => pageSlice(rowGroups, currentPage),
-    [rowGroups, currentPage]
-  );
-
-  // Keep the state honest once clamped, or a page the list has grown back into
-  // would resurrect the moment the items return.
-  useEffect(() => {
-    if (currentPage !== page) setPage(currentPage);
-  }, [currentPage, page]);
-
-  // A different list, or a different slice of it, always starts again at the
-  // top (R8). taskType covers the internal daily / long-term switcher; when
-  // fixedTaskType pins it, only the filter can move.
-  useEffect(() => {
-    setPage(1);
-  }, [taskType, listTypeFilter]);
 
   // What the list draws: this page's rows minus the children of collapsed
   // parents. Everything else — counts, the rail, collapse — stays over the
