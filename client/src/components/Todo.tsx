@@ -1899,7 +1899,7 @@ export default function Todo({
               one above. Hidden in archived view and on the daily side
               when dailyAIOnly is on (only AI suggestions populate dailies). */}
           {taskType !== 'archived' && !(dailyAIOnly && taskType === 'daily') && (
-            <div className="space-y-3 pt-3 pl-8">
+            <div className="space-y-3 pt-3 pb-6 pl-8">
               {/* One hairline runs under the whole row (icon, text, button) so
                   everything sits on the same line with py-3 of air above it.
                   On focus an ember underline draws in from the left over it. */}
@@ -2005,59 +2005,11 @@ export default function Todo({
                 </button>
               </form>
 
-              <div className="flex justify-between items-center">
-                <button
-                  onClick={getAISuggestion}
-                  disabled={
-                    isFetchingSuggestion || isTyping || isSuggestionTyping
-                  }
-                  className="text-base text-gray-600 flex items-center px-3 py-1.5 rounded-md transition-colors bg-white/5"
-                >
-                  {isFetchingSuggestion ? (
-                    'Getting suggestion...'
-                  ) : (
-                    <>
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        className="w-4 h-4 mr-1.5"
-                      >
-                        <path d="M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm-.707 9.293a1 1 0 0 1 0 1.414 1 1 0 0 1-1.414 0l-2-2a1 1 0 0 1 1.414-1.414L9 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-4 4z" />
-                      </svg>
-                      Get Suggestion
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* AI Suggestion Component */}
-              {suggestion && (
-                <div className="mt-2 p-3 text-base flex items-center px-3 py-1.5 rounded-md transition-colors bg-white/5 dark:bg-gray-900/10">
-                  <div className="flex justify-between items-center w-full">
-                    <div className="flex items-start">
-                      <div className="ml-2 text-gray-600 text-base">
-                        <p className="text-gray-600 font-medium">
-                          generated suggestion
-                        </p>
-                        <p className="mt-1">
-                          {isSuggestionTyping ? displaySuggestion : suggestion}
-                          {isSuggestionTyping && (
-                            <span className="animate-pulse">|</span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={useSuggestion}
-                      disabled={isTyping || isSuggestionTyping}
-                      className="ml-4 px-2.5 py-0.5 h-[30px] text-sm font-medium rounded bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900/80 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0"
-                    >
-                      Use suggestion
-                    </button>
-                  </div>
-                </div>
-              )}
+              {/* The "Get Suggestion" trigger and its result panel are gone for
+                  now — the space mattered more than the button. getAISuggestion
+                  / useSuggestion and their state above are kept, unwired, for
+                  whatever surface this capability gets next. pb-6 on the wrapper
+                  keeps air under the add bar where the button used to sit. */}
             </div>
           )}
 

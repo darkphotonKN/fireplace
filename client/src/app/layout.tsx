@@ -1,14 +1,18 @@
 import type { Metadata } from 'next';
-import { Merriweather } from 'next/font/google';
+import { Lora } from 'next/font/google';
 import './globals.css';
 import LayoutWrapper from '@/components/LayoutWrapper';
 import LayoutContent from '@/components/LayoutContent';
 
-const merriweather = Merriweather({
-  weight: ['300', '400', '700', '900'],
+// Lora is a variable font, so there's no weight list: body text at 400 and
+// headings at 700 all come from the one file.
+const lora = Lora({
   subsets: ['latin'],
+  // Note rows and the add-bar placeholder are italic; without this next/font
+  // ships only the roman and the browser fakes a slant.
+  style: ['normal', 'italic'],
   display: 'swap',
-  variable: '--font-merriweather',
+  variable: '--font-lora',
 });
 
 export const metadata: Metadata = {
@@ -23,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={merriweather.variable} suppressHydrationWarning>
+    <html lang="en" className={lora.variable} suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -38,7 +42,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={merriweather.className}>
+      <body className={lora.className}>
         <LayoutWrapper>
           <LayoutContent>{children}</LayoutContent>
         </LayoutWrapper>

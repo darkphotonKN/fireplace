@@ -85,7 +85,7 @@
 /* basic text styles */
 body {
   color: rgb(46, 46, 46);
-  font-family: 'merriweather', georgia, serif;
+  font-family: var(--font-lora), georgia, serif;
   font-size: 14px;
 }
 
