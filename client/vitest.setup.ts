@@ -22,4 +22,7 @@ if (!window.matchMedia) {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  // Components remember UI state (e.g. collapsed groups) in localStorage;
+  // don't let one test's clicks leak into the next.
+  window.localStorage.clear();
 });

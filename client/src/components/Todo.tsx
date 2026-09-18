@@ -43,6 +43,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
+import {
+  collapsedCount,
+  findAddBarTarget,
+  groupChecklistItems,
+  resolveAddBarTarget,
+  visibleRows,
+} from '@/lib/nesting';
+import { loadCollapsedIds, saveCollapsedIds } from '@/lib/collapsedGroups';
 import { format } from 'date-fns';
 import {
   CalendarIcon,
@@ -58,6 +66,8 @@ import {
   Info,
   CheckSquare,
   FileText,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from 'lucide-react';
 import {
   Popover,
@@ -114,7 +124,7 @@ export default function Todo({
     toast({
       title: 'Tip: Tab to nest',
       description:
-        'Press Tab after typing to nest the new item under the one above. Shift+Tab to outdent.',
+        'Tab nests the add bar under the item above, so what you add goes in as its child. Shift+Tab brings it back to top level.',
       position: 'bottom-left',
     });
   };
@@ -139,11 +149,34 @@ export default function Todo({
   // Filter tab for All | Notes | Checklist (only used when enableTypeFilter).
   const [listTypeFilter, setListTypeFilter] = useState<ListTypeFilter>('all');
 
+  // Parent Items whose children are folded away (FS-0007 R5), remembered per
+  // plan and list on this device (R6). A parent not in the set is expanded.
+  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  // Mirrors collapsedIds so several changes in one event (e.g. collapse all)
+  // build on each other instead of on a stale render's set.
+  const collapsedIdsRef = useRef<ReadonlySet<string>>(collapsedIds);
+
+  // Loaded in an effect, not the initializer: there is no storage during the
+  // server render. The list shows "Loading tasks…" until its fetch lands, so
+  // nothing renders expanded first.
+  useEffect(() => {
+    if (!planId) return;
+    const loaded = loadCollapsedIds(planId, taskType);
+    collapsedIdsRef.current = loaded;
+    setCollapsedIds(loaded);
+  }, [planId, taskType]);
+
   // Type to use when creating the next item via the add form.
   const [newTodoType, setNewTodoType] = useState<'task' | 'note'>('task');
 
   const [newTodo, setNewTodo] = useState('');
+  // Parent the add bar is nested under (Tab), or null at top level. Never
+  // persisted, so every load starts at top level (FS-0007 R8.10).
+  const [addBarParentId, setAddBarParentId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const newTodoInputRef = useRef<HTMLInputElement>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -562,8 +595,14 @@ export default function Todo({
         newTodo,
         planId,
         taskType as 'daily' | 'longterm',
-        { type: newTodoType }
+        // addBarParent is only ever a real top-level task, never a note or
+        // a child, so this can't ask for a nest the server would refuse.
+        { type: newTodoType, parentId: addBarParent?.id }
       );
+      // A child landing in a collapsed parent would be invisible; open it so
+      // the arrival is seen, and remember that (R8.9). After the create, so a
+      // failure leaves the parent as it was.
+      if (addBarParent) setParentCollapsed(addBarParent.id, false);
       setTodos((prev) => [...prev, newItem]);
       setNewTodo('');
       // Add animation for the new todo
@@ -582,6 +621,10 @@ export default function Todo({
       console.error('Failed to add todo:', error);
     } finally {
       setIsSubmitting(false);
+      // Keep the cursor in the add bar so items can be entered back to back,
+      // including when the Add button (not Enter) was used, and so a failed
+      // add leaves the text ready to retry.
+      newTodoInputRef.current?.focus();
     }
   };
 
@@ -817,29 +860,140 @@ export default function Todo({
     return todos.filter((t) => (t.type ?? 'task') === listTypeFilter);
   }, [todos, enableTypeFilter, listTypeFilter, taskType]);
 
-  // Render order: top-level rows in their existing order, each followed by
-  // its children (also in existing order). Children whose parent isn't in
-  // the filtered set fall through as top-level (no visual indent).
-  const orderedRows = useMemo(() => {
-    if (!filteredTodos) return [];
-    const visibleIds = new Set(filteredTodos.map((t) => t.id));
-    const tops = filteredTodos.filter((t) => !t.parentId || !visibleIds.has(t.parentId));
-    const result: ChecklistItem[] = [];
-    for (const top of tops) {
-      result.push(top);
-      for (const t of filteredTodos) {
-        if (t.parentId === top.id) result.push(t);
+  // Top-level rows, each with its visible children. Children whose parent
+  // isn't in the filtered set fall through as top-level (no visual indent).
+  const rowGroups = useMemo(
+    () => groupChecklistItems(filteredTodos),
+    [filteredTodos]
+  );
+
+  // Render order: each top-level row followed by its children.
+  const orderedRows = useMemo(
+    () => rowGroups.flatMap((g) => [g.item, ...g.children]),
+    [rowGroups]
+  );
+
+  // The add bar's target while nested, re-checked on every render so it drops
+  // out once the parent is archived, converted, outdented or filtered out.
+  const addBarParent = useMemo(
+    () => resolveAddBarTarget(rowGroups, addBarParentId),
+    [rowGroups, addBarParentId]
+  );
+  // Short enough for the placeholder; the aria-label carries the full text.
+  const addBarParentLabel =
+    addBarParent && addBarParent.description.length > 32
+      ? `${addBarParent.description.slice(0, 31).trimEnd()}…`
+      : addBarParent?.description;
+  // The rail only reaches the add bar from the last group; a target higher
+  // up still receives the child, and the input names it instead.
+  const addBarRailParentId =
+    addBarParent && rowGroups[rowGroups.length - 1]?.item.id === addBarParent.id
+      ? addBarParent.id
+      : null;
+
+  // Forget an ineligible target rather than holding it, so it can't silently
+  // re-nest the bar when, say, the type filter is switched back.
+  useEffect(() => {
+    if (addBarParentId && !addBarParent) setAddBarParentId(null);
+  }, [addBarParentId, addBarParent]);
+
+  // Tab nests the add bar under the parent above; Shift+Tab brings it back.
+  // Both are swallowed even when nothing changes, so focus never leaves the
+  // input mid-entry (R8.2–R8.8).
+  const handleAddBarKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+    if (e.shiftKey) {
+      setAddBarParentId(null);
+    } else if (!addBarParent) {
+      const target = findAddBarTarget(rowGroups);
+      setAddBarParentId(target?.id ?? null);
+      // Joining a collapsed parent opens it, so what you type lands in view
+      // and the parent's own rail is there for the bar's to meet (R8.9).
+      if (target) setParentCollapsed(target.id, false);
+    }
+  };
+
+  // Each row's place on a guide rail: a parent with visible children starts
+  // one and its children continue it. Rows not in the map draw no rail.
+  // A childless parent also starts one while the add bar is joining it.
+  const guideRail = useMemo(() => {
+    const roles = new Map<string, 'parent' | 'child'>();
+    for (const { item, children } of rowGroups) {
+      if (children.length === 0 && item.id !== addBarRailParentId) continue;
+      roles.set(item.id, 'parent');
+      for (const child of children) roles.set(child.id, 'child');
+    }
+    return roles;
+  }, [rowGroups, addBarRailParentId]);
+
+  // What the list draws: orderedRows minus the children of collapsed parents.
+  const renderedRows = useMemo(
+    () => visibleRows(rowGroups, collapsedIds),
+    [rowGroups, collapsedIds]
+  );
+
+  // Visible children of each parent that has any. Only these parents get a
+  // chevron, so a stale collapsed id on a now-childless row shows nothing.
+  const childrenOf = useMemo(
+    () =>
+      new Map(
+        rowGroups
+          .filter((g) => g.children.length > 0)
+          .map((g) => [g.item.id, g.children])
+      ),
+    [rowGroups]
+  );
+
+  const isCollapsed = (id: string) =>
+    childrenOf.has(id) && collapsedIds.has(id);
+
+  // Collapse/expand all acts on the parents on screen only, so parents the
+  // type filter hides keep whatever state they were remembered with (R7.4).
+  const collapsibleIds = useMemo(() => [...childrenOf.keys()], [childrenOf]);
+  const anyCollapsed = collapsibleIds.some((id) => collapsedIds.has(id));
+
+  // Parents opened this session. Only their children play the reveal, so a
+  // plain page load doesn't animate every child row.
+  const revealedIds = useRef(new Set<string>());
+
+  // Collapse or expand several parents as one change, so "collapse all" is a
+  // single render and a single write rather than one per parent.
+  const setParentsCollapsed = (ids: readonly string[], collapsed: boolean) => {
+    const prev = collapsedIdsRef.current;
+    const next = new Set(prev);
+    for (const id of ids) {
+      if (collapsed) {
+        revealedIds.current.delete(id);
+        next.add(id);
+      } else {
+        revealedIds.current.add(id);
+        next.delete(id);
       }
     }
-    return result;
-  }, [filteredTodos]);
+    // One call only ever adds or only ever removes, so equal size means the
+    // set is unchanged.
+    if (next.size === prev.size) return;
+    collapsedIdsRef.current = next;
+    setCollapsedIds(next);
 
-  // Track which parent IDs are actually rendered so children of out-of-view
-  // parents drop their visual indent.
-  const renderedParents = useMemo(
-    () => new Set(orderedRows.filter((r) => !r.parentId).map((r) => r.id)),
-    [orderedRows]
-  );
+    // Remembered here, on the user's action, not in an effect on collapsedIds:
+    // that would also fire when stored state loads, before todos arrive, and
+    // prune every id. Live parents come from the unfiltered todos so a type
+    // filter never prunes the parents it hides (R7.4).
+    if (planId) {
+      const liveParentIds = new Set(
+        todos.flatMap((t) => (t.parentId ? [t.parentId] : []))
+      );
+      saveCollapsedIds(planId, taskType, next, liveParentIds);
+    }
+  };
+
+  const setParentCollapsed = (id: string, collapsed: boolean) =>
+    setParentsCollapsed([id], collapsed);
+
+  const toggleCollapsed = (id: string) =>
+    setParentCollapsed(id, !isCollapsed(id));
 
   // Indent a row under the nearest top-level row above it in render order.
   // We walk upward past any child rows so indenting row 3 still works after
@@ -861,6 +1015,8 @@ export default function Todo({
     // pre-flight: don't try to re-parent a row that has children
     const hasChildren = todos.some((t) => t.parentId === self.id);
     if (hasChildren) return;
+    // Joining a collapsed parent opens it, so the row doesn't vanish.
+    setParentCollapsed(above.id, false);
 
     const previousParentId = self.parentId ?? null;
     // Optimistic update
@@ -1095,6 +1251,22 @@ export default function Todo({
                   </button>
                 ))}
               </div>
+            )}
+            {/* One quiet toggle for every parent on screen (R7). */}
+            {collapsibleIds.length > 0 && (
+              <button
+                onClick={() =>
+                  setParentsCollapsed(collapsibleIds, !anyCollapsed)
+                }
+                className="flex items-center gap-1.5 text-sm text-foreground/50 transition-colors hover:text-primary"
+              >
+                {anyCollapsed ? (
+                  <ChevronsUpDown strokeWidth={1.75} className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronsDownUp strokeWidth={1.75} className="h-3.5 w-3.5" />
+                )}
+                {anyCollapsed ? 'Expand all' : 'Collapse all'}
+              </button>
             )}
             {!fixedTaskType && (
               <div className="flex items-center gap-3 text-base">
@@ -1336,8 +1508,12 @@ export default function Todo({
           ) : (
             // space-y-4 = 16px gap so the hover-menu has room above each row;
             // divide-y adds a subtle 1px line between rows for visual structure.
-            <ul className="space-y-4 divide-y divide-gray-200 dark:divide-gray-800/50 mt-4">
-              {orderedRows.map((todo, index) => (
+            // pl-8 reserves the chevron's gutter INSIDE the card: the button
+            // hangs 32px left of each row, which would otherwise spill past
+            // the card's own padding. The add form below carries the same
+            // padding so its icon stays in the checkbox column.
+            <ul className="space-y-4 divide-y divide-gray-200 dark:divide-gray-800/50 mt-4 pl-8">
+              {renderedRows.map((todo, index) => (
                 <li
                   key={todo.id}
                   tabIndex={0}
@@ -1346,14 +1522,75 @@ export default function Todo({
                   // line above it, mirroring the 16px gap below (space-y-4),
                   // so each row's content is centred between consecutive
                   // divider lines. First row has no line above → no top padding.
-                  className={`relative flex items-center justify-between group transition-all duration-200 outline-none focus:ring-1 focus:ring-orange-500/30 rounded pt-4 first:pt-0 ${
-                    todo.parentId && renderedParents.has(todo.parentId)
-                      ? 'ml-8 border-l-2 border-white/10 pl-3'
+                  // focus-visible, not focus: rows are tabIndex=0 for Tab
+                  // indent/outdent, so keyboard focus must show — but a mouse
+                  // click on the row, its chevron or a hover action should not
+                  // leave a ring drawn around the whole row.
+                  className={`relative flex items-center justify-between group transition-all duration-200 outline-none focus-visible:ring-1 focus-visible:ring-primary/30 rounded pt-4 first:pt-0 ${
+                    guideRail.get(todo.id) === 'child' ? 'ml-6' : ''
+                  } ${
+                    todo.parentId && revealedIds.current.has(todo.parentId)
+                      ? 'animate-groupReveal'
                       : ''
                   } ${
                     newTodoAnimations[todo.id] ? 'animate-fadeIn' : ''
                   } ${taskType === 'archived' ? 'opacity-60' : ''}`}
                 >
+                  {/* Guide rail: a 1px hairline in the add bar's resting token,
+                      on the checkbox column's centre (8px). The parent's piece
+                      starts 4px beneath its checkbox, which is centred in the
+                      content below pt-4 (no padding on the first row). Children
+                      sit at ml-6 so their checkbox lines up with the parent's
+                      text; each child's piece reaches up 17px through the
+                      space-y-4 gap and its divider so the rail reads as one line. */}
+                  {guideRail.has(todo.id) && !isCollapsed(todo.id) && (
+                    <span
+                      aria-hidden
+                      data-guide-rail={guideRail.get(todo.id)}
+                      className={cn(
+                        'pointer-events-none absolute bottom-0 w-px bg-foreground/15',
+                        guideRail.get(todo.id) === 'parent'
+                          ? 'left-2 top-[calc(50%+20px)] group-first:top-[calc(50%+12px)]'
+                          : '-left-4 -top-[17px]'
+                      )}
+                    />
+                  )}
+                  {/* Collapse chevron: in the gutter left of the checkbox
+                      column so the text never moves, a 32px hit area centred
+                      on the row content (below pt-4; none on the first row).
+                      Keys stop here so the row's Tab handler can't swallow Tab
+                      and trap focus, and a click never reaches the done toggle. */}
+                  {childrenOf.has(todo.id) && (
+                    <button
+                      type="button"
+                      aria-expanded={!isCollapsed(todo.id)}
+                      aria-label={`${
+                        isCollapsed(todo.id) ? 'Expand' : 'Collapse'
+                      } ${todo.description}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCollapsed(todo.id);
+                      }}
+                      onKeyDown={(e) => e.stopPropagation()}
+                      className={cn(
+                        'absolute -left-8 top-[calc(50%+8px)] group-first:top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-foreground/40 outline-none transition-[color,background-color,opacity] duration-200 hover:text-primary focus-visible:bg-primary/10 focus-visible:text-primary',
+                        // Hover devices: hidden until the row is hovered or
+                        // focused. Touch: always there, quietly. Collapsed:
+                        // always fully visible so the fold can be found.
+                        isCollapsed(todo.id)
+                          ? 'opacity-100'
+                          : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-40'
+                      )}
+                    >
+                      <ChevronRight
+                        aria-hidden
+                        className={cn(
+                          'h-4 w-4 transition-transform duration-200',
+                          !isCollapsed(todo.id) && 'rotate-90'
+                        )}
+                      />
+                    </button>
+                  )}
                   {editingId === todo.id ? (
                     <div className="flex items-center space-x-3 flex-1">
                       <div className="flex flex-1 space-x-2">
@@ -1464,19 +1701,28 @@ export default function Todo({
                             />
                           )}
                           <div className="flex flex-col flex-1">
-                            <label
-                              className={`text-base cursor-pointer flex-1 ${
-                                todo.done ? 'line-through opacity-70' : ''
-                              } ${
-                                todo.type === 'note'
-                                  ? 'italic text-gray-400 dark:text-gray-500'
-                                  : ''
-                              } ${
-                                newTodoAnimations[todo.id] ? 'relative' : ''
-                              }`}
-                            >
-                              {todo.description}
-                            </label>
+                            {/* The count sits right after the text, so the
+                                label no longer stretches (flex-1). */}
+                            <div className="flex items-baseline gap-2">
+                              <label
+                                className={`text-base cursor-pointer ${
+                                  todo.done ? 'line-through opacity-70' : ''
+                                } ${
+                                  todo.type === 'note'
+                                    ? 'italic text-gray-400 dark:text-gray-500'
+                                    : ''
+                                } ${
+                                  newTodoAnimations[todo.id] ? 'relative' : ''
+                                }`}
+                              >
+                                {todo.description}
+                              </label>
+                              {isCollapsed(todo.id) && (
+                                <span className="shrink-0 text-sm tabular-nums text-foreground/40 animate-in fade-in duration-200">
+                                  {collapsedCount(childrenOf.get(todo.id)!)}
+                                </span>
+                              )}
+                            </div>
                             {todo.scheduledTime && (
                               <div
                                 className={`mt-1 text-sm flex items-center ${
@@ -1653,9 +1899,36 @@ export default function Todo({
               one above. Hidden in archived view and on the daily side
               when dailyAIOnly is on (only AI suggestions populate dailies). */}
           {taskType !== 'archived' && !(dailyAIOnly && taskType === 'daily') && (
-            <div className="space-y-3 pt-2">
-              <form onSubmit={addTodo} className="flex items-center space-x-2">
-                {/* Type toggle for the next item to be created */}
+            <div className="space-y-3 pt-3 pl-8">
+              {/* One hairline runs under the whole row (icon, text, button) so
+                  everything sits on the same line with py-3 of air above it.
+                  On focus an ember underline draws in from the left over it. */}
+              <form
+                onSubmit={addTodo}
+                className={cn(
+                  'group/add relative flex items-center border-b border-foreground/15 py-3 transition-[margin,border-color] duration-300 focus-within:border-transparent',
+                  addBarParent && 'ml-6'
+                )}
+              >
+                {/* Nested under the last group, the bar joins its guide rail:
+                    at ml-6, -left-4 is the checkbox column (8px). The piece
+                    reaches 28px up (space-y-4 + pt-3) to the list's bottom
+                    edge and 28px down (py-3 + half of h-8) to the icon's centre. */}
+                {addBarRailParentId && (
+                  <span
+                    aria-hidden
+                    data-guide-rail="add-bar"
+                    className="pointer-events-none absolute -left-4 -top-7 h-14 w-px bg-foreground/15 animate-in fade-in duration-300"
+                  />
+                )}
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 -bottom-px h-px origin-left scale-x-0 bg-gradient-to-r from-primary via-primary/60 to-primary/0 shadow-[0_0_10px_rgba(247,111,83,0.45)] transition-transform duration-500 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] group-focus-within/add:scale-x-100"
+                />
+
+                {/* Type toggle for the next item to be created. -ml-2 on a w-8
+                    hit area centres the glyph over the list's checkbox column,
+                    so the typed text starts where row text starts (24px). */}
                 <button
                   type="button"
                   onClick={() =>
@@ -1666,33 +1939,69 @@ export default function Todo({
                       ? 'Creating a task — click to switch to note'
                       : 'Creating a note — click to switch to task'
                   }
-                  className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  style={{ color: 'rgb(247, 111, 83)' }}
+                  aria-label={
+                    newTodoType === 'task'
+                      ? 'Switch to adding a note'
+                      : 'Switch to adding a task'
+                  }
+                  className="-ml-2 grid h-8 w-8 shrink-0 place-items-center rounded-full text-foreground/40 transition-colors duration-300 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 group-focus-within/add:text-primary"
                 >
-                  {newTodoType === 'task' ? (
-                    <CheckSquare className="w-4 h-4" />
-                  ) : (
-                    <FileText className="w-4 h-4" />
-                  )}
+                  {/* Both glyphs share one grid cell and cross-fade on swap. */}
+                  <CheckSquare
+                    strokeWidth={1.75}
+                    className={cn(
+                      'col-start-1 row-start-1 h-[18px] w-[18px] transition-all duration-300',
+                      newTodoType === 'task'
+                        ? 'rotate-0 scale-100 opacity-100'
+                        : '-rotate-90 scale-75 opacity-0'
+                    )}
+                  />
+                  <FileText
+                    strokeWidth={1.75}
+                    className={cn(
+                      'col-start-1 row-start-1 h-[18px] w-[18px] transition-all duration-300',
+                      newTodoType === 'note'
+                        ? 'rotate-0 scale-100 opacity-100'
+                        : 'rotate-90 scale-75 opacity-0'
+                    )}
+                  />
                 </button>
+                {/* readOnly, not disabled, while saving: a disabled input
+                    drops focus, which would break rapid back-to-back entry.
+                    addTodo already ignores submits while one is in flight. */}
                 <input
+                  ref={newTodoInputRef}
                   type="text"
                   value={newTodo}
                   onChange={(e) => setNewTodo(e.target.value)}
                   onFocus={maybeShowTabHint}
+                  onKeyDown={handleAddBarKeyDown}
                   placeholder={
-                    newTodoType === 'note' ? 'Add a note...' : 'Add a new task...'
+                    addBarParent
+                      ? `${newTodoType === 'note' ? 'Jot a note' : 'Add'} under “${addBarParentLabel}”…`
+                      : newTodoType === 'note'
+                      ? 'Jot down a note…'
+                      : 'Add something to do…'
                   }
-                  className="flex-1 px-0 py-0 text-base bg-transparent border-b border-gray-300 dark:border-gray-600 focus:border-orange-500 dark:focus:border-orange-500 focus:outline-none"
-                  disabled={isSubmitting || isTyping}
+                  aria-label={`${newTodoType === 'note' ? 'New note' : 'New task'}${
+                    addBarParent ? ` under “${addBarParent.description}”` : ''
+                  }`}
+                  className="h-8 min-w-0 flex-1 bg-transparent text-base leading-8 text-foreground caret-primary placeholder:italic placeholder:text-foreground/35 focus:outline-none read-only:opacity-60"
+                  readOnly={isSubmitting || isTyping}
                 />
+                {/* Quiet until there's something to add, then it warms up. */}
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-md bg-primary text-white font-semibold shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none"
+                  className={cn(
+                    'ml-3 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-60',
+                    newTodo.trim()
+                      ? 'bg-primary text-primary-foreground shadow-[0_2px_14px_-3px_rgba(247,111,83,0.6)] hover:bg-primary/90'
+                      : 'text-foreground/40 hover:bg-primary/10 hover:text-primary'
+                  )}
                   disabled={isSubmitting || isTyping}
                 >
-                  <Plus className="w-4 h-4" />
-                  {isSubmitting ? 'Adding...' : 'Add'}
+                  <Plus strokeWidth={2.25} className="h-3.5 w-3.5" />
+                  {isSubmitting ? 'Adding…' : 'Add'}
                 </button>
               </form>
 
