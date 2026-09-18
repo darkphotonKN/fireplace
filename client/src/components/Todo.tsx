@@ -902,6 +902,11 @@ export default function Todo({
       ? addBarParent.id
       : null;
 
+  // The add bar is absent in the archived view and on the daily side when
+  // dailyAIOnly is on. Named because the list area's scroller (FS-0008 R13)
+  // only exists to serve the pinned bar, so both keys off the same answer.
+  const showAddBar = taskType !== 'archived' && !(dailyAIOnly && taskType === 'daily');
+
   // Forget an ineligible target rather than holding it, so it can't silently
   // re-nest the bar when, say, the type filter is switched back.
   useEffect(() => {
@@ -1526,6 +1531,23 @@ export default function Todo({
       {!showSettings && !showArchived && (
         <div className="space-y-4">
 
+          {/* List area (FS-0008 R13). The card has no height of its own, so
+              sticky would have nothing to stick inside — this box supplies
+              the bounded scrollport the rows scroll in and the add bar pins
+              to. 70vh keeps the whole card on screen while leaving a long
+              page room to run; the bound only bites once the content exceeds
+              it, so short lists look and behave exactly as before. Applied
+              only when the add bar is there, so a list with no bar (archived,
+              dailyAIOnly) is never boxed in for nothing. space-y-4 is the gap
+              the list and the add bar used to get from the wrapper above,
+              which the add bar's guide rail measures its -top-7 against. */}
+          <div
+            className={cn(
+              'space-y-4',
+              showAddBar && 'max-h-[70vh] overflow-y-auto'
+            )}
+          >
+
           {orderedRows.length === 0 ? (
             <div className="py-4 text-center">
               <p className="text-gray-500 text-base">
@@ -1931,49 +1953,26 @@ export default function Todo({
             </ul>
           )}
 
-          {/* Page controls, bottom-right below the list and above the add
-              bar's row of air (R5). Quiet by default, warming to primary on
-              hover and focus like the header's collapse-all toggle. Nothing at
-              all while everything fits on one page (R6). pr-1 keeps the last
-              chevron off the card's edge; pl-8 matches the list's gutter so
-              the row starts in the same column. */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-end gap-2 pl-8 pr-1 text-sm text-foreground/50">
-              <button
-                type="button"
-                onClick={() => setPage(currentPage - 1)}
-                disabled={currentPage === 1}
-                aria-label="Previous page"
-                className={pageButtonClass}
-              >
-                <ChevronLeft strokeWidth={1.75} className="h-4 w-4" />
-              </button>
-              {/* The visible count is decoration; the live region beside it
-                  carries the announcement so it reads as a sentence (R12). */}
-              <span data-testid="page-counter" aria-hidden="true">
-                {currentPage} of {totalPages}
-              </span>
-              <span role="status" aria-live="polite" className="sr-only">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => setPage(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                aria-label="Next page"
-                className={pageButtonClass}
-              >
-                <ChevronRight strokeWidth={1.75} className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-
           {/* Add form — moved to the bottom so adding a row reads as
               "append to list", and Tab on the new row indents under the
-              one above. Hidden in archived view and on the daily side
-              when dailyAIOnly is on (only AI suggestions populate dailies). */}
-          {taskType !== 'archived' && !(dailyAIOnly && taskType === 'daily') && (
-            <div className="space-y-3 pt-3 pb-6 pl-8">
+              one above.
+              Pinned to the bottom of the list area (FS-0008 R13), still the
+              last thing in it so an add reads as appending and Tab-to-nest
+              keeps pointing at the item above. bg-card because the rows pass
+              underneath while pinned; z-20 clears the rows' own z-10 hover
+              menus. It occupies real flow space at the end of the list, so
+              scrolling to the bottom always brings the last row fully clear
+              of it (R14) — pt-3 and pb-6 keep the air they always had. */}
+          {showAddBar && (
+            <div className="sticky bottom-0 z-20 bg-card pt-3 pb-6 pl-8">
+              {/* Rows dissolve into the strip instead of being sliced by a
+                  hard edge at its top. Sits in the gap above, outside the
+                  wrapper's own box, so it never shifts the bar. */}
+              <span
+                aria-hidden
+                data-add-bar-fade
+                className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-card to-transparent"
+              />
               {/* One hairline runs under the whole row (icon, text, button) so
                   everything sits on the same line with py-3 of air above it.
                   On focus an ember underline draws in from the left over it. */}
@@ -2084,6 +2083,48 @@ export default function Todo({
                   / useSuggestion and their state above are kept, unwired, for
                   whatever surface this capability gets next. pb-6 on the wrapper
                   keeps air under the add bar where the button used to sit. */}
+            </div>
+          )}
+
+          {/* end list area — its children keep the outer indent so the list
+              rendering above stays diffable. */}
+          </div>
+
+          {/* Page controls sit OUTSIDE the scrolling list area, below the
+              pinned add bar, so they stay in view however far the list is
+              scrolled (R5) — inside it they would scroll away with the rows.
+              Quiet by default, warming to primary on hover and focus like the
+              header's collapse-all toggle, and absent entirely while
+              everything fits on one page (R6). pr-1 keeps the last chevron off
+              the card's edge; pl-8 matches the list's gutter. */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-end gap-2 pl-8 pr-1 pb-2 text-sm text-foreground/50">
+              <button
+                type="button"
+                onClick={() => setPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                aria-label="Previous page"
+                className={pageButtonClass}
+              >
+                <ChevronLeft strokeWidth={1.75} className="h-4 w-4" />
+              </button>
+              {/* The visible count is decoration; the live region beside it
+                  carries the announcement so it reads as a sentence (R12). */}
+              <span data-testid="page-counter" aria-hidden="true">
+                {currentPage} of {totalPages}
+              </span>
+              <span role="status" aria-live="polite" className="sr-only">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                aria-label="Next page"
+                className={pageButtonClass}
+              >
+                <ChevronRight strokeWidth={1.75} className="h-4 w-4" />
+              </button>
             </div>
           )}
 
