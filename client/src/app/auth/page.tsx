@@ -135,7 +135,7 @@ export default function AuthPage() {
         </p>
 
         <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="w-full grid grid-cols-2">
+          <TabsList variant="underline" className="w-full grid grid-cols-2">
             <TabsTrigger value="signin">Sign In</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>
           </TabsList>
@@ -180,7 +180,7 @@ export default function AuthPage() {
 
               <Button
                 type="submit"
-                className="w-full bg-[rgb(247,111,83)] hover:bg-[rgb(237,101,73)] text-white"
+                className="h-11 w-full rounded-full bg-primary font-semibold text-primary-foreground shadow-[0_2px_14px_-3px_rgba(247,111,83,0.6)] transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary/40"
                 disabled={loading}
               >
                 {loading ? 'Signing in...' : 'Sign In'}
@@ -254,7 +254,7 @@ export default function AuthPage() {
 
               <Button
                 type="submit"
-                className="w-full bg-[rgb(247,111,83)] hover:bg-[rgb(237,101,73)] text-white"
+                className="h-11 w-full rounded-full bg-primary font-semibold text-primary-foreground shadow-[0_2px_14px_-3px_rgba(247,111,83,0.6)] transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary/40"
                 disabled={loading}
               >
                 {loading ? 'Creating account...' : 'Sign Up'}
