@@ -116,9 +116,11 @@ describe('ItemActions', () => {
   it('should not save a picker that was opened and left empty', () => {
     const { onSetDates } = open();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Set dates' }));
-    expect(
-      (screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled
-    ).toBe(true);
+    const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    // And it stays a dead end: nothing is written by pressing it anyway.
+    fireEvent.click(save);
+    expect(onSetDates).not.toHaveBeenCalled();
   });
 
   it.each([
