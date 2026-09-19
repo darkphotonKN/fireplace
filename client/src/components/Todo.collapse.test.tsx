@@ -165,7 +165,12 @@ describe('Todo collapse and expand', () => {
     const expanded = screen.getByRole('button', { name: 'Collapse item A' });
     expect(expanded.className).toMatch(/(^|\s)opacity-0(\s|$)/);
     expect(expanded.className).toContain('group-hover:opacity-100');
-    expect(expanded.className).toContain('group-focus-within:opacity-100');
+    // A keyboard on the row, or on the chevron itself — but NOT focus-within,
+    // which left the chevron on screen after a mouse click had focused it and
+    // the pointer had moved on.
+    expect(expanded.className).toContain('group-focus-visible:opacity-100');
+    expect(expanded.className).toContain('focus-visible:opacity-100');
+    expect(expanded.className).not.toMatch(/focus-within/);
     expect(expanded.className).toContain('[@media(hover:none)]:opacity-40');
 
     fireEvent.click(expanded);

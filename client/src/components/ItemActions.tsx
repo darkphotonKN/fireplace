@@ -192,11 +192,14 @@ export default function ItemActions({
         className={cn(
           'grid h-6 w-6 shrink-0 place-items-center rounded-full text-foreground/35 outline-none transition-[color,background-color,opacity] duration-200',
           'hover:bg-foreground/[0.06] hover:text-primary focus-visible:text-primary',
-          // Quiet until wanted: shown on hover or focus within the row or
-          // card, always there once open, and always there on touch.
+          // Quiet until wanted: on hover, while open, or for a keyboard that
+          // has reached the row or the trigger itself. Deliberately NOT
+          // focus-within: closing the panel hands focus back to the trigger,
+          // which is right for the keyboard but would otherwise leave the
+          // dots sitting there after a mouse user had finished with them.
           open
             ? 'opacity-100 text-primary'
-            : 'opacity-0 group-hover/row:opacity-100 group-hover/card:opacity-100 group-focus-within/row:opacity-100 group-focus-within/card:opacity-100 [@media(hover:none)]:opacity-60',
+            : 'opacity-0 group-hover/row:opacity-100 group-hover/card:opacity-100 group-focus-visible/row:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-60',
           triggerClassName
         )}
       >

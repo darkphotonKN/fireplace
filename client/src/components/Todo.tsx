@@ -1773,7 +1773,7 @@ export default function Todo({
                         // always fully visible so the fold can be found.
                         isCollapsed(todo.id)
                           ? 'opacity-100'
-                          : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-40'
+                          : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-40'
                       )}
                     >
                       <ChevronRight
@@ -1884,7 +1884,7 @@ export default function Todo({
                                     onClick={() => deleteTodo(todo.id)}
                                     aria-label={`Delete ${todo.description} permanently`}
                                     title="Delete permanently"
-                                    className="grid h-6 w-6 place-items-center rounded-full text-foreground/35 opacity-0 outline-none transition-[color,background-color,opacity] duration-200 hover:bg-foreground/[0.06] hover:text-primary focus-visible:text-primary group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-60"
+                                    className="grid h-6 w-6 place-items-center rounded-full text-foreground/35 opacity-0 outline-none transition-[color,background-color,opacity] duration-200 hover:bg-foreground/[0.06] hover:text-primary focus-visible:text-primary group-hover/row:opacity-100 group-focus-visible/row:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-60"
                                   >
                                     <Trash2 aria-hidden strokeWidth={1.75} className="h-4 w-4" />
                                   </button>

@@ -45,6 +45,18 @@ describe('ItemActions', () => {
   });
   afterEach(() => vi.useRealTimers());
 
+  it('should not be left on screen by the focus it is handed back on close', () => {
+    // Closing hands focus back to the trigger, which is right for a keyboard
+    // and wrong to show for a mouse — so the reveal keys off focus-VISIBLE,
+    // never focus-within. jsdom computes no styles, so this pins the rule
+    // rather than the pixels; the behaviour itself was checked in a browser.
+    const h = handlers();
+    render(<ItemActions item={item()} {...h} />);
+    const trigger = screen.getByRole('button', { name: 'Actions for Learn Go' });
+    expect(trigger.className).toMatch(/focus-visible:opacity-100/);
+    expect(trigger.className).not.toMatch(/focus-within/);
+  });
+
   it('should keep the panel shut until it is asked for', () => {
     const h = handlers();
     render(<ItemActions item={item()} {...h} />);
