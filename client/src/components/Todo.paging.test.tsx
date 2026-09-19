@@ -74,6 +74,9 @@ async function renderList(firstItem = 'item t1') {
 describe('Todo paging', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Rows are what this file covers, and blocks are the default view,
+    // so say which one these expectations are about.
+    window.localStorage.setItem('checklistView', 'list');
     fetchChecklist.mockImplementation(async () => topLevel(25));
     archiveChecklistItem.mockImplementation(async () => ({}));
   });

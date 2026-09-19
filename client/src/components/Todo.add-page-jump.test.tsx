@@ -88,6 +88,9 @@ describe('Todo add bar over a paged list (FS-0008 R15–R18)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    // Rows are what this file covers, and blocks are the default view,
+    // so say which one these expectations are about.
+    window.localStorage.setItem('checklistView', 'list');
   });
 
   it('should nest under the last eligible task of the page being looked at', async () => {

@@ -50,7 +50,8 @@ import {
   resolveAddBarTarget,
   visibleRows,
 } from '@/lib/nesting';
-import { clampPage, pageCount, pageOfItem, pageSlice } from '@/lib/paging';
+import { clampPage, pageCount, pageOfItem, pageSlice, PAGE_SIZE } from '@/lib/paging';
+import ChecklistGrid from '@/components/ChecklistGrid';
 import { loadCollapsedIds, saveCollapsedIds } from '@/lib/collapsedGroups';
 import { format } from 'date-fns';
 import {
@@ -70,6 +71,8 @@ import {
   FileText,
   ChevronsDownUp,
   ChevronsUpDown,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import {
   Popover,
@@ -94,6 +97,15 @@ interface VideoSuggestion {
   type: string;
   description: string;
 }
+
+// Blocks are taller than rows, so a page of them is shorter. Six fills two
+// columns three deep (three columns two deep on a wide screen) without the
+// card growing past the window the list already holds itself to.
+const GRID_PAGE_SIZE = 6;
+
+// Where the list / blocks choice is remembered, per device rather than per
+// plan: it says how you like to read a plan, not something about one plan.
+const VIEW_KEY = 'checklistView';
 
 // Previous / next share their quiet register with the header's collapse-all
 // toggle (FS-0008 R5); a disabled one only dims, since it can't be hovered.
@@ -159,6 +171,29 @@ export default function Todo({
   // Which page of top-level items the list is showing (FS-0008 R3). Never
   // stored: a fresh mount starts on page 1 (R9), unlike collapse state.
   const [page, setPage] = useState(1);
+  // Whether the items read as a list of rows or as blocks of progress. Blocks
+  // are the default: a parent with its steps inside it is what a plan mostly
+  // is, and a card says how far along each one is without being opened.
+  // Loaded in an effect, not the initializer — there is no storage during the
+  // server render — so the first paint is always the default.
+  const [view, setView] = useState<'list' | 'grid'>('grid');
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(VIEW_KEY);
+      if (saved === 'grid' || saved === 'list') setView(saved);
+    } catch {
+      // Storage blocked; the toggle still works, it just isn't remembered.
+    }
+  }, []);
+  const chooseView = (next: 'list' | 'grid') => {
+    setView(next);
+    try {
+      window.localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // As above: not remembered this time.
+    }
+  };
+
   // An item just created, still to be caught up with: the view follows it to
   // whatever page it landed on (R16, R17), then this clears.
   const [pendingJumpId, setPendingJumpId] = useState<string | null>(null);
@@ -551,8 +586,9 @@ export default function Todo({
   };
 
   // Update todo description
-  const updateTodoDescription = async (id: string) => {
-    if (editText.trim() === '') return;
+  // Defaults to the list's edit buffer; the grid keeps its own and passes it.
+  const updateTodoDescription = async (id: string, text: string = editText) => {
+    if (text.trim() === '') return;
 
     // Find the original todo
     const originalTodo = todos?.find((todo) => todo.id === id);
@@ -563,7 +599,7 @@ export default function Todo({
     // Optimistic update
     setIsUpdating(true);
 
-    const updatedText = editText.trim();
+    const updatedText = text.trim();
 
     setTodos(
       todos?.map((todo) =>
@@ -576,7 +612,7 @@ export default function Todo({
       const response = await updateChecklistItem(
         id,
         {
-          description: editText.trim(),
+          description: updatedText,
         },
         planId,
         taskType as 'daily' | 'longterm'
@@ -897,11 +933,19 @@ export default function Todo({
   // one (R10) even before the effect below tidies the state.
   // Derived above the add bar, not below the rail, because the bar now reads
   // the current page: Tab targets what is on screen (R15).
-  const totalPages = pageCount(rowGroups.length);
-  const currentPage = clampPage(page, rowGroups.length);
+  //
+  // Blocks only make sense where nesting does, so the long-term list is the
+  // only place the toggle is offered; daily and archived stay rows whatever
+  // is remembered. A block is taller than a row, hence its own page size.
+  const canUseGrid = taskType === 'longterm' && !showArchived && !showSettings;
+  const isGrid = canUseGrid && view === 'grid';
+  const pageSize = isGrid ? GRID_PAGE_SIZE : PAGE_SIZE;
+
+  const totalPages = pageCount(rowGroups.length, pageSize);
+  const currentPage = clampPage(page, rowGroups.length, pageSize);
   const pagedGroups = useMemo(
-    () => pageSlice(rowGroups, currentPage),
-    [rowGroups, currentPage]
+    () => pageSlice(rowGroups, currentPage, pageSize),
+    [rowGroups, currentPage, pageSize]
   );
 
   // Keep the state honest once clamped, or a page the list has grown back into
@@ -915,7 +959,7 @@ export default function Todo({
   // fixedTaskType pins it, only the filter can move.
   useEffect(() => {
     setPage(1);
-  }, [taskType, listTypeFilter]);
+  }, [taskType, listTypeFilter, isGrid]);
 
   // A row lands where the list puts it, which is rarely the page being looked
   // at, so the view goes to meet it and the arrival is seen (R16, R17). Read
@@ -924,10 +968,10 @@ export default function Todo({
   // current filter hides has no page to go to, and nothing moves.
   useEffect(() => {
     if (!pendingJumpId) return;
-    const landed = pageOfItem(rowGroups, pendingJumpId);
+    const landed = pageOfItem(rowGroups, pendingJumpId, pageSize);
     if (landed) setPage(landed);
     setPendingJumpId(null);
-  }, [pendingJumpId, rowGroups]);
+  }, [pendingJumpId, rowGroups, pageSize]);
 
   // The add bar's target while nested, re-checked on every render so it drops
   // out once the parent is archived, converted, outdented or filtered out.
@@ -1069,6 +1113,32 @@ export default function Todo({
 
   const toggleCollapsed = (id: string) =>
     setParentCollapsed(id, !isCollapsed(id));
+
+  // A block's own composer. The gesture already says which parent, so unlike
+  // the add bar there is no Tab to interpret and no page to jump to: the step
+  // lands in the card it was typed into, which is on screen by definition.
+  const addChildTodo = async (parentId: string, text: string) => {
+    try {
+      const created = await createChecklistItem(
+        text,
+        planId,
+        taskType as 'daily' | 'longterm',
+        { type: 'task', parentId }
+      );
+      setTodos((prev) => [...prev, created]);
+      // A first step turns a childless block into one that folds, so make
+      // sure it isn't born folded on a stale collapsed id.
+      setParentCollapsed(parentId, false);
+      setNewTodoAnimations((prev) => ({ ...prev, [created.id]: true }));
+      setTimeout(
+        () => setNewTodoAnimations((prev) => ({ ...prev, [created.id]: false })),
+        1000
+      );
+    } catch (error) {
+      console.error('Failed to add step:', error);
+      setError('Failed to add step. Please try again.');
+    }
+  };
 
   // Indent a row under the nearest top-level row above it in render order.
   // We walk upward past any child rows so indenting row 3 still works after
@@ -1331,6 +1401,36 @@ export default function Todo({
                     aria-pressed={listTypeFilter === value}
                   >
                     {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Rows or blocks. Two glyphs in one pill rather than a single
+                switch, so which reading you are in is visible without
+                remembering what the icon means. */}
+            {canUseGrid && (
+              <div className="flex items-center gap-0.5 rounded-full border border-foreground/10 p-0.5">
+                {(
+                  [
+                    ['list', List, 'List view'],
+                    ['grid', LayoutGrid, 'Card view'],
+                  ] as const
+                ).map(([value, Icon, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => chooseView(value)}
+                    aria-pressed={view === value}
+                    aria-label={label}
+                    title={label}
+                    className={cn(
+                      'grid h-6 w-6 place-items-center rounded-full outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-primary/40',
+                      view === value
+                        ? 'bg-primary/15 text-primary'
+                        : 'text-foreground/40 hover:text-primary'
+                    )}
+                  >
+                    <Icon strokeWidth={1.75} className="h-3.5 w-3.5" />
                   </button>
                 ))}
               </div>
@@ -1618,6 +1718,20 @@ export default function Todo({
                   ? 'No items yet. Add one below!'
                   : 'No archived items found.'}
               </p>
+            </div>
+          ) : isGrid ? (
+            // Same groups, same page, same collapse state — only the drawing
+            // differs. No pl-8 gutter: a card carries its own chevron inside.
+            <div className="mt-4">
+              <ChecklistGrid
+                groups={pagedGroups}
+                collapsedIds={collapsedIds}
+                onToggleCollapsed={toggleCollapsed}
+                onToggleDone={toggleTodo}
+                onRename={updateTodoDescription}
+                onDelete={deleteTodo}
+                onAddChild={addChildTodo}
+              />
             </div>
           ) : (
             // space-y-4 = 16px gap so the hover-menu has room above each row;

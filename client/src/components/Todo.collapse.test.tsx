@@ -76,6 +76,9 @@ async function renderList() {
 describe('Todo collapse and expand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Rows are what this file covers, and blocks are the default view,
+    // so say which one these expectations are about.
+    window.localStorage.setItem('checklistView', 'list');
     fetchChecklist.mockImplementation(async () => ITEMS);
   });
 
@@ -212,6 +215,9 @@ describe('Todo collapse and expand', () => {
 describe('Todo remembers collapsed groups (FS-0007 R6)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Rows are what this file covers, and blocks are the default view,
+    // so say which one these expectations are about.
+    window.localStorage.setItem('checklistView', 'list');
     fetchChecklist.mockImplementation(async () => ITEMS);
   });
 
@@ -302,6 +308,9 @@ describe('Todo collapse and expand all (FS-0007 R7)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Rows are what this file covers, and blocks are the default view,
+    // so say which one these expectations are about.
+    window.localStorage.setItem('checklistView', 'list');
     fetchChecklist.mockImplementation(async () => PARENTS);
   });
 

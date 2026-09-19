@@ -78,6 +78,9 @@ describe('Todo collapse all across pages (FS-0008 R23–R24)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    // Rows are what this file covers, and blocks are the default view,
+    // so say which one these expectations are about.
+    window.localStorage.setItem('checklistView', 'list');
   });
 
   it('should label the toggle from the current page, not the whole list', async () => {

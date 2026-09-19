@@ -87,6 +87,9 @@ describe('Todo add bar Tab to nest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    // Rows are what this file covers, and blocks are the default view,
+    // so say which one these expectations are about.
+    window.localStorage.setItem('checklistView', 'list');
   });
 
   it('should nest under the trailing top-level task on Tab, keeping focus and text, and extend its rail', async () => {
@@ -269,6 +272,9 @@ describe('Todo add bar nesting into a collapsed parent (FS-0007 R8.9)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    // Rows are what this file covers, and blocks are the default view,
+    // so say which one these expectations are about.
+    window.localStorage.setItem('checklistView', 'list');
   });
 
   it('should open a collapsed target when the add bar nests under it', async () => {

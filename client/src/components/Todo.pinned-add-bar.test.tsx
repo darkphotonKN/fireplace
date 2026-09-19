@@ -75,6 +75,9 @@ describe('Todo pinned add bar (FS-0008 R13–R14)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    // Rows are what this file covers, and blocks are the default view,
+    // so say which one these expectations are about.
+    window.localStorage.setItem('checklistView', 'list');
   });
 
   it('should pin the add bar to the bottom of the list area', async () => {
