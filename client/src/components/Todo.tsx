@@ -1017,9 +1017,15 @@ export default function Todo({
   const isCollapsed = (id: string) =>
     childrenOf.has(id) && collapsedIds.has(id);
 
-  // Collapse/expand all acts on the parents on screen only, so parents the
-  // type filter hides keep whatever state they were remembered with (R7.4).
-  const collapsibleIds = useMemo(() => [...childrenOf.keys()], [childrenOf]);
+  // Collapse/expand all acts on the parents on screen only — this page's,
+  // after the type filter — so parents on other pages, and parents the filter
+  // hides, keep whatever state they were remembered with (FS-0007 R7.4,
+  // FS-0008 R23). The label follows from the same set (R24).
+  const collapsibleIds = useMemo(
+    () =>
+      pagedGroups.filter((g) => g.children.length > 0).map((g) => g.item.id),
+    [pagedGroups]
+  );
   const anyCollapsed = collapsibleIds.some((id) => collapsedIds.has(id));
 
   // Parents opened this session. Only their children play the reveal, so a

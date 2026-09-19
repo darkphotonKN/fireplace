@@ -1,6 +1,6 @@
 ---
 id: I-0053
-status: open
+status: in-progress
 implements: FS-0008
 blocked_by: [I-0049]
 labels: [feature]
@@ -22,12 +22,18 @@ already follows for parents the type filter hides (FS-0007 R7.4).
 
 ## Acceptance Criteria
 
-- [ ] With parents collapsed on page 1, moving to page 2 where none are collapsed shows "Collapse all".
-- [ ] "Collapse all" on page 2 leaves page 1's parents as they were; returning to page 1 proves it.
-- [ ] The collapse states of off-page parents survive a remount (not pruned by the page's write).
-- [ ] The toggle is absent on a page whose parents have no children.
-- [ ] Regression: FS-0007's filter rule still holds — parents hidden by the type filter keep their state.
-- [ ] Client test suite passes.
+- [x] With parents collapsed on page 1, moving to page 2 where none are collapsed shows "Collapse all".
+- [x] "Collapse all" on page 2 leaves page 1's parents as they were; returning to page 1 proves it.
+- [x] The collapse states of off-page parents survive a remount (not pruned by the page's write).
+- [x] The toggle is absent on a page whose parents have no children.
+- [x] Regression: FS-0007's filter rule still holds — parents hidden by the type filter keep their state.
+- [x] Client test suite passes — 23 files / 162 tests.
+
+Ticked by `client/src/components/Todo.collapse-all-paging.test.tsx`. Only the first test had a
+true red-then-green: one derivation covers all four clauses, so the rest were green on arrival
+and were proved to guard by reverting `collapsibleIds` to the whole set, which fails all four.
+The regression row rests on the existing `Todo.collapse.test.tsx` filter case, unchanged and
+green. Nothing here needs a browser.
 
 ## Blocked By
 
