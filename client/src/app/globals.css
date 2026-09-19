@@ -120,3 +120,101 @@ p {
 }
 
 /* h1 keeps its color in dark mode */
+
+/* The date-range picker inside an item's action panel. react-datepicker
+   ships a white box with its own blues; this dresses it in the theme's own
+   tokens so it reads as part of the panel rather than a widget dropped in. */
+.fp-datepicker.react-datepicker {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.fp-datepicker .react-datepicker__header {
+  border: 0;
+  padding-top: 0;
+  background: transparent;
+}
+
+.fp-datepicker .react-datepicker__current-month {
+  padding-bottom: 6px;
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.fp-datepicker .react-datepicker__day-name {
+  width: 2rem;
+  color: hsl(var(--foreground) / 0.35);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.fp-datepicker .react-datepicker__day {
+  width: 2rem;
+  border-radius: 9999px;
+  margin: 1px;
+  line-height: 2rem;
+  color: hsl(var(--foreground) / 0.8);
+  transition: background-color 150ms, color 150ms;
+}
+
+.fp-datepicker .react-datepicker__day:hover {
+  background: hsl(var(--foreground) / 0.07);
+}
+
+.fp-datepicker .react-datepicker__day--outside-month {
+  color: hsl(var(--foreground) / 0.25);
+}
+
+.fp-datepicker .react-datepicker__day--today {
+  font-weight: 600;
+  color: hsl(var(--primary));
+}
+
+.fp-datepicker .react-datepicker__day--keyboard-selected {
+  background: hsl(var(--primary) / 0.2);
+  color: hsl(var(--foreground));
+}
+
+/* The span between the two ends: a quiet ember wash, with the ends solid. */
+.fp-datepicker .react-datepicker__day--in-range,
+.fp-datepicker .react-datepicker__day--in-selecting-range {
+  border-radius: 0;
+  background: hsl(var(--primary) / 0.14);
+  color: hsl(var(--foreground));
+}
+
+.fp-datepicker .react-datepicker__day--selected,
+.fp-datepicker .react-datepicker__day--range-start,
+.fp-datepicker .react-datepicker__day--range-end,
+.fp-datepicker .react-datepicker__day--selecting-range-start {
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  color: rgb(46, 46, 46);
+  font-weight: 600;
+}
+
+.fp-datepicker .react-datepicker__navigation {
+  top: 2px;
+}
+
+.fp-datepicker .react-datepicker__navigation-icon::before {
+  border-color: hsl(var(--foreground) / 0.4);
+  border-width: 1.5px 1.5px 0 0;
+  width: 7px;
+  height: 7px;
+}
+
+.fp-datepicker .react-datepicker__navigation:hover *::before {
+  border-color: hsl(var(--primary));
+}
+
+/* react-datepicker floats its month container, which leaves the days sitting
+   off to one side of whatever box they are in. */
+.fp-datepicker .react-datepicker__month-container {
+  float: none;
+  width: auto;
+}

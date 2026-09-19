@@ -32,6 +32,7 @@ vi.mock('@/services/api', () => ({
   createChecklistItem: (...a: unknown[]) => createChecklistItem(...a),
   updateChecklistItem: vi.fn(async () => ({})),
   deleteChecklistItem: vi.fn(),
+  updateChecklistDates: vi.fn(async () => ({})),
   archiveChecklistItem: vi.fn(async () => ({})),
   scheduleChecklistItem: vi.fn(),
   scope: { DAILY: 'daily', LONGTERM: 'longterm' },
@@ -210,9 +211,18 @@ describe('Todo add bar Tab to nest', () => {
     expect(document.activeElement).toBe(addInput());
   });
 
+  // Both live in the row's actions panel now, which opens on the trigger
+  // beside the text and renders in a portal.
+  const fromMenu = (id: string, label: string) => () => {
+    fireEvent.click(
+      within(rowOf(id)).getByRole('button', { name: /^Actions for/ })
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: label }));
+  };
+
   it.each([
-    ['archived', () => fireEvent.click(within(rowOf('D')).getByTitle('Archive task'))],
-    ['converted to a note', () => fireEvent.click(within(rowOf('D')).getByTitle('Convert to note'))],
+    ['archived', fromMenu('D', 'Archive')],
+    ['converted to a note', fromMenu('D', 'Make a note')],
   ])('should return to top level with text intact when the target is %s', async (_case, act) => {
     const input = await renderList();
     fireEvent.keyDown(input, { key: 'Tab' });

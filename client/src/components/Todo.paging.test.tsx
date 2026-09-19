@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 /**
  * FS-0008 R1–R12: the list is paged ten top-level items at a time, with quiet
@@ -26,6 +26,7 @@ vi.mock('@/services/api', () => ({
   createChecklistItem: (...a: unknown[]) => createChecklistItem(...a),
   updateChecklistItem: (...a: unknown[]) => updateChecklistItem(...a),
   deleteChecklistItem: vi.fn(),
+  updateChecklistDates: vi.fn(async () => ({})),
   archiveChecklistItem: (...a: unknown[]) => archiveChecklistItem(...a),
   scheduleChecklistItem: vi.fn(),
   scope: { DAILY: 'daily', LONGTERM: 'longterm' },
@@ -214,7 +215,8 @@ describe('Todo paging', () => {
 
     // Page 3 holds t21 alone; archiving it leaves two pages, not an empty one.
     const row = screen.getByText('item t21').closest('li')!;
-    fireEvent.click(row.querySelector('[title="Archive task"]')!);
+    fireEvent.click(within(row).getByRole('button', { name: /^Actions for/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archive' }));
     await waitFor(() => expect(counter()!.textContent).toBe('2 of 2'));
     expect(screen.getByText('item t20')).toBeTruthy();
   });

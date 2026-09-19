@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronRight, FileText, Plus, Trash2 } from 'lucide-react';
+import { ChevronRight, FileText, Plus } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import ItemActions from '@/components/ItemActions';
+import ItemDateChip from '@/components/ItemDateChip';
 import { cn } from '@/lib/utils';
 import type { ChecklistGroup } from '@/lib/nesting';
 import type { ChecklistItem } from '@/services/api';
@@ -27,6 +29,11 @@ export interface ChecklistGridProps {
   onRename: (id: string, text: string) => unknown;
   onDelete: (id: string) => unknown;
   onAddChild: (parentId: string, text: string) => Promise<unknown>;
+  onToggleType: (id: string) => unknown;
+  onArchive: (id: string) => unknown;
+  onSetDates: (id: string, startDate: string | null, dueDate: string | null) => unknown;
+  /** A step can be pulled out of its block; a block has nothing to leave. */
+  onOutdent: (id: string) => unknown;
 }
 
 const isNote = (item: ChecklistItem) => (item.type ?? 'task') === 'note';
@@ -45,6 +52,10 @@ export default function ChecklistGrid({
   onRename,
   onDelete,
   onAddChild,
+  onToggleType,
+  onArchive,
+  onSetDates,
+  onOutdent,
 }: ChecklistGridProps) {
   // Rename and add live here rather than in the list's shared edit state: the
   // two views are never on screen together, and a card's input has nothing to
@@ -124,6 +135,7 @@ export default function ChecklistGrid({
           <div
             key={item.id}
             data-checklist-card={item.id}
+            data-actions-anchor
             className={cn(
               'group/card rounded-xl bg-foreground/[0.04] px-4 py-4 backdrop-blur-sm',
               'transition-[background-color,box-shadow] duration-300',
@@ -161,6 +173,22 @@ export default function ChecklistGrid({
                   isNote(item) && 'italic font-normal text-foreground/75'
                 )
               )}
+              <span
+                className="mt-[1px] shrink-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ItemActions
+                  item={item}
+                  onEdit={() => {
+                    setEditingId(item.id);
+                    setEditText(item.description);
+                  }}
+                  onToggleType={() => onToggleType(item.id)}
+                  onArchive={() => onArchive(item.id)}
+                  onDelete={() => onDelete(item.id)}
+                  onSetDates={(start, due) => onSetDates(item.id, start, due)}
+                />
+              </span>
               {children.length > 0 && (
                 <button
                   type="button"
@@ -208,7 +236,11 @@ export default function ChecklistGrid({
                     {noteCount === 1 ? '1 note' : `${noteCount} notes`}
                   </span>
                 )}
+                <ItemDateChip item={item} />
               </div>
+            )}
+            {children.length === 0 && (
+              <ItemDateChip item={item} className="mt-2" />
             )}
 
             {/* Steps. Folded away with the same state the list folds with, so
@@ -218,7 +250,7 @@ export default function ChecklistGrid({
                 {children.map((child) => (
                   <li
                     key={child.id}
-                    className="group/step flex items-start gap-2.5 rounded-md py-1"
+                    className="group/row flex items-start gap-2.5 rounded-md py-1"
                   >
                     {isNote(child) ? (
                       <span
@@ -245,14 +277,26 @@ export default function ChecklistGrid({
                         isNote(child) && 'italic text-foreground/60'
                       )
                     )}
-                    <button
-                      type="button"
-                      onClick={() => onDelete(child.id)}
-                      aria-label={`Delete ${child.description}`}
-                      className="shrink-0 text-foreground/0 outline-none transition-colors group-hover/step:text-foreground/30 hover:!text-primary focus-visible:text-primary"
+                    <ItemDateChip item={child} className="self-center" />
+                    <span
+                      className="self-center"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <Trash2 strokeWidth={1.75} className="h-3.5 w-3.5" />
-                    </button>
+                      <ItemActions
+                        item={child}
+                        onEdit={() => {
+                          setEditingId(child.id);
+                          setEditText(child.description);
+                        }}
+                        onToggleType={() => onToggleType(child.id)}
+                        onArchive={() => onArchive(child.id)}
+                        onDelete={() => onDelete(child.id)}
+                        onSetDates={(start, due) =>
+                          onSetDates(child.id, start, due)
+                        }
+                        onOutdent={() => onOutdent(child.id)}
+                      />
+                    </span>
                   </li>
                 ))}
               </ul>

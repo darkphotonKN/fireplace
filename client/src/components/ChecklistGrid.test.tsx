@@ -51,6 +51,10 @@ const handlers = () => ({
   onRename: vi.fn(),
   onDelete: vi.fn(),
   onAddChild: vi.fn(async () => {}),
+  onToggleType: vi.fn(),
+  onArchive: vi.fn(),
+  onSetDates: vi.fn(),
+  onOutdent: vi.fn(),
 });
 
 const card = (id: string) =>

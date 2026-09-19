@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   fetchChecklist,
   createChecklistItem,
   updateChecklistItem,
   deleteChecklistItem,
-  scheduleChecklistItem,
+  updateChecklistDates,
   ChecklistItem,
   scope,
   ScopeEnum,
@@ -18,8 +17,6 @@ import {
 import { getChecklistSuggestion, getDailyInsights } from '@/api/insights';
 import { getPlan, toggleDailyReset } from '@/api/plans';
 import { useParams } from 'next/navigation';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
@@ -52,6 +49,8 @@ import {
 } from '@/lib/nesting';
 import { clampPage, pageCount, pageOfItem, pageSlice, PAGE_SIZE } from '@/lib/paging';
 import ChecklistGrid from '@/components/ChecklistGrid';
+import ItemActions from '@/components/ItemActions';
+import ItemDateChip from '@/components/ItemDateChip';
 import { loadCollapsedIds, saveCollapsedIds } from '@/lib/collapsedGroups';
 import { format } from 'date-fns';
 import {
@@ -231,11 +230,6 @@ export default function Todo({
   const [editText, setEditText] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
   const editInputRef = useRef<HTMLInputElement>(null);
-
-  // Scheduling state
-  const [schedulingId, setSchedulingId] = useState<string | null>(null);
-  const [scheduleDate, setScheduleDate] = useState<Date | null>(null);
-  const [isScheduling, setIsScheduling] = useState(false);
 
   // AI suggestion state
   const [suggestion, setSuggestion] = useState<string | null>(null);
@@ -458,65 +452,33 @@ export default function Todo({
     }
   };
 
-  // Start scheduling a todo
-  const startScheduling = (todo: ChecklistItem) => {
-    setSchedulingId(todo.id);
-    setScheduleDate(
-      todo.scheduledTime ? new Date(todo.scheduledTime) : new Date()
-    );
-  };
+  // Both ends of an item's date range at once (either may be null, which
+  // clears that end). Date-only strings, inclusive, exactly what the plan
+  // calendar reads — so a range set here draws a bar there.
+  const setItemDates = async (
+    id: string,
+    startDate: string | null,
+    dueDate: string | null
+  ) => {
+    const before = todos?.find((t) => t.id === id);
+    if (!before) return;
 
-  // Cancel scheduling
-  const cancelScheduling = () => {
-    setSchedulingId(null);
-    setScheduleDate(null);
-  };
-
-  // Schedule a todo
-  const scheduleTodo = async () => {
-    if (!schedulingId || !scheduleDate) return;
-
-    // Find the original todo
-    const todoToSchedule = todos?.find((todo) => todo.id === schedulingId);
-    if (!todoToSchedule) return;
-
-    // Store the original scheduledTime
-    const originalScheduledTime = todoToSchedule.scheduledTime;
-
-    // Optimistic update
-    setIsScheduling(true);
-    setTodos(
-      todos?.map((todo) =>
-        todo.id === schedulingId
-          ? { ...todo, scheduledTime: scheduleDate.toISOString() }
-          : todo
+    // scheduledTime is the deprecated mirror of start_date; clearing it here
+    // keeps the chip from falling back to a date that was just removed.
+    setTodos((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? { ...t, startDate: startDate ?? undefined, dueDate: dueDate ?? undefined, scheduledTime: undefined }
+          : t
       )
     );
 
     try {
-      // API update
-      const response = await scheduleChecklistItem(
-        schedulingId,
-        planId,
-        scheduleDate,
-        taskType as 'daily' | 'longterm'
-      );
-
+      await updateChecklistDates(planId, id, { startDate, dueDate });
     } catch (error) {
-      console.error('Error scheduling todo:', error);
-      // Revert if exception
-      setTodos(
-        todos.map((todo) =>
-          todo.id === schedulingId
-            ? { ...todo, scheduledTime: originalScheduledTime }
-            : todo
-        )
-      );
-      setError('Failed to schedule task. Please try again.');
-    } finally {
-      setIsScheduling(false);
-      setSchedulingId(null);
-      setScheduleDate(null);
+      console.error('Error setting item dates:', error);
+      setTodos((prev) => prev.map((t) => (t.id === id ? before : t)));
+      setError('Failed to save the dates. Please try again.');
     }
   };
 
@@ -1731,6 +1693,10 @@ export default function Todo({
                 onRename={updateTodoDescription}
                 onDelete={deleteTodo}
                 onAddChild={addChildTodo}
+                onToggleType={toggleTodoType}
+                onArchive={archiveTodo}
+                onSetDates={setItemDates}
+                onOutdent={outdentTodo}
               />
             </div>
           ) : (
@@ -1754,7 +1720,7 @@ export default function Todo({
                   // indent/outdent, so keyboard focus must show — but a mouse
                   // click on the row, its chevron or a hover action should not
                   // leave a ring drawn around the whole row.
-                  className={`relative flex items-center justify-between group transition-all duration-200 outline-none focus-visible:ring-1 focus-visible:ring-primary/30 rounded pt-4 first:pt-0 ${
+                  className={`relative flex items-center justify-between group group/row transition-all duration-200 outline-none focus-visible:ring-1 focus-visible:ring-primary/30 rounded pt-4 first:pt-0 ${
                     guideRail.get(todo.id) === 'child' ? 'ml-6' : ''
                   } ${
                     todo.parentId && revealedIds.current.has(todo.parentId)
@@ -1853,53 +1819,6 @@ export default function Todo({
                         </button>
                       </div>
                     </div>
-                  ) : schedulingId === todo.id ? (
-                    <div className="flex items-center space-x-3 flex-1">
-                      {(todo.type ?? 'task') === 'task' && (
-                        <Checkbox
-                          id={`todo-${todo.id}`}
-                          checked={todo.done}
-                          onCheckedChange={() => toggleTodo(todo.id)}
-                        />
-                      )}
-                      <div className="flex flex-1 flex-wrap space-x-2">
-                        <label
-                          className={`text-base cursor-pointer flex-1 ${
-                            todo.done ? 'line-through opacity-70' : ''
-                          }`}
-                        >
-                          {todo.description}
-                        </label>
-                        <div className="mt-2 flex items-center space-x-2 w-full">
-                          <DatePicker
-                            selected={scheduleDate}
-                            onChange={(date) => setScheduleDate(date)}
-                            showTimeSelect
-                            timeFormat="h:mm aa"
-                            timeIntervals={15}
-                            dateFormat="MMMM d, yyyy h:mm aa"
-                            className="text-base p-2 border rounded flex-grow bg-transparent"
-                            placeholderText="Select date and time"
-                            disabled={isScheduling}
-                          />
-                          <button
-                            onClick={scheduleTodo}
-                            className="px-2 py-1 text-sm rounded bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/40 dark:to-orange-800/60 border border-orange-200 dark:border-orange-800"
-                            style={{ color: 'rgb(247, 111, 83)' }}
-                            disabled={isScheduling || !scheduleDate}
-                          >
-                            {isScheduling ? 'Saving...' : 'Schedule'}
-                          </button>
-                          <button
-                            onClick={cancelScheduling}
-                            className="px-2 py-1 text-sm rounded bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900/80 border border-gray-200 dark:border-gray-700"
-                            disabled={isScheduling}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    </div>
                   ) : (
                     <>
                       <div
@@ -1950,171 +1869,45 @@ export default function Todo({
                                   {collapsedCount(childrenOf.get(todo.id)!)}
                                 </span>
                               )}
-                            </div>
-                            {todo.scheduledTime && (
-                              <div
-                                className={`mt-1 text-sm flex items-center ${
-                                  isScheduledTimePast(todo.scheduledTime)
-                                    ? 'text-red-500'
-                                    : 'text-gray-500'
-                                }`}
+                              <ItemDateChip item={todo} className="self-center" />
+                              {/* Everything you can do to this row, opening
+                                  beside the text instead of out at the card's
+                                  edge. Stops the click so the row's own
+                                  "click to tick" never fires under it. */}
+                              <span
+                                className="self-center"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  viewBox="0 0 20 20"
-                                  fill="currentColor"
-                                  className={`w-3 h-3 mr-1 ${
-                                    isScheduledTimePast(todo.scheduledTime)
-                                      ? 'text-red-500'
-                                      : 'text-orange-400'
-                                  }`}
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-                                    clipRule="evenodd"
+                                {taskType === 'archived' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteTodo(todo.id)}
+                                    aria-label={`Delete ${todo.description} permanently`}
+                                    title="Delete permanently"
+                                    className="grid h-6 w-6 place-items-center rounded-full text-foreground/35 opacity-0 outline-none transition-[color,background-color,opacity] duration-200 hover:bg-foreground/[0.06] hover:text-primary focus-visible:text-primary group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:none)]:opacity-60"
+                                  >
+                                    <Trash2 aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+                                  </button>
+                                ) : (
+                                  <ItemActions
+                                    item={todo}
+                                    onEdit={() => startEditing(todo)}
+                                    onToggleType={() => toggleTodoType(todo.id)}
+                                    onArchive={() => archiveTodo(todo.id)}
+                                    onDelete={() => deleteTodo(todo.id)}
+                                    onSetDates={(start, due) =>
+                                      setItemDates(todo.id, start, due)
+                                    }
+                                    onIndent={() => indentTodo(todo.id)}
+                                    onOutdent={() => outdentTodo(todo.id)}
                                   />
-                                </svg>
-                                {formatScheduleTime(todo.scheduledTime)}
-                              </div>
-                            )}
+                                )}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Hover menu floats in the gap ABOVE the row. -top-4
-                          (-16px) lines its top edge up with the bottom of the
-                          previous row's content, so it sits in the 16px gap
-                          plus 12px into this row's pt-4 empty area. No
-                          overlap with previous content. */}
-                      <div className="absolute -top-4 right-0 flex space-x-1 z-10">
-                        {taskType === 'archived' ? (
-                          // Delete button for archived items
-                          <button
-                            onClick={() => deleteTodo(todo.id)}
-                            title="Delete task permanently"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
-                            style={{ color: 'rgb(247, 111, 83)' }}
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                              className="w-4 h-4"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm6.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          </button>
-                        ) : (
-                          <>
-                            {/* Type toggle (task ↔ note) */}
-                            <button
-                              onClick={() => toggleTodoType(todo.id)}
-                              title={
-                                (todo.type ?? 'task') === 'note'
-                                  ? 'Convert to task'
-                                  : 'Convert to note'
-                              }
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
-                              style={{ color: 'rgb(247, 111, 83)' }}
-                            >
-                              {(todo.type ?? 'task') === 'note' ? (
-                                <CheckSquare className="w-4 h-4" />
-                              ) : (
-                                <FileText className="w-4 h-4" />
-                              )}
-                            </button>
-
-                            {/* Indent / outdent — Tab equivalent.
-                                If row is already nested, the button outdents
-                                (Shift+Tab equivalent). */}
-                            <button
-                              onClick={() =>
-                                todo.parentId
-                                  ? outdentTodo(todo.id)
-                                  : indentTodo(todo.id)
-                              }
-                              title={
-                                todo.parentId
-                                  ? 'Outdent to top level (Shift+Tab)'
-                                  : 'Indent under previous row (Tab)'
-                              }
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
-                              style={{ color: 'rgb(247, 111, 83)' }}
-                            >
-                              <ChevronRight
-                                className={`w-4 h-4 transition-transform ${
-                                  todo.parentId ? 'rotate-180' : ''
-                                }`}
-                              />
-                            </button>
-
-                            {/* Schedule Icon */}
-                            <button
-                              onClick={() => startScheduling(todo)}
-                              title="Schedule this task"
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
-                              style={{
-                                color: todo.scheduledTime
-                                  ? 'rgb(247, 111, 83)'
-                                  : 'rgb(150, 150, 150)',
-                              }}
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                                className="w-4 h-4"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </button>
-
-                            {/* Edit Icon */}
-                            <button
-                              onClick={() => startEditing(todo)}
-                              title="Edit task"
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
-                              style={{ color: 'rgb(247, 111, 83)' }}
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                                className="w-4 h-4"
-                              >
-                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                              </svg>
-                            </button>
-
-                            {/* Archive Icon */}
-                            <button
-                              onClick={() => archiveTodo(todo.id)}
-                              title="Archive task"
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
-                              style={{ color: 'rgb(247, 111, 83)' }}
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                                className="w-4 h-4"
-                              >
-                                <path d="M2 3a1 1 0 00-1 1v1a1 1 0 001 1h16a1 1 0 001-1V4a1 1 0 00-1-1H2z" />
-                                <path d="M2 7a1 1 0 00-1 1v10a1 1 0 001 1h16a1 1 0 001-1V8a1 1 0 00-1-1H2zm0 2h16v8H2V9z" />
-                              </svg>
-                            </button>
-                          </>
-                        )}
-                      </div>
                     </>
                   )}
                 </li>
