@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { parseDateOnly, toDateOnly } from '@/lib/itemDates';
+import { placePanel, type PanelPlacement } from '@/lib/panelPlacement';
 import type { ChecklistItem } from '@/services/api';
 
 /**
@@ -47,10 +48,11 @@ export interface ItemActionsProps {
   triggerClassName?: string;
 }
 
-const PANEL_GAP = 8;
 const PANEL_WIDTH = 208; // w-52
-
-type Placement = { top: number; left: number };
+// Roughly the menu at its tallest. Only used for the very first frame, before
+// the panel exists to be measured; being a little out shifts it a few pixels
+// once, where having no position at all put it in the window's corner.
+const PANEL_HEIGHT_GUESS = 220;
 
 export default function ItemActions({
   item,
@@ -66,7 +68,7 @@ export default function ItemActions({
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
   const [range, setRange] = useState<[Date | null, Date | null]>([null, null]);
-  const [place, setPlace] = useState<Placement | null>(null);
+  const [place, setPlace] = useState<PanelPlacement | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -81,33 +83,34 @@ export default function ItemActions({
   // Beside the card where one claims the anchor, otherwise beside the trigger
   // — which in the list is right after the text, so the panel lands where the
   // eye already is rather than out at the card's edge.
-  const reposition = useCallback(() => {
+  //
+  // Measured from the panel once it is up; before that the caller says how
+  // big it will be. Nothing is ever rendered without a position: a panel with
+  // nowhere to go paints in the window's corner for a frame and then jumps,
+  // which no `opacity-0` can hide because a running animation outranks it.
+  const measure = useCallback((size?: { width: number; height: number }) => {
     const trigger = triggerRef.current;
-    if (!trigger) return;
+    if (!trigger) return null;
     const anchor =
       (trigger.closest('[data-actions-anchor]') as HTMLElement | null) ??
       trigger;
-    const rect = anchor.getBoundingClientRect();
-    // Measured once it is up, so the picker's own width is what gets flipped
-    // against the window edge rather than a number kept in step by hand.
-    const width = panelRef.current?.offsetWidth || PANEL_WIDTH;
-
-    // Right of the anchor by default; flipped to its left when that would run
-    // off the window, and pinned inside the window if neither side fits.
-    let left = rect.right + PANEL_GAP;
-    if (left + width > window.innerWidth - PANEL_GAP) {
-      left = rect.left - width - PANEL_GAP;
-    }
-    left = Math.max(PANEL_GAP, Math.min(left, window.innerWidth - width - PANEL_GAP));
-
-    const height = panelRef.current?.offsetHeight ?? 0;
-    const top = Math.max(
-      PANEL_GAP,
-      Math.min(rect.top, window.innerHeight - height - PANEL_GAP)
+    return placePanel(
+      anchor.getBoundingClientRect(),
+      {
+        width: size?.width ?? panelRef.current?.offsetWidth ?? PANEL_WIDTH,
+        height: size?.height ?? panelRef.current?.offsetHeight ?? PANEL_HEIGHT_GUESS,
+      },
+      { width: window.innerWidth, height: window.innerHeight }
     );
-    setPlace({ top, left });
   }, []);
 
+  const reposition = useCallback(() => {
+    const next = measure();
+    if (next) setPlace(next);
+  }, [measure]);
+
+  // Once it is up, its real size settles the placement — the picker is both
+  // wider and taller than the menu it replaces.
   useLayoutEffect(() => {
     if (open) reposition();
   }, [open, picking, reposition]);
@@ -176,8 +179,14 @@ export default function ItemActions({
         aria-label={`Actions for ${item.description}`}
         onClick={(e) => {
           e.stopPropagation();
-          setOpen((o) => !o);
           setPicking(false);
+          // Placed before it is shown, so its first paint is already in the
+          // right spot rather than a flight in from the corner. Outside the
+          // state updater, which has to stay free of side effects.
+          if (!open) {
+            setPlace(measure({ width: PANEL_WIDTH, height: PANEL_HEIGHT_GUESS }));
+          }
+          setOpen(!open);
         }}
         onKeyDown={(e) => e.stopPropagation()}
         className={cn(
@@ -195,20 +204,19 @@ export default function ItemActions({
       </button>
 
       {open &&
+        place &&
         typeof document !== 'undefined' &&
         createPortal(
           <div
             ref={panelRef}
             role="menu"
             data-item-actions
-            style={{ top: place?.top ?? 0, left: place?.left ?? 0 }}
+            style={{ top: place.top, left: place.left }}
             className={cn(
               'fixed z-50 max-h-[calc(100vh-1rem)] overflow-y-auto rounded-xl bg-card/95 p-1.5 backdrop-blur-md',
               'ring-1 ring-foreground/10 shadow-[0_18px_40px_-24px_rgba(0,0,0,0.85)]',
               'animate-in fade-in zoom-in-95 duration-150',
-              picking ? 'w-fit' : 'w-52',
-              // Invisible until measured, so it never flashes at 0,0.
-              place ? 'opacity-100' : 'opacity-0'
+              picking ? 'w-fit' : 'w-52'
             )}
           >
             {picking ? (
