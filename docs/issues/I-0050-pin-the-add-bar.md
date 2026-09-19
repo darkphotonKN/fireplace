@@ -1,6 +1,6 @@
 ---
 id: I-0050
-status: in-progress
+status: done
 implements: FS-0008
 blocked_by: []
 labels: [feature]
@@ -32,7 +32,7 @@ read correctly.
 - [x] Nothing clips in the daily card (`overflow-hidden`) or at narrow widths.
 - [x] Regression: add, focus-return after add, and Tab-to-nest still work.
 - [x] Client test suite passes.
-- [ ] HITL: visual sign-off on the pinned bar with a real, long plan.
+- [x] HITL: visual sign-off on the pinned bar with a real, long plan.
 
 Ticked by `client/src/components/Todo.pinned-add-bar.test.tsx` for structure, and by
 measuring the same CSS in a throwaway static page in a real engine for the geometry jsdom

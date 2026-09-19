@@ -1,6 +1,6 @@
 ---
 id: I-0051
-status: in-progress
+status: done
 implements: FS-0008
 blocked_by: [I-0049, I-0050]
 labels: [feature]
@@ -31,7 +31,7 @@ Join paging (I-0049) to the add bar so adding never drops an item out of sight.
 - [x] A nested add into a collapsed parent still expands it (FS-0007 R8.9) after the jump.
 - [x] Regression: Tab / Shift+Tab, create failure keeping text and nesting, and target-ineligibility reset all still work.
 - [x] Client test suite passes.
-- [ ] HITL: the jump read as following the item rather than as the list moving under you.
+- [x] HITL: the jump read as following the item rather than as the list moving under you.
 
 Ticked by `client/src/components/Todo.add-page-jump.test.tsx`, with the regression row resting
 on the existing `Todo.add-bar-nest.test.tsx`, and the restored arrival assertion in
