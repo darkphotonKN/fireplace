@@ -125,8 +125,12 @@ export default function ChecklistGrid({
             key={item.id}
             data-checklist-card={item.id}
             className={cn(
-              'group/card rounded-xl border border-foreground/10 bg-card px-4 py-4 transition-[border-color,box-shadow] duration-300',
-              'hover:border-foreground/20 hover:shadow-[0_6px_24px_-18px_rgba(0,0,0,0.65)]',
+              'group/card rounded-xl bg-foreground/[0.04] px-4 py-4 backdrop-blur-sm',
+              'transition-[background-color,box-shadow] duration-300',
+              // No border to thicken on hover — the fill lifts instead, and
+              // an ember glow sits under it, the same one the Add button
+              // wears once there is something to add.
+              'hover:bg-foreground/[0.06] hover:shadow-[0_2px_18px_-12px_rgba(247,111,83,0.55)]',
               item.done && 'opacity-60'
             )}
           >
@@ -183,14 +187,19 @@ export default function ChecklistGrid({
               <div className="mt-2.5 flex items-center gap-2.5">
                 {total > 0 ? (
                   <>
-                    <span className="h-1 flex-1 overflow-hidden rounded-full bg-foreground/10">
+                    <span className="h-1 flex-1 overflow-hidden rounded-full bg-foreground/[0.08]">
                       <span
                         data-progress-fill
                         style={{ width: `${(done / total) * 100}%` }}
                         className="block h-full rounded-full bg-primary transition-[width] duration-500 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]"
                       />
                     </span>
-                    <span className="shrink-0 text-sm tabular-nums text-foreground/45">
+                    <span
+                      className={cn(
+                        'shrink-0 text-sm tabular-nums transition-colors duration-500',
+                        done === total ? 'text-primary/80' : 'text-foreground/45'
+                      )}
+                    >
                       {done}/{total}
                     </span>
                   </>
@@ -205,7 +214,7 @@ export default function ChecklistGrid({
             {/* Steps. Folded away with the same state the list folds with, so
                 a block collapsed here is collapsed there. */}
             {children.length > 0 && !collapsed && (
-              <ul className="mt-3 space-y-0.5 border-t border-foreground/10 pt-2.5">
+              <ul className="mt-3 space-y-0.5 border-t border-foreground/[0.07] pt-2.5">
                 {children.map((child) => (
                   <li
                     key={child.id}
@@ -255,7 +264,7 @@ export default function ChecklistGrid({
             {!isNote(item) && !collapsed && (
               <div className={cn('mt-1', children.length === 0 && 'mt-2')}>
                 {composing ? (
-                  <div className="ml-[3px] flex items-center gap-[13px] border-b border-foreground/15 py-1 pl-0 focus-within:border-primary/50">
+                  <div className="ml-[3px] flex items-center gap-[13px] border-b border-foreground/[0.12] py-1 pl-0 focus-within:border-primary/50">
                     <Plus
                       aria-hidden
                       strokeWidth={1.75}
