@@ -87,7 +87,9 @@ describe('Todo pinned add bar (FS-0008 R13–R14)', () => {
     await renderLong();
     const area = listArea();
     expect(area.className).toMatch(/\boverflow-y-auto\b/);
-    expect(area.className).toMatch(/\bmax-h-\[/);
+    // Bounded either way: a single page caps with max-h, a paged list gets the
+    // fixed window so every page is the same height (FS-0008 R5).
+    expect(area.className).toMatch(/\b(max-)?h-\[/);
     // The rows must scroll inside the same box the bar sticks to, and the bar
     // must still come last in the DOM so Tab-to-nest keeps its meaning (R13).
     const rows = area.querySelector('ul')!;
@@ -162,11 +164,51 @@ describe('Todo pinned add bar (FS-0008 R13–R14)', () => {
         await screen.findByText('Back to settings');
       },
     ],
-  ])('should leave no pinned strip and no scroller when %s', async (_case, mount) => {
+  ])('should leave no pinned strip when %s', async (_case, mount) => {
     await mount();
     expect(screen.queryByRole('textbox', { name: /^New (task|note)/ })).toBeNull();
     expect(document.querySelector('.sticky')).toBeNull();
     expect(document.querySelector('[data-add-bar-fade]')).toBeNull();
+  });
+
+  it('should hold one fixed window height once the list pages', async () => {
+    // 24 items is three pages. Without a fixed height the section would
+    // collapse from ten rows to one when page 3 holds a single item, moving
+    // the controls and the bar under the cursor.
+    await renderLong();
+    const area = listArea();
+    expect(area.className).toMatch(/\bh-\[min\(70vh,40rem\)\]/);
+    expect(area.className).not.toMatch(/\bmax-h-\[/);
+    // The rows region grows, so a short page still leaves the bar at the
+    // window's bottom rather than floating under the last row.
+    expect(area.firstElementChild!.className).toMatch(/\bflex-1\b/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(listArea().className).toMatch(/\bh-\[min\(70vh,40rem\)\]/);
+  });
+
+  it('should hug its content while everything fits on one page', async () => {
+    fetchChecklist.mockImplementation(async () => LONG.slice(0, 4));
+    const Todo = (await import('./Todo')).default;
+    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item L0');
+
+    // A four-item plan shouldn't sit in a mostly empty box; only the 70vh
+    // cap applies, for the one-huge-family case.
+    expect(listArea().className).not.toMatch(/\bh-\[min\(/);
+    expect(listArea().className).toMatch(/\bmax-h-\[70vh\]/);
+  });
+
+  it('should not box in a bar-less list that fits on one page', async () => {
+    // No add bar and nothing to page: there is nothing to keep still, so the
+    // section is left to hug its content as it always did.
+    fetchChecklist.mockImplementation(async () =>
+      LONG.slice(0, 5).map((i) => ({ ...i, scope: 'daily' }))
+    );
+    const Todo = (await import('./Todo')).default;
+    render(<Todo fixedTaskType="daily" dailyAIOnly />);
+    await screen.findByText('item L0');
+
     expect(document.querySelector('.overflow-y-auto')).toBeNull();
   });
 });

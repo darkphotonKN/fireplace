@@ -1582,12 +1582,26 @@ export default function Todo({
               dailyAIOnly) is never boxed in for nothing. space-y-4 is the gap
               the list and the add bar used to get from the wrapper above,
               which the add bar's guide rail measures its -top-7 against. */}
+          {/* Once there is more than one page the area becomes a fixed window
+              so every page is the same height and the controls never move
+              under the cursor (FS-0008 R5's "bottom-right" has to mean the
+              same place on page 1 and page 3). min(70vh, 40rem): a full page
+              of ten rows plus the bar is about 40rem, so on a tall screen the
+              window stops there instead of leaving a band of empty space,
+              while on a short one 70vh keeps the card on screen. A single
+              page still hugs its content — a three-item plan shouldn't sit in
+              a mostly empty box. flex-col with the rows growing keeps the bar
+              at the bottom of the window when a page is short; when a page
+              overflows, the area scrolls and the bar pins as before. */}
           <div
             className={cn(
-              'space-y-4',
-              showAddBar && 'max-h-[70vh] overflow-y-auto'
+              'flex flex-col space-y-4',
+              totalPages > 1
+                ? 'h-[min(70vh,40rem)] overflow-y-auto'
+                : showAddBar && 'max-h-[70vh] overflow-y-auto'
             )}
           >
+          <div className="flex-1">
 
           {orderedRows.length === 0 ? (
             <div className="py-4 text-center">
@@ -1993,6 +2007,10 @@ export default function Todo({
               ))}
             </ul>
           )}
+
+          {/* end rows region — it grows so the bar sits at the window's
+              bottom on a short page. */}
+          </div>
 
           {/* Add form — moved to the bottom so adding a row reads as
               "append to list", and Tab on the new row indents under the
