@@ -25,6 +25,7 @@
 - [x] Indent and outdent items → FS-none
 - [ ] Visible nesting and collapsible groups → FS-0007
 - [ ] Paged list with a pinned add bar → FS-0008
+- [ ] Drag to reorder items → FS-0009
 
 ## Project Overview
 

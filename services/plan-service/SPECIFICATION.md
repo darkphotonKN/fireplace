@@ -52,6 +52,7 @@ read-model, HTTP REST surface, AI suggestions) are listed under **Owned elsewher
 - [x] List a user's items across their plans
 - [x] `checklist_item.completed` / `.uncompleted` events on done-flip
 - [ ] Daily-items-only-via-AI rule (not currently enforced)
+- [ ] User-defined item order → FS-0009
 - [ ] Initial items materialized from generated insights → FS-0006
 
 ### Plan Calendar (data side)
