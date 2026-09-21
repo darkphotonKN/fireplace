@@ -1,6 +1,6 @@
 ---
 id: I-0054
-status: open
+status: done
 implements: FS-0009
 blocked_by: []
 labels: [feature]
@@ -29,12 +29,29 @@ nothing.
 
 ## Acceptance Criteria
 
-- [ ] Two items with the same `sequence` come back in the same order on repeated reads.
-- [ ] Given equal `sequence`, the older `created_at` comes first.
-- [ ] Given equal `sequence` and equal `created_at`, order is by `id` and is stable.
-- [ ] Existing ordering is unchanged where sequences differ.
-- [ ] The date-window query keeps its date keys first, with the tiebreak after.
-- [ ] plan-service tests pass.
+- [x] Two items with the same `sequence` come back in the same order on repeated reads.
+- [x] Given equal `sequence`, the older `created_at` comes first.
+- [x] Given equal `sequence` and equal `created_at`, order is by `id` and is stable.
+- [x] Existing ordering is unchanged where sequences differ.
+- [x] The date-window query keeps its date keys first, with the tiebreak after.
+- [x] plan-service tests pass.
+
+Ticked by `services/plan-service/internal/checklistitem/repository_order_test.go`, the first
+test file this service has ever had. Ordering is a property of the database, so these run
+against the local `fireplace_plans` Postgres and skip under `-short`, matching the Makefile's
+`test-unit` / `test-integration` split. No CI workflow runs Go tests today (only
+`contract.yml`), so nothing downstream starts demanding a database.
+
+Two of the four had a true red-then-green. The `id` tiebreak was already in place by the time
+its test was written, so it was proved by removing `, id ASC` and watching it fail. The
+date-window test **passed on arrival with two rows** — that query is not a plain table scan and
+a wrong order had an even chance of looking right — so it was rebuilt with five rows seeded in
+a scrambled order, which failed properly and now passes. The "unchanged where sequences differ"
+row is a regression guard, green from the start and honestly labelled as one in the test.
+
+Out of slice: `GetByUserID` (repository.go) orders by `created_at DESC` alone and never touches
+`sequence`, so R10 does not reach it. It is non-total too, but that is a different query with a
+different key and no caller in this feature.
 
 ## Blocked By
 

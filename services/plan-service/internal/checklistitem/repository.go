@@ -28,6 +28,19 @@ func wrapDBErr(op string, err error) error {
 	return commonhelpers.WrapDBErr("checklistitem repo", op, err)
 }
 
+// Every list order here is TOTAL on purpose. `sequence` alone does not order
+// rows: Create assigns it from a count over the whole table, so two items
+// created at once can share a number, and rows that tie come back in whatever
+// order the scan happens to find them — a list that reshuffles itself between
+// renders. created_at breaks nearly every tie; id breaks the rest, since two
+// rows can share a sequence and a timestamp.
+//
+// tieBreak is appended to any order that would otherwise end at sequence.
+const tieBreak = ", created_at ASC, id ASC"
+
+// orderBySequence is the plain list order, sequence first.
+const orderBySequence = " ORDER BY sequence ASC" + tieBreak
+
 func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
@@ -63,7 +76,7 @@ func (r *repository) ListByPlanID(ctx context.Context, in ListItemsInput) ([]*It
 			AND start_date >= CURRENT_DATE
 			AND start_date <= CURRENT_DATE + INTERVAL '1 %s'`, *in.Upcoming)
 	}
-	query += " ORDER BY sequence ASC"
+	query += orderBySequence
 
 	var items []*Item
 	if err := r.db.SelectContext(ctx, &items, query, args...); err != nil {
@@ -83,7 +96,7 @@ func (r *repository) ListArchivedByPlanID(ctx context.Context, planID uuid.UUID,
 		args = append(args, *scope)
 		query += " AND scope = $2"
 	}
-	query += " ORDER BY sequence ASC"
+	query += orderBySequence
 
 	var items []*Item
 	if err := r.db.SelectContext(ctx, &items, query, args...); err != nil {
@@ -273,7 +286,7 @@ func (r *repository) ListInDateWindow(ctx context.Context, planID uuid.UUID, win
 	  AND (start_date IS NOT NULL OR due_date IS NOT NULL)
 	  AND COALESCE(start_date, due_date) <= $3
 	  AND COALESCE(due_date,   start_date) >= $2
-	ORDER BY COALESCE(start_date, due_date) ASC, sequence ASC`
+	ORDER BY COALESCE(start_date, due_date) ASC, sequence ASC` + tieBreak
 
 	var items []*Item
 	if err := r.db.SelectContext(ctx, &items, query, planID, windowStart, windowEnd); err != nil {
