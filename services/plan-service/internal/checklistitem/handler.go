@@ -23,6 +23,7 @@ type Service interface {
 	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item, error)
 	ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error)
 	Update(ctx context.Context, in UpdateItemInput) (*Item, error)
+	Reorder(ctx context.Context, in ReorderInput) ([]*Item, error)
 	UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, error)
 	Archive(ctx context.Context, id uuid.UUID, archived bool) (*Item, error)
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -191,6 +192,44 @@ func (h *Handler) UpdateItem(ctx context.Context, req *pb.UpdateItemRequest) (*p
 		return nil, commongrpc.Fail(ctx, "checklistitem: update", err)
 	}
 	return itemToProto(item), nil
+}
+
+func (h *Handler) ReorderItems(ctx context.Context, req *pb.ReorderItemsRequest) (*pb.ListItemsResponse, error) {
+	const op = "checklistitem: reorder"
+
+	planID, err := uuid.Parse(req.PlanId)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, badUUID("plan_id", req.PlanId))
+	}
+
+	var parentID *uuid.UUID
+	if req.ParentId != nil {
+		pid, err := uuid.Parse(*req.ParentId)
+		if err != nil {
+			return nil, commongrpc.Fail(ctx, op, badUUID("parent_id", *req.ParentId))
+		}
+		parentID = &pid
+	}
+
+	ids := make([]uuid.UUID, 0, len(req.Ids))
+	for _, raw := range req.Ids {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return nil, commongrpc.Fail(ctx, op, badUUID("ids", raw))
+		}
+		ids = append(ids, id)
+	}
+
+	items, err := h.service.Reorder(ctx, ReorderInput{
+		PlanID:   planID,
+		Scope:    req.Scope,
+		ParentID: parentID,
+		IDs:      ids,
+	})
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	return itemListToProto(items), nil
 }
 
 func (h *Handler) UpdateItemDates(ctx context.Context, req *pb.UpdateItemDatesRequest) (*pb.ChecklistItem, error) {

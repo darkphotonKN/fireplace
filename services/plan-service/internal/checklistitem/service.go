@@ -17,6 +17,8 @@ type Repository interface {
 	UpdateDates(ctx context.Context, id uuid.UUID, startDate, dueDate *time.Time) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByPlanID(ctx context.Context, in ListItemsInput) ([]*Item, error)
+	ListSiblings(ctx context.Context, in SiblingSetInput) ([]*Item, error)
+	Reorder(ctx context.Context, ids []uuid.UUID) ([]*Item, error)
 	ListArchivedByPlanID(ctx context.Context, planID uuid.UUID, scope *string) ([]*Item, error)
 	ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Item, error)
@@ -219,6 +221,70 @@ func (s *service) UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, 
 	current.StartDate = finalStart
 	current.DueDate = finalDue
 	return current, nil
+}
+
+// Reorder writes the order of ONE sibling set (FS-0009 R2). The request carries
+// the set's complete final order; the sequences are written densely as 1..N in a
+// single transaction and the reordered siblings are returned.
+func (s *service) Reorder(ctx context.Context, in ReorderInput) ([]*Item, error) {
+	if in.Scope != ScopeDaily && in.Scope != ScopeLongterm {
+		return nil, fmt.Errorf("%w: scope must be 'daily' or 'longterm'", commonconstants.ErrInvalidInput)
+	}
+	if len(in.IDs) == 0 {
+		return nil, fmt.Errorf("%w: ids must not be empty", commonconstants.ErrInvalidInput)
+	}
+
+	siblings, err := s.repo.ListSiblings(ctx, in.siblingSet())
+	if err != nil {
+		return nil, fmt.Errorf("checklistitem: reorder: load sibling set: %w", err)
+	}
+	if len(siblings) == 0 {
+		// Nothing answers to this (plan, scope, parent): an unknown plan, an
+		// unknown parent, or a set whose members are all gone.
+		return nil, fmt.Errorf("checklistitem: reorder: no sibling set for plan %s: %w",
+			in.PlanID, commonconstants.ErrNotFound)
+	}
+
+	if err := s.assertPermutation(ctx, siblings, in.IDs); err != nil {
+		return nil, err
+	}
+
+	items, err := s.repo.Reorder(ctx, in.IDs)
+	if err != nil {
+		return nil, fmt.Errorf("checklistitem: reorder: %w", err)
+	}
+	return items, nil
+}
+
+// assertPermutation refuses anything that is not exactly the sibling set in a
+// new order: a stranger, or a missing member (FS-0009 §Edge States).
+func (s *service) assertPermutation(ctx context.Context, siblings []*Item, ids []uuid.UUID) error {
+	set := make(map[uuid.UUID]struct{}, len(siblings))
+	for _, sib := range siblings {
+		set[sib.ID] = struct{}{}
+	}
+	seen := make(map[uuid.UUID]struct{}, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			return fmt.Errorf("%w: item %s appears twice in ids", commonconstants.ErrInvalidInput, id)
+		}
+		seen[id] = struct{}{}
+		if _, member := set[id]; !member {
+			// An id that exists but sits elsewhere (another parent, scope or
+			// plan) is a stranger to this set — bad input. An id that exists
+			// nowhere is a 404, so the two are told apart by a lookup rather
+			// than collapsed into one status.
+			if _, err := s.repo.GetByID(ctx, id); err != nil {
+				return fmt.Errorf("checklistitem: reorder: unknown item %s: %w", id, err)
+			}
+			return fmt.Errorf("%w: item %s is not a member of this sibling set", commonconstants.ErrInvalidInput, id)
+		}
+	}
+	if len(ids) != len(siblings) {
+		return fmt.Errorf("%w: ids must be the complete sibling set (%d given, %d in the set)",
+			commonconstants.ErrInvalidInput, len(ids), len(siblings))
+	}
+	return nil
 }
 
 func (s *service) Archive(ctx context.Context, id uuid.UUID, archived bool) (*Item, error) {

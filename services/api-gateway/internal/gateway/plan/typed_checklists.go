@@ -26,6 +26,7 @@ type ChecklistsClient interface {
 	ListArchivedChecklists(ctx context.Context, planID, userID uuid.UUID) ([]*ChecklistResp, error)
 	ListUpcomingChecklists(ctx context.Context, planID, userID uuid.UUID) ([]*ChecklistResp, error)
 	UpdateChecklist(ctx context.Context, id, userID uuid.UUID, req UpdateChecklistReq) (*ChecklistResp, error)
+	ReorderChecklists(ctx context.Context, planID, userID uuid.UUID, req ReorderChecklistReq) ([]*ChecklistResp, error)
 	UpdateChecklistDates(ctx context.Context, id, userID uuid.UUID, req UpdateDatesReq) (*ChecklistResp, error)
 	ArchiveChecklist(ctx context.Context, id, userID uuid.UUID, archived bool) (*ChecklistResp, error)
 	DeleteChecklist(ctx context.Context, id, userID uuid.UUID) error
@@ -80,6 +81,13 @@ type UpdateDatesInput struct {
 	PlanID      uuid.UUID `path:"id" doc:"Plan id"`
 	ChecklistID uuid.UUID `path:"checklist_id" doc:"Checklist item id"`
 	Body        UpdateDatesReq
+}
+
+// ReorderChecklistInput has no item id in the path: the operation acts on a
+// SET, addressed by the body's scope and parentId, not on one row.
+type ReorderChecklistInput struct {
+	PlanID uuid.UUID `path:"id" doc:"Plan id"`
+	Body   ReorderChecklistReq
 }
 
 type ArchiveChecklistInput struct {
@@ -206,6 +214,35 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 			return nil, apierr.ProblemFor("create checklist item", err)
 		}
 		return &ChecklistOutput{Body: *item}, nil
+	})
+
+	// Registered BEFORE the {checklist_id} operations so the static `order`
+	// segment is the first thing on this path prefix, not a late arrival beside
+	// a wildcard.
+	huma.Register(api, huma.Operation{
+		OperationID: "reorderChecklists", Method: http.MethodPatch,
+		Path:        "/api/plans/{id}/checklists/order",
+		Middlewares: mw, Security: secured,
+		Summary: "Reorder one sibling set",
+		Description: "Writes the order of ONE sibling set in a single transaction: the " +
+			"top-level items of a (plan, scope) when `parentId` is null, or one parent's " +
+			"children when it is a uuid. `ids` must be exactly a permutation of that set — " +
+			"every member, no strangers — and the server stores dense positions 1..N over " +
+			"them in the order given, returning the reordered siblings. Sending the order a " +
+			"set already has changes nothing and is not an error. Ids that are not the " +
+			"set's own are rejected downstream: 400 when an id belongs to another parent, " +
+			"scope or plan, 404 when the plan or an id does not exist at all.",
+		Errors: writeErrs,
+	}, func(ctx context.Context, in *ReorderChecklistInput) (*ChecklistListOutput, error) {
+		userID, err := identity(ctx, "reorder checklist items")
+		if err != nil {
+			return nil, err
+		}
+		items, err := c.ReorderChecklists(ctx, in.PlanID, userID, in.Body)
+		if err != nil {
+			return nil, apierr.ProblemFor("reorder checklist items", err)
+		}
+		return &ChecklistListOutput{Body: derefChecklists(items)}, nil
 	})
 
 	huma.Register(api, huma.Operation{

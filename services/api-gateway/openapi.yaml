@@ -423,6 +423,35 @@ components:
         - createdAt
         - updatedAt
       type: object
+    ReorderChecklistReq:
+      additionalProperties: false
+      properties:
+        ids:
+          items:
+            format: uuid
+            type: string
+          minItems: 1
+          type: array
+          uniqueItems: true
+        parentId:
+          examples:
+            - 550e8400-e29b-41d4-a716-446655440000
+          format: uuid
+          type:
+            - string
+            - "null"
+        scope:
+          enum:
+            - daily
+            - longterm
+          examples:
+            - daily
+          type: string
+      required:
+        - scope
+        - parentId
+        - ids
+      type: object
     SearchResult:
       additionalProperties: false
       properties:
@@ -1573,6 +1602,80 @@ paths:
       security:
         - bearerAuth: []
       summary: List a plan's archived checklist items
+  /api/plans/{id}/checklists/order:
+    patch:
+      description: "Writes the order of ONE sibling set in a single transaction: the top-level items of a (plan, scope) when `parentId` is null, or one parent's children when it is a uuid. `ids` must be exactly a permutation of that set — every member, no strangers — and the server stores dense positions 1..N over them in the order given, returning the reordered siblings. Sending the order a set already has changes nothing and is not an error. Ids that are not the set's own are rejected downstream: 400 when an id belongs to another parent, scope or plan, 404 when the plan or an id does not exist at all."
+      operationId: reorderChecklists
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderChecklistReq"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ChecklistResp"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Reorder one sibling set
   /api/plans/{id}/checklists/upcoming:
     get:
       description: Returns items whose start date falls within the next week.

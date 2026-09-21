@@ -9,6 +9,7 @@ import (
 	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 type repository struct {
@@ -88,6 +89,77 @@ func (r *repository) ListArchivedByPlanID(ctx context.Context, planID uuid.UUID,
 	var items []*Item
 	if err := r.db.SelectContext(ctx, &items, query, args...); err != nil {
 		return nil, wrapDBErr("list archived by plan "+planID.String(), err)
+	}
+	return items, nil
+}
+
+// ListSiblings returns ONE sibling set in stored order: the non-archived
+// top-level items of (plan, scope) when parentID is nil, or that parent's
+// children when it is not. Archived rows are excluded because the set the client
+// can drag is the set it can see (FS-0009 §Out of Scope: the archived view is
+// not reorderable).
+func (r *repository) ListSiblings(ctx context.Context, in SiblingSetInput) ([]*Item, error) {
+	query := `
+	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
+	       archived, created_at, updated_at, plan_id
+	FROM checklist_items
+	WHERE plan_id = $1
+	  AND scope = $2
+	  AND archived = false
+	  AND (($3::uuid IS NULL AND parent_id IS NULL) OR parent_id = $3::uuid)
+	ORDER BY sequence ASC`
+
+	var items []*Item
+	if err := r.db.SelectContext(ctx, &items, query, in.PlanID, in.Scope, in.ParentID); err != nil {
+		return nil, wrapDBErr("list siblings for plan "+in.PlanID.String(), err)
+	}
+	return items, nil
+}
+
+// Reorder writes dense positions 1..N over the given ids, in the order given,
+// and reads the rows back — both inside ONE transaction, so a set's order is
+// never half-written (FS-0009 R2.2).
+//
+// The write is a single statement: unnest(...) WITH ORDINALITY turns the id list
+// into (id, position) pairs, which the UPDATE joins against. A row count that
+// does not match the ids means one of them vanished between validation and the
+// write (an item deleted mid-drag), so the transaction is abandoned whole.
+func (r *repository) Reorder(ctx context.Context, ids []uuid.UUID) ([]*Item, error) {
+	idStrings := make([]string, 0, len(ids))
+	for _, id := range ids {
+		idStrings = append(idStrings, id.String())
+	}
+
+	var items []*Item
+	err := commonhelpers.ExecTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+		WITH ordered AS (
+			SELECT id, ord FROM unnest($1::uuid[]) WITH ORDINALITY AS t(id, ord)
+		)
+		UPDATE checklist_items ci
+		SET sequence = ordered.ord
+		FROM ordered
+		WHERE ci.id = ordered.id`, pq.Array(idStrings))
+		if err != nil {
+			return wrapDBErr("reorder: write sequences", err)
+		}
+		if affected, err := res.RowsAffected(); err == nil && affected != int64(len(ids)) {
+			return fmt.Errorf("checklistitem repo: reorder: wrote %d of %d items: %w",
+				affected, len(ids), commonconstants.ErrNotFound)
+		}
+
+		if err := tx.SelectContext(ctx, &items, `
+		SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
+		       archived, created_at, updated_at, plan_id
+		FROM checklist_items
+		WHERE id = ANY($1::uuid[])
+		ORDER BY sequence ASC`, pq.Array(idStrings)); err != nil {
+			return wrapDBErr("reorder: read back", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return items, nil
 }

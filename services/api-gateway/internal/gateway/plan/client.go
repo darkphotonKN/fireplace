@@ -345,6 +345,38 @@ func (c *Client) UpdateChecklist(ctx context.Context, id, userID uuid.UUID, req 
 	return checklistFromProto(resp), nil
 }
 
+// ReorderChecklists hands one sibling set's complete order to plan-service,
+// which validates it and writes the sequences in a single transaction. The
+// reordered siblings come back in their new order (FS-0009 R2.5).
+func (c *Client) ReorderChecklists(ctx context.Context, planID, userID uuid.UUID, req ReorderChecklistReq) ([]*ChecklistResp, error) {
+	items, err := c.checklistClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var parentIDStr *string
+	if req.ParentID != nil {
+		s := req.ParentID.String()
+		parentIDStr = &s
+	}
+	ids := make([]string, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		ids = append(ids, id.String())
+	}
+
+	resp, err := items.ReorderItems(ctx, &pb.ReorderItemsRequest{
+		PlanId:   planID.String(),
+		UserId:   userID.String(),
+		Scope:    req.Scope,
+		ParentId: parentIDStr,
+		Ids:      ids,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return checklistSliceFromProto(resp.Items), nil
+}
+
 func (c *Client) UpdateChecklistDates(ctx context.Context, id, userID uuid.UUID, req UpdateDatesReq) (*ChecklistResp, error) {
 	items, err := c.checklistClient(ctx)
 	if err != nil {

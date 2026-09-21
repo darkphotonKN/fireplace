@@ -108,6 +108,35 @@ type ArchiveReq struct {
 	Archived bool `json:"archived" example:"true"`
 }
 
+// ReorderChecklistReq is the body for PATCH /plans/{id}/checklists/order.
+//
+// It carries the COMPLETE, final order of ONE sibling set (FS-0009 R2.1), which
+// is why none of its fields is optional: a partial order would have to be merged
+// with what the server holds, and merging is exactly what this design refuses.
+//
+// parentId is required AND nullable — null addresses the plan's top-level set
+// for the scope, a uuid addresses that parent's children. It is a plain pointer
+// rather than an OptUUID because there is no third "omitted" state to express:
+// leaving it out is a 422, not "leave unchanged".
+//
+// Conditional/domain rules enforced downstream (prose, not schema, per ADR-0005):
+//   - ids must be exactly a permutation of the addressed set — no missing member,
+//     no id from another parent, scope or plan.
+type ReorderChecklistReq struct {
+	// Which of the plan's two lists the set belongs to.
+	Scope string `json:"scope" enum:"daily,longterm" example:"daily"`
+	// The parent whose children are being ordered, or null for the top-level set.
+	// nullable is explicit: huma publishes a *uuid.UUID as a plain string, so
+	// without the tag the document would forbid the null that addresses the
+	// top-level set — and a generated client would be right to refuse to send it.
+	ParentID *uuid.UUID `json:"parentId" format:"uuid" nullable:"true" example:"550e8400-e29b-41d4-a716-446655440000"`
+	// Every member of the set, in the order it should be stored. The server
+	// writes dense positions 1..N over them.
+	// format applies to the ITEMS of an array field in huma, which is what makes
+	// the document say uuid[] rather than string[].
+	IDs []uuid.UUID `json:"ids" format:"uuid" minItems:"1" uniqueItems:"true" nullable:"false"`
+}
+
 // OptUUID distinguishes absent / null / value in JSON. Ported from the
 // monolith's checklistitems.optUUID so FE indent/outdent semantics survive.
 type OptUUID struct {
