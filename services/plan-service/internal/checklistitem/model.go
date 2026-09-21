@@ -75,3 +75,26 @@ type ListItemsInput struct {
 	Type     *string
 	Upcoming *string // "week" | "month" — filters by start_date window
 }
+
+// SiblingSetInput identifies ONE sibling set: the top-level items of a
+// (plan, scope) when ParentID is nil, or the children of that parent when it is
+// not. It is the unit order is written for — see FS-0009 R2.1.
+type SiblingSetInput struct {
+	PlanID   uuid.UUID
+	Scope    string
+	ParentID *uuid.UUID
+}
+
+// ReorderInput carries the complete, final order of one sibling set. IDs must be
+// exactly a permutation of the set's members; a partial order is refused rather
+// than merged (FS-0009 R2.1).
+type ReorderInput struct {
+	PlanID   uuid.UUID
+	Scope    string
+	ParentID *uuid.UUID
+	IDs      []uuid.UUID
+}
+
+func (in ReorderInput) siblingSet() SiblingSetInput {
+	return SiblingSetInput{PlanID: in.PlanID, Scope: in.Scope, ParentID: in.ParentID}
+}

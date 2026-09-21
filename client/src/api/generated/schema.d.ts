@@ -240,6 +240,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plans/{id}/checklists/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Reorder one sibling set
+         * @description Writes the order of ONE sibling set in a single transaction: the top-level items of a (plan, scope) when `parentId` is null, or one parent's children when it is a uuid. `ids` must be exactly a permutation of that set — every member, no strangers — and the server stores dense positions 1..N over them in the order given, returning the reordered siblings. Sending the order a set already has changes nothing and is not an error. Ids that are not the set's own are rejected downstream: 400 when an id belongs to another parent, scope or plan, 404 when the plan or an id does not exist at all.
+         */
+        patch: operations["reorderChecklists"];
+        trace?: never;
+    };
     "/api/plans/{id}/checklists/upcoming": {
         parameters: {
             query?: never;
@@ -736,6 +756,19 @@ export interface components {
              * @description When the profile was last changed
              */
             updatedAt: string;
+        };
+        ReorderChecklistReq: {
+            ids: string[];
+            /**
+             * Format: uuid
+             * @example 550e8400-e29b-41d4-a716-446655440000
+             */
+            parentId: string | null;
+            /**
+             * @example daily
+             * @enum {string}
+             */
+            scope: "daily" | "longterm";
         };
         SearchResult: {
             /** @description Plan description */
@@ -1895,6 +1928,96 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChecklistResp"][] | null;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reorderChecklists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderChecklistReq"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistResp"][] | null;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Unauthorized */

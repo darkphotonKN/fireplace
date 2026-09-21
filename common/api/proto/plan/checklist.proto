@@ -20,6 +20,11 @@ service ChecklistService {
   // range intersects [window_start,window_end]. Used by calendar-service.
   rpc ListItemsInDateWindow(ListItemsInDateWindowRequest) returns (ListItemsResponse);
   rpc UpdateItem(UpdateItemRequest) returns (ChecklistItem);
+  // ReorderItems writes the order of ONE sibling set — the top-level items of a
+  // (plan, scope), or the children of one parent — in a single transaction.
+  // ids must be exactly a permutation of that set; the reordered siblings come
+  // back in their new order (FS-0009 R2).
+  rpc ReorderItems(ReorderItemsRequest) returns (ListItemsResponse);
   rpc UpdateItemDates(UpdateItemDatesRequest) returns (ChecklistItem);
   rpc ArchiveItem(ArchiveItemRequest) returns (ChecklistItem);
   rpc DeleteItem(DeleteItemRequest) returns (google.protobuf.Empty);
@@ -109,6 +114,16 @@ message UpdateItemRequest {
   //   clear_parent_id=false, parent_id unset → leave column alone
   bool clear_parent_id = 8;
   optional string parent_id = 9;
+}
+
+// ReorderItemsRequest addresses one sibling set and carries its complete, final
+// order. parent_id unset means the (plan, scope) top-level set.
+message ReorderItemsRequest {
+  string plan_id = 1;
+  string user_id = 2;
+  string scope = 3;
+  optional string parent_id = 4;
+  repeated string ids = 5;
 }
 
 message UpdateItemDatesRequest {

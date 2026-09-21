@@ -28,6 +28,7 @@ const (
 	ChecklistService_ListItemsByUser_FullMethodName       = "/plan.ChecklistService/ListItemsByUser"
 	ChecklistService_ListItemsInDateWindow_FullMethodName = "/plan.ChecklistService/ListItemsInDateWindow"
 	ChecklistService_UpdateItem_FullMethodName            = "/plan.ChecklistService/UpdateItem"
+	ChecklistService_ReorderItems_FullMethodName          = "/plan.ChecklistService/ReorderItems"
 	ChecklistService_UpdateItemDates_FullMethodName       = "/plan.ChecklistService/UpdateItemDates"
 	ChecklistService_ArchiveItem_FullMethodName           = "/plan.ChecklistService/ArchiveItem"
 	ChecklistService_DeleteItem_FullMethodName            = "/plan.ChecklistService/DeleteItem"
@@ -52,6 +53,11 @@ type ChecklistServiceClient interface {
 	// range intersects [window_start,window_end]. Used by calendar-service.
 	ListItemsInDateWindow(ctx context.Context, in *ListItemsInDateWindowRequest, opts ...grpc.CallOption) (*ListItemsResponse, error)
 	UpdateItem(ctx context.Context, in *UpdateItemRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
+	// ReorderItems writes the order of ONE sibling set — the top-level items of a
+	// (plan, scope), or the children of one parent — in a single transaction.
+	// ids must be exactly a permutation of that set; the reordered siblings come
+	// back in their new order (FS-0009 R2).
+	ReorderItems(ctx context.Context, in *ReorderItemsRequest, opts ...grpc.CallOption) (*ListItemsResponse, error)
 	UpdateItemDates(ctx context.Context, in *UpdateItemDatesRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
 	ArchiveItem(ctx context.Context, in *ArchiveItemRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
 	DeleteItem(ctx context.Context, in *DeleteItemRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -148,6 +154,16 @@ func (c *checklistServiceClient) UpdateItem(ctx context.Context, in *UpdateItemR
 	return out, nil
 }
 
+func (c *checklistServiceClient) ReorderItems(ctx context.Context, in *ReorderItemsRequest, opts ...grpc.CallOption) (*ListItemsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListItemsResponse)
+	err := c.cc.Invoke(ctx, ChecklistService_ReorderItems_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *checklistServiceClient) UpdateItemDates(ctx context.Context, in *UpdateItemDatesRequest, opts ...grpc.CallOption) (*ChecklistItem, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ChecklistItem)
@@ -206,6 +222,11 @@ type ChecklistServiceServer interface {
 	// range intersects [window_start,window_end]. Used by calendar-service.
 	ListItemsInDateWindow(context.Context, *ListItemsInDateWindowRequest) (*ListItemsResponse, error)
 	UpdateItem(context.Context, *UpdateItemRequest) (*ChecklistItem, error)
+	// ReorderItems writes the order of ONE sibling set — the top-level items of a
+	// (plan, scope), or the children of one parent — in a single transaction.
+	// ids must be exactly a permutation of that set; the reordered siblings come
+	// back in their new order (FS-0009 R2).
+	ReorderItems(context.Context, *ReorderItemsRequest) (*ListItemsResponse, error)
 	UpdateItemDates(context.Context, *UpdateItemDatesRequest) (*ChecklistItem, error)
 	ArchiveItem(context.Context, *ArchiveItemRequest) (*ChecklistItem, error)
 	DeleteItem(context.Context, *DeleteItemRequest) (*emptypb.Empty, error)
@@ -245,6 +266,9 @@ func (UnimplementedChecklistServiceServer) ListItemsInDateWindow(context.Context
 }
 func (UnimplementedChecklistServiceServer) UpdateItem(context.Context, *UpdateItemRequest) (*ChecklistItem, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateItem not implemented")
+}
+func (UnimplementedChecklistServiceServer) ReorderItems(context.Context, *ReorderItemsRequest) (*ListItemsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReorderItems not implemented")
 }
 func (UnimplementedChecklistServiceServer) UpdateItemDates(context.Context, *UpdateItemDatesRequest) (*ChecklistItem, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateItemDates not implemented")
@@ -423,6 +447,24 @@ func _ChecklistService_UpdateItem_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChecklistService_ReorderItems_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReorderItemsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChecklistServiceServer).ReorderItems(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChecklistService_ReorderItems_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChecklistServiceServer).ReorderItems(ctx, req.(*ReorderItemsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ChecklistService_UpdateItemDates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateItemDatesRequest)
 	if err := dec(in); err != nil {
@@ -533,6 +575,10 @@ var ChecklistService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateItem",
 			Handler:    _ChecklistService_UpdateItem_Handler,
+		},
+		{
+			MethodName: "ReorderItems",
+			Handler:    _ChecklistService_ReorderItems_Handler,
 		},
 		{
 			MethodName: "UpdateItemDates",
