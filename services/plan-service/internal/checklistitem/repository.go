@@ -120,7 +120,7 @@ func (r *repository) ListSiblings(ctx context.Context, in SiblingSetInput) ([]*I
 	  AND scope = $2
 	  AND archived = false
 	  AND (($3::uuid IS NULL AND parent_id IS NULL) OR parent_id = $3::uuid)
-	ORDER BY sequence ASC`
+	ORDER BY sequence ASC` + tieBreak
 
 	var items []*Item
 	if err := r.db.SelectContext(ctx, &items, query, in.PlanID, in.Scope, in.ParentID); err != nil {
@@ -166,7 +166,7 @@ func (r *repository) Reorder(ctx context.Context, ids []uuid.UUID) ([]*Item, err
 		       archived, created_at, updated_at, plan_id
 		FROM checklist_items
 		WHERE id = ANY($1::uuid[])
-		ORDER BY sequence ASC`, pq.Array(idStrings)); err != nil {
+		ORDER BY sequence ASC`+tieBreak, pq.Array(idStrings)); err != nil {
 			return wrapDBErr("reorder: read back", err)
 		}
 		return nil

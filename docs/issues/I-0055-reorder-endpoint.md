@@ -46,7 +46,7 @@ field (R2.4): a drag is one move of one set, and N single-item writes would race
 
 - [ ] A valid reorder stores dense `1..N` across the set and returns the siblings in that order.
 - [ ] The same request sent twice leaves the same state and raises no error.
-- [ ] The write is atomic: a request that fails part-way leaves every sequence as it was.
+- [x] The write is atomic: a request that fails part-way leaves every sequence as it was.
 - [ ] Ids missing a member of the set are refused `400 · VALIDATION_FAILED`.
 - [ ] Ids containing an item from another parent, another scope, or another plan are refused
       the same way.
@@ -70,3 +70,20 @@ FS-0009 §Requirements R2.1–R2.5; §API surface (the one new operation); §Edg
 - RED: service test — reorder three items and assert their sequences come back `1, 2, 3` in the
   order asked for.
 - GREEN: the repository transaction and the service validation that gets there.
+
+
+## Integration note (parent session)
+
+The slice arrived with every criterion met except atomicity, which was marked PARTIAL because
+the worktree it was built in had no database: a fake repository proves the service *calls* the
+write, never that the SQL does anything. That gap is now closed against the real
+`fireplace_plans` Postgres, using the harness I-0054 introduced —
+`repository_reorder_test.go` covers the dense `1..N` write through
+`unnest($1::uuid[]) WITH ORDINALITY`, the read-back order, and the row-count guard. The guard
+was proved load-bearing by deleting it: the vanished-id test then reports success where it
+should abandon the transaction.
+
+One gap the merge itself created: `ListSiblings` is a list query added after I-0054 made every
+list order total, and it ended at `sequence ASC`. The set it returns is what the client renders
+and drags against, so it now carries the same tiebreak. Found by reading the merged result, not
+by any test that existed.
