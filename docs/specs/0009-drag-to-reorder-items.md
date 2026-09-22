@@ -171,9 +171,15 @@ list never flaps between renders. (Today's global counter can produce ties; see 
   no Move up / Move down.
 - **Concurrent reorder.** Two clients reorder the same set. Last write wins over the whole
   set; the loser sees the winner's order on its next load. No merge is attempted.
-- **Item deleted mid-drag.** The dragged item is archived or deleted in another tab before the
-  drop lands. The write fails on an unknown id (`400 · VALIDATION_FAILED`), the order reverts,
-  and the list refetches.
+- **Item deleted mid-drag.** The dragged item is deleted in another tab before the drop lands.
+  Its id now exists nowhere, so the write fails `404 · NOT_FOUND`, the order reverts, and the
+  list refetches.
+- **Item archived mid-drag.** The same gesture, a different answer: an archived item still
+  exists, it has just left the set (archived rows are never siblings). The ids are therefore no
+  longer a permutation of the set and the write fails `400 · VALIDATION_FAILED`. The two
+  statuses answer different questions — *does this id exist at all* versus *does it belong to
+  this set* — and a client that cannot tell them apart cannot tell a vanished item from a
+  misaddressed request.
 - **Ids that are not the sibling set.** A request whose ids are not exactly a permutation of
   the set — missing one, containing a stranger, or mixing two parents — is refused whole.
 - **An item added while dragging.** The new item is appended and is not part of the set the
@@ -184,7 +190,8 @@ list never flaps between renders. (Today's global counter can produce ties; see 
   no target.
 - **Archived view.** Not reorderable — see §Out of Scope.
 - **Unauthorized.** A user with view-only access to a shared plan gets `403 · FORBIDDEN`, and
-  the client does not offer drag handles at all.
+  the client does not offer drag handles at all. **Declared, not yet reachable** — see
+  §Out of Scope.
 - **Touch.** A press-and-hold starts a drag; a scroll does not.
 
 ## API surface
@@ -219,3 +226,11 @@ transaction.
 - **Sorting.** No sort-by-date, sort-by-done, or "clean up" action. This feature is about the
   order a person chose, and an automatic sort would destroy it.
 - **Ordering plans themselves.** Only items within a plan.
+- **Enforcing the `403`.** The contract declares it and the client hides drag handles from a
+  view-only user, but no checklist operation in this repo checks plan ownership — `user_id` is
+  accepted on every checklist RPC and used by none, which predates this feature and applies to
+  the whole surface. Reorder inherits that gap rather than closing it here: bolting an
+  ownership check onto one endpoint would make the surface inconsistent and would put an
+  authorization decision in a feature that is about ordering. **Owned by FS-0005**
+  (per-user authorization on plan-scoped resources), which is where the check belongs.
+  **Trigger:** FS-0005 shipping, at which point this row becomes reachable with no change here.
