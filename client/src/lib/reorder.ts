@@ -103,3 +103,43 @@ export function canMove(
 ): boolean {
   return moveOneStep(items, id, direction, visible) !== null;
 }
+
+/**
+ * The WHOLE sibling set's ids after dragging `id` onto `overId`'s place, or
+ * null when there is nothing to write.
+ *
+ * Null covers the two refusals a drag has to make, and they are refusals for
+ * the same reason — there is no new order — not errors:
+ *   - `overId` is not one of `id`'s siblings: a drag never re-parents, so the
+ *     item goes back where it started and nothing is sent (R5.1).
+ *   - `overId` is `id`: the drop is where the drag began (R3.4).
+ *
+ * `visible` is the ids a view is showing. The landing place is read among
+ * those, because that is what the gesture aimed at: the item lands where the
+ * row it was dropped on was, and the siblings a filter hides keep the slots
+ * they already held (R7.3, R7.2). The ids returned are still the complete
+ * set, hidden members included.
+ */
+export function moveOnto(
+  items: ChecklistItem[],
+  id: string,
+  overId: string,
+  visible?: ReadonlySet<string>
+): string[] | null {
+  if (id === overId) return null;
+
+  const siblingIds = siblingsOf(items, id).map((s) => s.id);
+  if (!siblingIds.includes(overId)) return null;
+
+  const onScreen = visible
+    ? siblingIds.filter((s) => visible.has(s))
+    : siblingIds;
+
+  const from = onScreen.indexOf(id);
+  const to = onScreen.indexOf(overId);
+  if (from === -1 || to === -1) return null;
+
+  const moved = [...onScreen];
+  moved.splice(to, 0, ...moved.splice(from, 1));
+  return reseat(siblingIds, (s) => s, moved);
+}

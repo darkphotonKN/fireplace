@@ -2,8 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, FileText, Plus } from 'lucide-react';
+import {
+  SortableContext,
+  rectSortingStrategy,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { Checkbox } from '@/components/ui/checkbox';
 import ItemActions from '@/components/ItemActions';
+import SortableItem from '@/components/SortableItem';
 import ItemDateChip from '@/components/ItemDateChip';
 import { cn } from '@/lib/utils';
 import type { ChecklistGroup } from '@/lib/nesting';
@@ -45,6 +51,14 @@ export interface ChecklistGridProps {
     onMoveUp?: () => void;
     onMoveDown?: () => void;
   };
+  /**
+   * Whether this item gets a grip. Decided by the caller for the same reason
+   * `moveProps` is: an item alone in its set has nothing to be dragged past,
+   * and only the whole set can say so. The drag itself belongs to a
+   * `DndContext` above this component — cards and steps are drop targets for
+   * each other only within their own sets (R4.1, R4.2, R5.1).
+   */
+  canDrag: (id: string) => boolean;
 }
 
 const isNote = (item: ChecklistItem) => (item.type ?? 'task') === 'note';
@@ -68,6 +82,7 @@ export default function ChecklistGrid({
   onSetDates,
   onOutdent,
   moveProps,
+  canDrag,
 }: ChecklistGridProps) {
   // Rename and add live here rather than in the list's shared edit state: the
   // two views are never on screen together, and a card's input has nothing to
@@ -136,6 +151,10 @@ export default function ChecklistGrid({
   return (
     // items-start so a one-line block stays one line instead of stretching to
     // its neighbour's height — a block with no steps yet should look like it.
+    <SortableContext
+      items={groups.map((g) => g.item.id)}
+      strategy={rectSortingStrategy}
+    >
     <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {groups.map(({ item, children }) => {
         const collapsed = collapsedIds.has(item.id);
@@ -144,8 +163,17 @@ export default function ChecklistGrid({
         const composing = addingIn === item.id;
 
         return (
-          <div
+          <SortableItem
             key={item.id}
+            id={item.id}
+            label={item.description}
+            disabled={!canDrag(item.id)}
+            // The card is its own hover group; the shared grip waits on a row.
+            handleClassName="group-hover/card:opacity-100"
+          >
+          {({ bind, handle }) => (
+          <div
+            {...bind}
             data-checklist-card={item.id}
             data-actions-anchor
             className={cn(
@@ -184,6 +212,14 @@ export default function ChecklistGrid({
                   item.done && 'line-through text-foreground/50',
                   isNote(item) && 'italic font-normal text-foreground/75'
                 )
+              )}
+              {handle && (
+                <span
+                  className="mt-[1px] shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {handle}
+                </span>
               )}
               <span
                 className="mt-[1px] shrink-0"
@@ -259,10 +295,21 @@ export default function ChecklistGrid({
             {/* Steps. Folded away with the same state the list folds with, so
                 a block collapsed here is collapsed there. */}
             {children.length > 0 && !collapsed && (
+              <SortableContext
+                items={children.map((c) => c.id)}
+                strategy={verticalListSortingStrategy}
+              >
               <ul className="mt-3 space-y-0.5 border-t border-foreground/[0.07] pt-2.5">
                 {children.map((child) => (
-                  <li
+                  <SortableItem
                     key={child.id}
+                    id={child.id}
+                    label={child.description}
+                    disabled={!canDrag(child.id)}
+                  >
+                  {({ bind, handle: childHandle }) => (
+                  <li
+                    {...bind}
                     className="group/row flex items-start gap-2.5 rounded-md py-1"
                   >
                     {isNote(child) ? (
@@ -291,6 +338,14 @@ export default function ChecklistGrid({
                       )
                     )}
                     <ItemDateChip item={child} className="self-center" />
+                    {childHandle && (
+                      <span
+                        className="self-center"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {childHandle}
+                      </span>
+                    )}
                     <span
                       className="self-center"
                       onClick={(e) => e.stopPropagation()}
@@ -312,8 +367,11 @@ export default function ChecklistGrid({
                       />
                     </span>
                   </li>
+                  )}
+                  </SortableItem>
                 ))}
               </ul>
+              </SortableContext>
             )}
 
             {/* Nesting by hand: in a block, a step goes in the block. No Tab
@@ -361,8 +419,11 @@ export default function ChecklistGrid({
               </div>
             )}
           </div>
+          )}
+          </SortableItem>
         );
       })}
     </div>
+    </SortableContext>
   );
 }

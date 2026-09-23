@@ -59,6 +59,9 @@ const handlers = () => ({
   // it can see is one page of one filter, and what counts as an end of the set
   // belongs to whoever holds every item.
   moveProps: vi.fn(() => ({})),
+  // Same reason: whether an item has anywhere to be dragged is a question
+  // about its whole sibling set, which the grid never sees.
+  canDrag: vi.fn(() => true),
 });
 
 const card = (id: string) =>

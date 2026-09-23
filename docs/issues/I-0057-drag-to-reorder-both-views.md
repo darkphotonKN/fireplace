@@ -1,6 +1,6 @@
 ---
 id: I-0057
-status: open
+status: in-progress
 implements: FS-0009
 blocked_by: [I-0056]
 labels: [feature]
@@ -47,18 +47,40 @@ Rules both views obey:
 
 ## Acceptance Criteria
 
-- [ ] A row dragged to a new position in the list holds that position after a reload.
-- [ ] A card dragged in the blocks view holds its position, and shows in the list view (R1.2).
-- [ ] A dragged top-level item takes its children with it, collapsed or not.
-- [ ] A drop that would change an item's parent is refused and writes nothing.
-- [ ] A drop in the same place makes no request.
-- [ ] Escape mid-drag restores the order the view had before the drag.
-- [ ] Reordering by drag under the Notes filter leaves hidden tasks in their relative order.
-- [ ] A drag on page 2 leaves page 1's order untouched.
-- [ ] The keyboard path from I-0056 still works and goes through the same write.
-- [ ] Client test suite passes.
+- [x] A row dragged to a new position in the list holds that position after a reload.
+- [x] A card dragged in the blocks view holds its position, and shows in the list view (R1.2).
+- [x] A dragged top-level item takes its children with it, collapsed or not.
+- [x] A drop that would change an item's parent is refused and writes nothing.
+- [x] A drop in the same place makes no request.
+- [x] Escape mid-drag restores the order the view had before the drag.
+- [x] Reordering by drag under the Notes filter leaves hidden tasks in their relative order.
+- [x] A drag on page 2 leaves page 1's order untouched.
+- [x] The keyboard path from I-0056 still works and goes through the same write.
+- [x] Client test suite passes.
 - [ ] HITL: the lift, the drop indicator and the settle are checked in a browser, in both views,
       in both themes, and on a narrow window.
+
+Ticked by `client/src/components/Todo.drag.test.tsx`, which drives dnd-kit's mouse sensor over
+a geometry the test installs, because jsdom reports every rect as 0x0 and dnd-kit cannot
+otherwise tell one row from the next. The ordering itself is `moveOnto` in
+`client/src/lib/reorder.ts`, beside the step the panel already used, and covered in
+`client/src/lib/reorder.test.ts`; both gestures now write through one `commitOrder`, so the
+first row's "after a reload" and the last row's "same write" are the path I-0055 and I-0056
+already proved, reached from a drop.
+
+Three things the tests do not say, all of them open. The **HITL row** is untouched: no browser
+pass was made, so the lift, the gap the neighbours open, the settle, the grip's placement
+beside each item's actions, and all of it in both themes and at a narrow width, are unseen.
+**Keyboard-initiated dragging** (Space on a grip, then the arrows) is wired through dnd-kit's
+`KeyboardSensor` but is not tested: its coordinate getter reads layout, and there is none here.
+The keyboard row above refers to the actions panel's Move up / Move down from I-0056, which is
+still green in `Todo.reorder.test.tsx`. **Touch** — press-and-hold to drag, a swipe to scroll —
+is configured (`TouchSensor`, 250ms, 6px) and likewise unproven on a device.
+
+One behaviour worth a look during the HITL pass, because it is the spec being obeyed rather
+than a bug: the list is one flat sortable run, so while a row is dragged its non-siblings shift
+aside too, and a drop on one of them is refused (R5.1) — the row returns and nothing is
+written.
 
 ## Blocked By
 

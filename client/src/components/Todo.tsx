@@ -19,9 +19,26 @@ import {
   applyOrder,
   canMove,
   moveOneStep,
+  moveOnto,
   siblingsOf,
   type MoveDirection,
 } from '@/lib/reorder';
+import {
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import SortableItem from '@/components/SortableItem';
 import { getChecklistSuggestion, getDailyInsights } from '@/api/insights';
 import { getPlan, toggleDailyReset } from '@/api/plans';
 import { useParams } from 'next/navigation';
@@ -897,6 +914,22 @@ export default function Todo({
     [filteredTodos]
   );
 
+  // How a drag starts, in the three ways an item can be picked up.
+  //
+  // A mouse has to travel before the gesture counts as a drag, so a click on
+  // a grip is still a click and a row's own "click to tick" is unharmed. A
+  // finger has to rest first: a press starts a drag, a swipe scrolls the page
+  // (§Edge States). The keyboard needs neither — the grip is a button, and
+  // Space picks it up — and is why this is dnd-kit at all rather than the
+  // browser's own drag-and-drop.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 6 },
+    }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
   // Top-level rows, each with its visible children. Children whose parent
   // isn't in the filtered set fall through as top-level (no visual indent).
   const rowGroups = useMemo(
@@ -1124,23 +1157,20 @@ export default function Todo({
   };
 
   /**
-   * Move one item one place within its sibling set (R6.1).
+   * Write one sibling set's new order (R2.1), whichever gesture produced it.
    *
-   * The new order is computed over `todos` — every item the client holds —
-   * never over the rows on screen: the type filter hides siblings without
-   * removing them, and a set sent short of them is not a permutation of
-   * itself and would be refused whole (R7.2).
+   * Every order reaching here is already the WHOLE set — the panel's step and
+   * the drag both compute it over `todos`, never over the rows on screen,
+   * because the type filter hides siblings without removing them and a set
+   * sent short of them is not a permutation of itself (R7.2).
    *
    * The screen changes before the request is sent (R9.1). If the write fails
    * the set goes back to the order it had and a toast says so, because a
    * revert nobody explains reads as a bug in the control (R9.2, R9.3).
    */
-  const moveItem = async (id: string, direction: MoveDirection) => {
+  const commitOrder = async (id: string, ids: string[]) => {
     // Archived sets are not reorderable (§Edge States, §Out of Scope).
     if (taskType === 'archived') return;
-    const ids = moveOneStep(todos, id, direction, visibleIds);
-    // An end of the set, or a set of one: there is no new order to write.
-    if (!ids) return;
 
     const item = todos.find((t) => t.id === id);
     const before = siblingsOf(todos, id).map((s) => s.id);
@@ -1171,20 +1201,66 @@ export default function Todo({
     }
   };
 
+  /** One place within the sibling set, from the actions panel (R6.1). */
+  const moveItem = (id: string, direction: MoveDirection) => {
+    const ids = moveOneStep(todos, id, direction, visibleIds);
+    // An end of the set, or a set of one: there is no new order to write.
+    if (!ids) return;
+    void commitOrder(id, ids);
+  };
+
   /**
-   * The move actions one item's panel should carry. Built here for both views
+   * A drop, in either view (R3.1, R4.1, R4.2).
+   *
+   * The same write as the panel's move, by design: the two paths cannot
+   * diverge if there is only one of them (R6.3). Everything the drop has to
+   * refuse — a landing outside the item's own sibling set, which would
+   * re-parent it (R5.1), and a drop where the drag began (R3.4, R4.4) — comes
+   * back from `moveOnto` as "no order to write", and nothing is sent. An
+   * abandoned drag (Escape, R3.5) never reaches here at all: dnd-kit cancels
+   * it, and since the view only changes on drop there is nothing to restore.
+   */
+  const dropItem = ({ active, over }: DragEndEvent) => {
+    if (!over) return;
+    const ids = moveOnto(todos, String(active.id), String(over.id), visibleIds);
+    if (!ids) return;
+    void commitOrder(String(active.id), ids);
+  };
+
+  /**
+   * Where this item could go: whether it has a sibling above it, and one
+   * below, as the screen currently shows the set. Asked here for both views
    * because only this component holds every item: what counts as the end of a
    * set is settled over the whole set, not over the page or the filter that
    * happens to be on screen (R6.2, R7.2).
    */
-  const moveProps = (id: string) => ({
-    onMoveUp: canMove(todos, id, 'up', visibleIds)
-      ? () => moveItem(id, 'up')
-      : undefined,
-    onMoveDown: canMove(todos, id, 'down', visibleIds)
-      ? () => moveItem(id, 'down')
-      : undefined,
+  const roomToMove = (id: string) => ({
+    up: canMove(todos, id, 'up', visibleIds),
+    down: canMove(todos, id, 'down', visibleIds),
   });
+
+  /** The move actions one item's panel should carry (R6.1, R6.2). */
+  const moveProps = (id: string) => {
+    const room = roomToMove(id);
+    return {
+      onMoveUp: room.up ? () => moveItem(id, 'up') : undefined,
+      onMoveDown: room.down ? () => moveItem(id, 'down') : undefined,
+    };
+  };
+
+  /**
+   * Whether this item gets a grip at all.
+   *
+   * The same question the panel's two moves answer between them: an item with
+   * nowhere to go in either direction is alone in its visible set, and a set
+   * of one has nothing to reorder (§Edge States). The archived view is not
+   * reorderable, so nothing there is draggable either.
+   */
+  const canDrag = (id: string) => {
+    if (taskType === 'archived') return false;
+    const room = roomToMove(id);
+    return room.up || room.down;
+  };
 
   // Indent a row under the nearest top-level row above it in render order.
   // We walk upward past any child rows so indenting row 3 still works after
@@ -1777,7 +1853,16 @@ export default function Todo({
                   : 'No archived items found.'}
               </p>
             </div>
-          ) : isGrid ? (
+          ) : (
+          // One drag context over both drawings. The drop targets are the
+          // rows or cards of this page, so a drag reorders within the page it
+          // happens on (R8.1) while the order sent is still the whole set.
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={dropItem}
+          >
+          {isGrid ? (
             // Same groups, same page, same collapse state — only the drawing
             // differs. No pl-8 gutter: a card carries its own chevron inside.
             <div className="mt-4">
@@ -1794,6 +1879,7 @@ export default function Todo({
                 onSetDates={setItemDates}
                 onOutdent={outdentTodo}
                 moveProps={moveProps}
+                canDrag={canDrag}
               />
             </div>
           ) : (
@@ -1803,10 +1889,21 @@ export default function Todo({
             // hangs 32px left of each row, which would otherwise spill past
             // the card's own padding. The add form below carries the same
             // padding so its icon stays in the checkbox column.
+            <SortableContext
+              items={renderedRows.map((r) => r.id)}
+              strategy={verticalListSortingStrategy}
+            >
             <ul className="space-y-4 divide-y divide-gray-200 dark:divide-gray-800/50 mt-4 pl-8">
-              {renderedRows.map((todo, index) => (
-                <li
+              {renderedRows.map((todo) => (
+                <SortableItem
                   key={todo.id}
+                  id={todo.id}
+                  label={todo.description}
+                  disabled={!canDrag(todo.id)}
+                >
+                {({ bind, handle }) => (
+                <li
+                  {...bind}
                   tabIndex={0}
                   onKeyDown={(e) => handleRowKeyDown(e, todo.id)}
                   // pt-4 + first:pt-0 → content sits 16px below the divider
@@ -1971,6 +2068,19 @@ export default function Todo({
                                   beside the text instead of out at the card's
                                   edge. Stops the click so the row's own
                                   "click to tick" never fires under it. */}
+                              {/* The grip sits with the row's other controls
+                                  rather than out in the chevron's gutter,
+                                  which is 32px wide and already spoken for.
+                                  Inside the span that stops the click, so
+                                  picking a row up never ticks it. */}
+                              {handle && (
+                                <span
+                                  className="self-center"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {handle}
+                                </span>
+                              )}
                               <span
                                 className="self-center"
                                 onClick={(e) => e.stopPropagation()}
@@ -2009,8 +2119,13 @@ export default function Todo({
                     </>
                   )}
                 </li>
+                )}
+                </SortableItem>
               ))}
             </ul>
+            </SortableContext>
+          )}
+          </DndContext>
           )}
 
           {/* end rows region — it grows so the bar sits at the window's

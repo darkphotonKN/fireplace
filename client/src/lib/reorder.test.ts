@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyOrder, moveOneStep } from '@/lib/reorder';
+import { applyOrder, moveOneStep, moveOnto } from '@/lib/reorder';
 import type { ChecklistItem } from '@/services/api';
 
 const item = (id: string, parentId: string | null = null): ChecklistItem => ({
@@ -91,5 +91,46 @@ describe('applyOrder', () => {
     applyOrder(items, ['b', 'a']);
 
     expect(items.map((i) => i.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('moveOnto', () => {
+  it('lands the dragged item in the place of the sibling it was dropped on', () => {
+    const items = [item('a'), item('b'), item('c')];
+
+    // c picked up, dropped on a's row: c takes the top, a and b shuffle down.
+    expect(moveOnto(items, 'c', 'a')).toEqual(['c', 'a', 'b']);
+    // The other direction reads the same way: a goes where c was.
+    expect(moveOnto(items, 'a', 'c')).toEqual(['b', 'c', 'a']);
+  });
+
+  it('refuses a drop outside the dragged item\'s own sibling set (R5.1)', () => {
+    const items = [item('p'), item('p1', 'p'), item('q'), item('q1', 'q')];
+
+    // A drag never re-parents: dropping p1 on q's row, or on q's child, is
+    // not a reorder of anything, so there is no order to write.
+    expect(moveOnto(items, 'p1', 'q')).toBeNull();
+    expect(moveOnto(items, 'p1', 'q1')).toBeNull();
+  });
+
+  it('has nothing to write when the drop is where the drag began (R3.4)', () => {
+    const items = [item('a'), item('b')];
+
+    expect(moveOnto(items, 'a', 'a')).toBeNull();
+  });
+
+  it('lands before the visible neighbour, leaving hidden siblings in their slots (R7.3)', () => {
+    // The Notes filter: only N1 and N2 are on screen, so the drop is read
+    // against them — while the order that comes back still names T1 and T2
+    // in the slots they already held (R7.2).
+    const items = [item('T1'), item('N1'), item('T2'), item('N2')];
+    const visible = new Set(['N1', 'N2']);
+
+    expect(moveOnto(items, 'N2', 'N1', visible)).toEqual([
+      'T1',
+      'N2',
+      'T2',
+      'N1',
+    ]);
   });
 });
