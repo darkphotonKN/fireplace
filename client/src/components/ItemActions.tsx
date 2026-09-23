@@ -58,10 +58,18 @@ export interface ItemActionsProps {
 }
 
 const PANEL_WIDTH = 208; // w-52
-// Roughly the menu at its tallest. Only used for the very first frame, before
-// the panel exists to be measured; being a little out shifts it a few pixels
-// once, where having no position at all put it in the window's corner.
-const PANEL_HEIGHT_GUESS = 220;
+// The menu's height before it exists to be measured. Only the very first frame
+// uses it, and only for the bottom-edge clamp — the layout effect corrects it
+// from the real panel before the browser paints. It is derived from the row
+// count rather than fixed, because a fixed number silently goes stale the next
+// time a row is added: this panel went from five rows to seven and a guess of
+// 220 quietly became 39px short.
+//
+// A row is text-sm (16px on a 22px line, per tailwind.config.js) inside py-1.5,
+// so 34px; the chrome is the panel's own p-1.5 plus the divider and its margin.
+const MENU_ROW_HEIGHT = 34;
+const MENU_CHROME = 21;
+const menuHeightGuess = (rows: number) => rows * MENU_ROW_HEIGHT + MENU_CHROME;
 
 export default function ItemActions({
   item,
@@ -109,7 +117,7 @@ export default function ItemActions({
       anchor.getBoundingClientRect(),
       {
         width: size?.width ?? panelRef.current?.offsetWidth ?? PANEL_WIDTH,
-        height: size?.height ?? panelRef.current?.offsetHeight ?? PANEL_HEIGHT_GUESS,
+        height: size?.height ?? panelRef.current?.offsetHeight ?? menuHeightGuess(5),
       },
       { width: window.innerWidth, height: window.innerHeight }
     );
@@ -195,7 +203,16 @@ export default function ItemActions({
           // right spot rather than a flight in from the corner. Outside the
           // state updater, which has to stay free of side effects.
           if (!open) {
-            setPlace(measure({ width: PANEL_WIDTH, height: PANEL_HEIGHT_GUESS }));
+            // Five rows are always there (dates, rename, type flip, archive,
+            // delete); the rest are offered only where they apply.
+            const rows =
+              5 +
+              (onIndent || onOutdent ? 1 : 0) +
+              (onMoveUp ? 1 : 0) +
+              (onMoveDown ? 1 : 0);
+            setPlace(
+              measure({ width: PANEL_WIDTH, height: menuHeightGuess(rows) })
+            );
           }
           setOpen(!open);
         }}
