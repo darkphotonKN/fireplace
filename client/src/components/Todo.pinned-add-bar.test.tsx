@@ -29,6 +29,7 @@ vi.mock('@/services/api', () => ({
   deleteChecklistItem: vi.fn(),
   updateChecklistDates: vi.fn(async () => ({})),
   archiveChecklistItem: vi.fn(async () => ({})),
+  reorderChecklistItems: vi.fn(async () => []),
   scheduleChecklistItem: vi.fn(),
   scope: { DAILY: 'daily', LONGTERM: 'longterm' },
   ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },

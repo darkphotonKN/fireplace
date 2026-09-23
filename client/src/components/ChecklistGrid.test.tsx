@@ -55,6 +55,10 @@ const handlers = () => ({
   onArchive: vi.fn(),
   onSetDates: vi.fn(),
   onOutdent: vi.fn(),
+  // The grid is handed its move actions rather than working them out: the set
+  // it can see is one page of one filter, and what counts as an end of the set
+  // belongs to whoever holds every item.
+  moveProps: vi.fn(() => ({})),
 });
 
 const card = (id: string) =>

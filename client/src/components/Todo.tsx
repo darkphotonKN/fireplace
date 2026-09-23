@@ -12,8 +12,16 @@ import {
   ScopeEnum,
   archiveChecklistItem,
   fetchArchivedChecklist,
+  reorderChecklistItems,
   ChecklistResponse,
 } from '@/services/api';
+import {
+  applyOrder,
+  canMove,
+  moveOneStep,
+  siblingsOf,
+  type MoveDirection,
+} from '@/lib/reorder';
 import { getChecklistSuggestion, getDailyInsights } from '@/api/insights';
 import { getPlan, toggleDailyReset } from '@/api/plans';
 import { useParams } from 'next/navigation';
@@ -147,6 +155,10 @@ export default function Todo({
     });
   };
   const [todos, setTodos] = useState<ChecklistItem[]>([]);
+  // Where a move just put an item, read out politely rather than interrupting.
+  // The panel closes on the move, so without this the keyboard path lands the
+  // item somewhere with nothing said about where.
+  const [moveAnnouncement, setMoveAnnouncement] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -876,6 +888,15 @@ export default function Todo({
     return todos.filter((t) => (t.type ?? 'task') === listTypeFilter);
   }, [todos, enableTypeFilter, listTypeFilter, taskType]);
 
+  // What the type filter is letting through. A move steps between these, so
+  // "one place" means one place as the user sees it — stepping through the
+  // hidden ones would leave the screen unchanged (R7.2) — while the order the
+  // request carries is still the whole set.
+  const visibleIds = useMemo(
+    () => new Set(filteredTodos.map((t) => t.id)),
+    [filteredTodos]
+  );
+
   // Top-level rows, each with its visible children. Children whose parent
   // isn't in the filtered set fall through as top-level (no visual indent).
   const rowGroups = useMemo(
@@ -1101,6 +1122,69 @@ export default function Todo({
       setError('Failed to add step. Please try again.');
     }
   };
+
+  /**
+   * Move one item one place within its sibling set (R6.1).
+   *
+   * The new order is computed over `todos` — every item the client holds —
+   * never over the rows on screen: the type filter hides siblings without
+   * removing them, and a set sent short of them is not a permutation of
+   * itself and would be refused whole (R7.2).
+   *
+   * The screen changes before the request is sent (R9.1). If the write fails
+   * the set goes back to the order it had and a toast says so, because a
+   * revert nobody explains reads as a bug in the control (R9.2, R9.3).
+   */
+  const moveItem = async (id: string, direction: MoveDirection) => {
+    // Archived sets are not reorderable (§Edge States, §Out of Scope).
+    if (taskType === 'archived') return;
+    const ids = moveOneStep(todos, id, direction, visibleIds);
+    // An end of the set, or a set of one: there is no new order to write.
+    if (!ids) return;
+
+    const item = todos.find((t) => t.id === id);
+    const before = siblingsOf(todos, id).map((s) => s.id);
+
+    setTodos((prev) => applyOrder(prev, ids));
+    setMoveAnnouncement(
+      `${item?.description ?? 'Item'} moved to position ${
+        ids.indexOf(id) + 1
+      } of ${ids.length}`
+    );
+
+    try {
+      await reorderChecklistItems(planId, {
+        scope: taskType,
+        parentId: item?.parentId ?? null,
+        ids,
+      });
+    } catch (err) {
+      console.error('Error reordering items:', err);
+      // Re-seat the set only, rather than restoring the whole array: anything
+      // else that changed while the write was in flight keeps its change.
+      setTodos((prev) => applyOrder(prev, before));
+      setMoveAnnouncement('');
+      toast({
+        title: 'Could not move that item',
+        description: 'Its order has been put back. Please try again.',
+      });
+    }
+  };
+
+  /**
+   * The move actions one item's panel should carry. Built here for both views
+   * because only this component holds every item: what counts as the end of a
+   * set is settled over the whole set, not over the page or the filter that
+   * happens to be on screen (R6.2, R7.2).
+   */
+  const moveProps = (id: string) => ({
+    onMoveUp: canMove(todos, id, 'up', visibleIds)
+      ? () => moveItem(id, 'up')
+      : undefined,
+    onMoveDown: canMove(todos, id, 'down', visibleIds)
+      ? () => moveItem(id, 'down')
+      : undefined,
+  });
 
   // Indent a row under the nearest top-level row above it in render order.
   // We walk upward past any child rows so indenting row 3 still works after
@@ -1665,6 +1749,18 @@ export default function Todo({
           >
           <div className="flex-1">
 
+          {/* Where a move landed the item, for anyone not watching it move.
+              Mounted whether or not it has anything to say: a live region
+              added at the same moment as its text is not reliably read. */}
+          <span
+            role="status"
+            aria-live="polite"
+            data-testid="move-live"
+            className="sr-only"
+          >
+            {moveAnnouncement}
+          </span>
+
           {orderedRows.length === 0 ? (
             <div className="py-4 text-center">
               <p className="text-gray-500 text-base">
@@ -1697,6 +1793,7 @@ export default function Todo({
                 onArchive={archiveTodo}
                 onSetDates={setItemDates}
                 onOutdent={outdentTodo}
+                moveProps={moveProps}
               />
             </div>
           ) : (
@@ -1900,6 +1997,7 @@ export default function Todo({
                                     }
                                     onIndent={() => indentTodo(todo.id)}
                                     onOutdent={() => outdentTodo(todo.id)}
+                                    {...moveProps(todo.id)}
                                   />
                                 )}
                               </span>
@@ -2079,7 +2177,12 @@ export default function Todo({
               <span data-testid="page-counter" aria-hidden="true">
                 {currentPage} of {totalPages}
               </span>
-              <span role="status" aria-live="polite" className="sr-only">
+              <span
+                role="status"
+                aria-live="polite"
+                data-testid="page-live"
+                className="sr-only"
+              >
                 Page {currentPage} of {totalPages}
               </span>
               <button

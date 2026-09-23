@@ -6,6 +6,7 @@ import {
   deleteChecklistItem as deleteItem,
   archiveChecklistItem as archiveItem,
   updateChecklistDates as updateDates,
+  reorderChecklists as reorderItems,
   type ChecklistItem as ApiChecklistItem,
 } from "@/api/checklists";
 import { config } from "@/config/environment";
@@ -272,6 +273,22 @@ export const updateChecklistDates = async (
   checklistId: string,
   body: UpdateChecklistDatesRequest,
 ): Promise<ApiChecklistItem> => updateDates(planId, checklistId, body);
+
+/**
+ * Writes the order of one whole sibling set (FS-0009 R2.1).
+ *
+ * `ids` is the COMPLETE set in its new order, including members a view's type
+ * filter is hiding: the client holds every item, so it can always name the
+ * whole set, and a request carrying only the visible ones is refused (R7.2).
+ */
+export const reorderChecklistItems = async (
+  planId: string,
+  order: {
+    scope: "daily" | "longterm";
+    parentId: string | null;
+    ids: string[];
+  },
+): Promise<ApiChecklistItem[]> => reorderItems(planId, order);
 
 export const scheduleChecklistItem = async (
   id: string,

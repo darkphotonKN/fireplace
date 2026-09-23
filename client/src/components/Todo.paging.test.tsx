@@ -28,6 +28,7 @@ vi.mock('@/services/api', () => ({
   deleteChecklistItem: vi.fn(),
   updateChecklistDates: vi.fn(async () => ({})),
   archiveChecklistItem: (...a: unknown[]) => archiveChecklistItem(...a),
+  reorderChecklistItems: vi.fn(async () => []),
   scheduleChecklistItem: vi.fn(),
   scope: { DAILY: 'daily', LONGTERM: 'longterm' },
   ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
@@ -144,11 +145,14 @@ describe('Todo paging', () => {
 
   it('should announce the current page politely', async () => {
     await renderList();
-    const live = screen.getByRole('status');
+    // Named rather than "the one status": the list also carries a live region
+    // for where a move landed an item (FS-0009 R6).
+    const live = screen.getByTestId('page-live');
+    expect(live).toHaveAttribute('role', 'status');
     expect(live.getAttribute('aria-live')).toBe('polite');
     expect(live.textContent).toBe('Page 1 of 3');
     fireEvent.click(next());
-    expect(screen.getByRole('status').textContent).toBe('Page 2 of 3');
+    expect(screen.getByTestId('page-live').textContent).toBe('Page 2 of 3');
   });
 
   it('should make no request when the page changes', async () => {

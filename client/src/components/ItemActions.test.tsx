@@ -169,4 +169,37 @@ describe('ItemActions', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Move out' }));
     expect(onOutdent).toHaveBeenCalled();
   });
+
+  it('should move an item up and down its set (R6.1)', () => {
+    const onMoveUp = vi.fn();
+    const onMoveDown = vi.fn();
+    const h = handlers();
+    render(
+      <ItemActions item={item()} {...h} onMoveUp={onMoveUp} onMoveDown={onMoveDown} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Move up' }));
+    expect(onMoveUp).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Move down' }));
+    expect(onMoveDown).toHaveBeenCalled();
+  });
+
+  it('should offer each move only where the set has room for it (R6.2)', () => {
+    // The ends of a set, and a set of one: the panel shows a move only when
+    // the caller hands it one, so an unmovable item is offered nothing.
+    const h = handlers();
+    const { rerender } = render(
+      <ItemActions item={item()} {...h} onMoveDown={vi.fn()} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
+    expect(screen.queryByRole('menuitem', { name: 'Move up' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Move down' })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    rerender(<ItemActions item={item()} {...h} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
+    expect(screen.queryByRole('menuitem', { name: /^Move (up|down)$/ })).toBeNull();
+  });
 });

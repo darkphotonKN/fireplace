@@ -6,6 +6,8 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import {
   Archive,
+  ArrowDown,
+  ArrowUp,
   CalendarDays,
   CheckSquare,
   FileText,
@@ -44,6 +46,13 @@ export interface ItemActionsProps {
   /** List view only — the card has no row above to nest under. */
   onIndent?: () => void;
   onOutdent?: () => void;
+  /**
+   * One place within the sibling set (R6.1). Each is offered only when it is
+   * handed over: the caller knows the set, so an item at an end — or alone in
+   * its set — is simply given no handler for that direction (R6.2).
+   */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
   /** Extra classes for the trigger, e.g. when it should stay visible. */
   triggerClassName?: string;
 }
@@ -63,6 +72,8 @@ export default function ItemActions({
   onSetDates,
   onIndent,
   onOutdent,
+  onMoveUp,
+  onMoveDown,
   triggerClassName,
 }: ItemActionsProps) {
   const [open, setOpen] = useState(false);
@@ -296,6 +307,28 @@ export default function ItemActions({
                       <IndentIncrease aria-hidden strokeWidth={1.75} className="h-4 w-4" />
                     )}
                     {item.parentId ? 'Move out' : 'Nest under above'}
+                  </button>
+                )}
+                {onMoveUp && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={rowClass}
+                    onClick={run(onMoveUp)}
+                  >
+                    <ArrowUp aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+                    Move up
+                  </button>
+                )}
+                {onMoveDown && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={rowClass}
+                    onClick={run(onMoveDown)}
+                  >
+                    <ArrowDown aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+                    Move down
                   </button>
                 )}
                 <div className="my-1 h-px bg-foreground/[0.07]" />

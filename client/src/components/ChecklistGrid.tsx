@@ -34,6 +34,17 @@ export interface ChecklistGridProps {
   onSetDates: (id: string, startDate: string | null, dueDate: string | null) => unknown;
   /** A step can be pulled out of its block; a block has nothing to leave. */
   onOutdent: (id: string) => unknown;
+  /**
+   * The move actions one item's panel should carry — blocks among blocks,
+   * steps within their own block. Handed over ready-made rather than worked
+   * out here: the ends of a set are decided over every sibling, including the
+   * ones this page and this filter are not showing (R6.2, R7.2), and the grid
+   * only ever sees its own slice.
+   */
+  moveProps: (id: string) => {
+    onMoveUp?: () => void;
+    onMoveDown?: () => void;
+  };
 }
 
 const isNote = (item: ChecklistItem) => (item.type ?? 'task') === 'note';
@@ -56,6 +67,7 @@ export default function ChecklistGrid({
   onArchive,
   onSetDates,
   onOutdent,
+  moveProps,
 }: ChecklistGridProps) {
   // Rename and add live here rather than in the list's shared edit state: the
   // two views are never on screen together, and a card's input has nothing to
@@ -187,6 +199,7 @@ export default function ChecklistGrid({
                   onArchive={() => onArchive(item.id)}
                   onDelete={() => onDelete(item.id)}
                   onSetDates={(start, due) => onSetDates(item.id, start, due)}
+                  {...moveProps(item.id)}
                 />
               </span>
               {children.length > 0 && (
@@ -295,6 +308,7 @@ export default function ChecklistGrid({
                           onSetDates(child.id, start, due)
                         }
                         onOutdent={() => onOutdent(child.id)}
+                        {...moveProps(child.id)}
                       />
                     </span>
                   </li>

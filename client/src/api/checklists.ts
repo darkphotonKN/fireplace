@@ -26,6 +26,8 @@ export type ChecklistItem = components["schemas"]["ChecklistResp"];
 export type CreateChecklistRequest = components["schemas"]["CreateChecklistReq"];
 export type UpdateChecklistRequest = components["schemas"]["UpdateChecklistReq"];
 export type UpdateDatesRequest = components["schemas"]["UpdateDatesReq"];
+export type ReorderChecklistRequest =
+  components["schemas"]["ReorderChecklistReq"];
 
 export type Scope = "daily" | "longterm";
 export type ItemType = "task" | "note";
@@ -127,6 +129,30 @@ export const updateChecklistDates = async (
   );
   if (error) throw apiErrorFrom(error, response.status);
   return data!;
+};
+
+/**
+ * Writes the order of ONE sibling set (I-0055).
+ *
+ * `ids` must be exactly a permutation of that set — the top-level items of a
+ * (plan, scope) when `parentId` is null, or one parent's children when it is an
+ * id. Not the visible subset: a set sent short of the items a filter happens to
+ * be hiding is not a permutation and is refused whole.
+ *
+ * Sending the order a set already has is a no-op, not an error. Returns the
+ * reordered siblings; the endpoint may answer with null rather than an empty
+ * array, which is flattened here so callers always get a list.
+ */
+export const reorderChecklists = async (
+  planId: string,
+  body: ReorderChecklistRequest,
+): Promise<ChecklistItem[]> => {
+  const { data, error, response } = await api.PATCH(
+    "/api/plans/{id}/checklists/order",
+    { params: { path: { id: planId } }, body },
+  );
+  if (error) throw apiErrorFrom(error, response.status);
+  return data ?? [];
 };
 
 /** A SETTER, not a toggle — pass false to unarchive. */
