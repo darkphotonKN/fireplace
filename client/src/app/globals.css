@@ -82,44 +82,56 @@
   background-color: #1f1f1f; /* dark mode background */
 }
 
-/* basic text styles */
-body {
-  color: rgb(46, 46, 46);
-  font-family: var(--font-lora), georgia, serif;
-  font-size: 14px;
-}
+/*
+ * Basic text styles (I-0061).
+ *
+ * These are inside `@layer base` on purpose. Tailwind hoists the layer to the
+ * `@tailwind base` position, so every rule here is emitted *before*
+ * `@tailwind utilities` and a `text-*` utility on the element beats it — which
+ * is what the design guideline means by "style from semantic tokens" (§Design
+ * Principles 2). Declared as plain CSS after the utilities, as they were, these
+ * rules outranked the tokens instead, and a `.dark`-scoped override outranked
+ * them on specificity as well.
+ *
+ * Colours are read from the theme variables, so `:root` and `.dark` above stay
+ * the only places that know about a theme. Do not add a `.dark` counterpart to
+ * anything below: that is the per-component override the guideline forbids,
+ * one level up.
+ */
+@layer base {
+  body {
+    color: hsl(var(--foreground));
+    font-family: var(--font-lora), georgia, serif;
+    font-size: 14px;
+  }
 
-h1 {
-  color: rgb(247, 111, 83); /* always the same color in light/dark */
-  font-size: 32px;
-  font-weight: 700;
-}
+  /*
+   * Coral in both themes, with no `.dark` case needed: `--primary` is
+   * deliberately identical in light and dark, so the brand mark does not shift
+   * (design-guideline §Theming, §Heading rules — one `h1` per view).
+   */
+  h1 {
+    color: hsl(var(--primary));
+    font-size: 32px;
+    font-weight: 700;
+  }
 
-h2 {
-  color: rgb(46, 46, 46);
-  font-size: 24px;
-  font-weight: 700;
-}
+  h2 {
+    color: hsl(var(--foreground));
+    font-size: 24px;
+    font-weight: 700;
+  }
 
-h3 {
-  color: rgb(46, 46, 46);
-  font-size: 20px;
-  font-weight: 700;
-}
+  h3 {
+    color: hsl(var(--foreground));
+    font-size: 20px;
+    font-weight: 700;
+  }
 
-p {
-  color: rgb(46, 46, 46);
+  p {
+    color: hsl(var(--foreground));
+  }
 }
-
-/* dark mode overrides */
-.dark body,
-.dark p,
-.dark h2,
-.dark h3 {
-  color: rgb(209, 207, 192); /* #d1cfc0 */
-}
-
-/* h1 keeps its color in dark mode */
 
 /* The date-range picker inside an item's action panel. react-datepicker
    ships a white box with its own blues; this dresses it in the theme's own

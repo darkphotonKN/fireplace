@@ -113,7 +113,7 @@ export function Calendar({ planId, className = "", compact = false }: CalendarPr
       </div>
 
       {error && <div className="text-sm text-red-400 mb-2">{error}</div>}
-      {loading && <div className="text-sm text-gray-500 mb-2">Loading…</div>}
+      {loading && <div className="text-sm text-muted-foreground mb-2">Loading…</div>}
 
       {view === "month" ? (
         <MonthGrid days={days} anchor={anchor} items={items} window={window_} compact={compact} />
@@ -164,7 +164,7 @@ function MonthGrid({ days, anchor, items, window, compact }: GridSectionProps & 
     <div className="space-y-1">
       <div className="grid grid-cols-7 gap-1 mb-1">
         {weekDays.map((d) => (
-          <div key={d} className="text-center text-xs font-semibold text-gray-500 py-1">
+          <div key={d} className="text-center text-xs font-semibold text-muted-foreground py-1">
             {compact ? d[0] : d}
           </div>
         ))}
@@ -188,7 +188,7 @@ function WeekGrid({ days, items, window, compact }: GridSectionProps) {
     <div className="space-y-1">
       <div className="grid grid-cols-7 gap-1 mb-1">
         {weekDays.map((d) => (
-          <div key={d} className="text-center text-xs font-semibold text-gray-500 py-1">
+          <div key={d} className="text-center text-xs font-semibold text-muted-foreground py-1">
             {compact ? d[0] : d}
           </div>
         ))}

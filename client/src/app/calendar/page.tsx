@@ -40,7 +40,7 @@ export default function CalendarPage() {
         <div className="max-w-7xl mx-auto">
           <div className="backdrop-blur-sm rounded-2xl p-8 shadow-lg bg-white/5 dark:bg-gray-900/10">
             <h1 className="text-3xl font-bold mb-4">Calendar</h1>
-            <p className="text-gray-500">
+            <p className="text-muted-foreground">
               Please select a plan to view its calendar.
             </p>
             <Link
@@ -66,7 +66,7 @@ export default function CalendarPage() {
               <h1 className="text-3xl font-bold mb-2">
                 {loading ? 'Loading...' : plan?.name ? `${plan.name} - Calendar` : 'Calendar'}
               </h1>
-              <p className="text-gray-500">
+              <p className="text-muted-foreground">
                 View and manage your scheduled tasks
               </p>
             </div>

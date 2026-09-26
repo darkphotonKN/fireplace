@@ -10,6 +10,7 @@ import {
   isValid,
 } from "date-fns";
 
+import { parseDateOnly } from "@/lib/itemDates";
 import type { CalendarItem, CalendarView } from "@/services/api";
 
 export interface CalendarWindow {
@@ -48,12 +49,26 @@ export const formatViewAnchor = (d: Date, view: CalendarView) =>
 export const getDaysInWindow = ({ start, end }: CalendarWindow) =>
   eachDayOfInterval({ start, end });
 
-/** Parse a "YYYY-MM-DD" string into a UTC midnight Date. Returns null for empty. */
-export function parseISODate(s: string | undefined | null): Date | null {
-  if (!s) return null;
-  const t = parse(s, "yyyy-MM-dd", new Date());
-  return isValid(t) ? t : null;
-}
+/**
+ * An item's date, as a local midnight `Date`, or null when it has none.
+ *
+ * This is `parseDateOnly` under calendar.ts's own name — deliberately a
+ * delegation and not a second implementation (I-0060). It used to be a strict
+ * `parse(s, "yyyy-MM-dd")`, which matches what the client *sends* and rejects
+ * `"2026-03-16T00:00:00Z"`: the same blindness I-0059 found in
+ * src/lib/itemDates.ts. Returning null there is silent — `layoutItem` takes it
+ * for an item with no dates and renders nothing at all.
+ *
+ * The rule itself lives in one place, itemDates.ts: **the date portion of the
+ * value is the calendar day; any time and zone after it are ignored, never
+ * converted.** Do not restate it here. Two files disagreeing about what a date
+ * is, is how this defect came to exist twice.
+ *
+ * Both parsers land on a LOCAL midnight, which is what `resolveWindow` and
+ * `getDaysInWindow` below produce too — so `layoutItem`'s comparisons stay
+ * like-for-like, exactly as they were under date-fns.
+ */
+export const parseISODate = parseDateOnly;
 
 export type RenderShape = "bar" | "chip" | "none";
 

@@ -194,14 +194,14 @@ export default function MyPlans() {
           {isLoading ? (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-orange-500"></div>
-              <p className="mt-2 text-gray-500">Loading plans...</p>
+              <p className="mt-2 text-muted-foreground">Loading plans...</p>
             </div>
           ) : error ? (
             <div className="text-center py-12 text-red-500">{error}</div>
           ) : plans.length === 0 ? (
             isSearching ? (
               <div className="text-center py-12">
-                <p className="text-gray-500">
+                <p className="text-muted-foreground">
                   No plans match &ldquo;{debouncedSearch}&rdquo;
                   {page > 0 ? " on this page" : ""}.
                 </p>
@@ -220,7 +220,7 @@ export default function MyPlans() {
               </div>
             ) : (
               <div className="text-center py-12">
-                <p className="text-gray-500">
+                <p className="text-muted-foreground">
                   No plans found. Create your first plan!
                 </p>
                 <Link
@@ -282,7 +282,7 @@ export default function MyPlans() {
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 20 20"
                       fill="currentColor"
-                      className="w-4 h-4 text-gray-500 hover:text-red-500 transition-colors"
+                      className="w-4 h-4 text-muted-foreground hover:text-destructive transition-colors"
                     >
                       <path
                         fillRule="evenodd"
