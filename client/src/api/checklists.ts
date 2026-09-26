@@ -1,5 +1,6 @@
 import { api, apiErrorFrom } from "./client";
 import type { components } from "./generated/schema";
+import { markTouchedToday } from "@/lib/touchedToday";
 
 /**
  * The checklists surface through the generated client (FS-0004, I-0017).
@@ -21,6 +22,21 @@ import type { components } from "./generated/schema";
  * `scope` and `type` are now validated at the boundary. Sending a value outside
  * the enum returns 422 instead of travelling to plan-service — see the note in
  * typed_checklists.go.
+ *
+ * TOUCHED TODAY (FS-KSJFR R12): every mutating function below records the
+ * touched-today stamp once its call has resolved successfully. It lives here
+ * rather than in the callers because this is *almost* the one seam every
+ * mutation crosses — add a mutation to this file, add the line. A read never
+ * gets one (R13), and a rejected call never reaches it (R14).
+ *
+ * "Almost", and the exception is load-bearing: `deleteChecklistItem` below is
+ * imported by `components/Todo.tsx:8` and never called. Both delete paths there
+ * (:707, :1373) use a hand-written `fetch` that skips this file entirely — and,
+ * carrying no Authorization header and an undefined env var, does not work at
+ * all. See **I-0058**. So a delete records no stamp today, and this comment
+ * says so rather than describing an invariant the product does not have. The
+ * claim becomes true when I-0058 lands; until then FS-KSJFR R11 is correct
+ * about what *should* stamp and the product is what is wrong.
  */
 export type ChecklistItem = components["schemas"]["ChecklistResp"];
 export type CreateChecklistRequest = components["schemas"]["CreateChecklistReq"];
@@ -87,6 +103,7 @@ export const createChecklistItem = async (
     { params: { path: { id: planId } }, body: item },
   );
   if (error) throw apiErrorFrom(error, response.status);
+  markTouchedToday();
   return data!;
 };
 
@@ -111,6 +128,7 @@ export const updateChecklistItem = async (
     },
   );
   if (error) throw apiErrorFrom(error, response.status);
+  markTouchedToday();
   return data!;
 };
 
@@ -128,6 +146,7 @@ export const updateChecklistDates = async (
     },
   );
   if (error) throw apiErrorFrom(error, response.status);
+  markTouchedToday();
   return data!;
 };
 
@@ -152,6 +171,7 @@ export const reorderChecklists = async (
     { params: { path: { id: planId } }, body },
   );
   if (error) throw apiErrorFrom(error, response.status);
+  markTouchedToday();
   return data ?? [];
 };
 
@@ -169,6 +189,7 @@ export const archiveChecklistItem = async (
     },
   );
   if (error) throw apiErrorFrom(error, response.status);
+  markTouchedToday();
   return data!;
 };
 
@@ -181,4 +202,5 @@ export const deleteChecklistItem = async (
     { params: { path: { id: planId, checklist_id: checklistId } } },
   );
   if (error) throw apiErrorFrom(error, response.status);
+  markTouchedToday();
 };

@@ -703,23 +703,21 @@ export default function Todo({
 
   console.log('@Debug todos:', todos);
 
-  // Delete a todo
+  // Delete a todo.
+  //
+  // Through the API layer like every other mutation (I-0058): the generated
+  // client is the only thing that attaches the bearer token and knows the base
+  // URL, and `deleteChecklistItem` is also where the touched-today stamp is
+  // written (FS-KSJFR R11–R12). The hand-written `fetch` this replaced sent no
+  // Authorization header and read an env var that exists nowhere in the repo,
+  // so it could only ever 404. The API layer throws on a non-2xx, so there is
+  // no `response.ok` to check here.
   const deleteTodo = async (todoId: string) => {
     if (!planId) return;
 
     setIsUpdating(true);
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/plans/${planId}/checklists/${todoId}`,
-        {
-          method: 'DELETE',
-          credentials: 'include',
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to delete task');
-      }
+      await deleteChecklistItem(todoId, planId);
 
       // Remove the deleted todo from the state
       setTodos((prevTodos) => prevTodos?.filter((todo) => todo.id !== todoId));
@@ -1370,21 +1368,14 @@ export default function Todo({
     setShowDeleteModal(true);
   };
 
+  // The archived list's permanent delete. Same path as `deleteTodo` above and
+  // for the same reasons (I-0058) — this call site had its own copy of the
+  // broken `fetch`.
   const handleDeleteConfirm = async () => {
     if (!todoToDelete) return;
 
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/plans/${planId}/checklists/${todoToDelete.id}`,
-        {
-          method: 'DELETE',
-          credentials: 'include',
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to delete task');
-      }
+      await deleteChecklistItem(todoToDelete.id, planId);
 
       // Remove the deleted todo from the state
       setArchivedTodos((prevTodos) =>
@@ -1464,7 +1455,7 @@ export default function Todo({
               setShowSettings(false);
             }
           }}
-          className="flex items-center text-base text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 mb-4"
+          className="flex items-center text-base text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300 mb-4"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -1609,7 +1600,7 @@ export default function Todo({
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 20 20"
                 fill="currentColor"
-                className="w-4 h-4 text-gray-500"
+                className="w-4 h-4 text-muted-foreground"
               >
                 <path
                   fillRule="evenodd"
@@ -1634,10 +1625,10 @@ export default function Todo({
           <div className="flex items-center justify-between p-4 bg-white/5 dark:bg-gray-800/20 rounded-lg">
             <div>
               <h3 className="text-base font-medium mb-1">Refresh daily tasks</h3>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 Automatically refresh daily tasks at the start of each day.{' '}
               </p>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 This helps you automatically re-setup daily tasks that you may
                 want to work towards daily.
               </p>
@@ -1663,7 +1654,7 @@ export default function Todo({
             className="w-full p-4 text-left bg-white/5 dark:bg-gray-800/20 rounded-lg hover:bg-white/10 dark:hover:bg-gray-800/30 transition-colors"
           >
             <h3 className="text-base font-medium mb-1">View archived tasks</h3>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               View and manage your archived tasks
             </p>
           </button>
@@ -1675,7 +1666,7 @@ export default function Todo({
         <div className="space-y-4">
           {archivedTodos.length === 0 ? (
             <div className="py-4 text-center">
-              <p className="text-gray-500 text-base">No archived tasks found.</p>
+              <p className="text-muted-foreground text-base">No archived tasks found.</p>
             </div>
           ) : (
             <ul className="space-y-4 divide-y divide-gray-200 dark:divide-gray-800/50">
@@ -1694,7 +1685,7 @@ export default function Todo({
                           className={`mt-1 text-sm flex items-center ${
                             isScheduledTimePast(todo.scheduledTime)
                               ? 'text-red-500'
-                              : 'text-gray-500'
+                              : 'text-muted-foreground'
                           }`}
                         >
                           <svg
@@ -1839,7 +1830,7 @@ export default function Todo({
 
           {orderedRows.length === 0 ? (
             <div className="py-4 text-center">
-              <p className="text-gray-500 text-base">
+              <p className="text-muted-foreground text-base">
                 {enableTypeFilter && taskType === 'longterm' && listTypeFilter === 'note'
                   ? 'No notes yet.'
                   : enableTypeFilter && taskType === 'longterm' && listTypeFilter === 'task'
@@ -2050,7 +2041,7 @@ export default function Todo({
                                   todo.done ? 'line-through opacity-70' : ''
                                 } ${
                                   todo.type === 'note'
-                                    ? 'italic text-gray-400 dark:text-gray-500'
+                                    ? 'italic text-muted-foreground'
                                     : ''
                                 } ${
                                   newTodoAnimations[todo.id] ? 'relative' : ''
@@ -2352,7 +2343,7 @@ export default function Todo({
                 </div>
                 <button
                   onClick={toggleInsightsVisibility}
-                  className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  className="text-sm text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300"
                 >
                   {showInsights ? 'Hide suggestions' : 'Show suggestions'}
                 </button>
@@ -2361,7 +2352,7 @@ export default function Todo({
               {showInsights && (
                 <div className="space-y-3 p-3 bg-white/5 dark:bg-gray-800/20 rounded-md">
                   <div className="flex justify-end">
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-muted-foreground">
                       Based on long-term goals
                     </span>
                   </div>

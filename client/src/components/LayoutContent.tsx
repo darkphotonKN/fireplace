@@ -33,11 +33,18 @@ export default function LayoutContent({ children }: LayoutContentProps) {
     }
   }, [isHomePage, setIsCollapsed]);
 
-  // Sidebar hints for plan pages and the authenticated home page.
+  // Sidebar hints for plan pages only (FS-KSJFR R46).
+  //
+  // This used to fire on the authenticated home too. Home now lists plans on
+  // the page — Continue cards and Your other plans — so a tip pointing at a
+  // panel that shows what the user can already see reads as an unfinished
+  // redesign. The sidebar still starts collapsed on `/` (R45, the effect
+  // above); only the tip is gone from that route.
+  //
   // Same localStorage-gated behavior as before: first-timer toast once, then
   // a 24hr reminder — so dismissed hints don't re-appear.
   useEffect(() => {
-    if ((!isPlanPage && !isHomePage) || !isAuthenticated) return;
+    if (!isPlanPage || !isAuthenticated) return;
 
     // First-timer hint
     const hasSeenHint = localStorage.getItem("hasSeenSidebarHint");
@@ -72,7 +79,7 @@ export default function LayoutContent({ children }: LayoutContentProps) {
         position: "bottom-left",
       });
     }
-  }, [isPlanPage, isHomePage, isAuthenticated]);
+  }, [isPlanPage, isAuthenticated]);
 
   // Auth page always gets minimal layout
   if (isAuthPage) {

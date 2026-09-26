@@ -10,6 +10,12 @@
 - [x] Logged-out landing page → FS-none
 - [x] Product tour on the logged-out landing → FS-0003
 
+## Home
+
+- [x] Focus prompt on the authenticated home → FS-none
+- [x] Dashboard home for signed-in users → FS-KSJFR
+- [x] Day-gated focus prompt → FS-KSJFR
+
 ## API integration
 
 - [x] Hand-written fetch/axios service layer → FS-none

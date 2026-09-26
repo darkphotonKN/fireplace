@@ -166,7 +166,7 @@ export default function PlanDetail({
             <div className="space-y-4 p-6 pt-0">
               {loadingVideos ? (
                 <div className="py-4 text-center">
-                  <p className="text-gray-500 text-sm">
+                  <p className="text-muted-foreground text-sm">
                     Loading video suggestions...
                   </p>
                 </div>
@@ -214,7 +214,7 @@ export default function PlanDetail({
                 </div>
               ) : (
                 <div className="py-4 text-center">
-                  <p className="text-gray-500 text-sm">
+                  <p className="text-muted-foreground text-sm">
                     No video suggestions available.
                   </p>
                 </div>

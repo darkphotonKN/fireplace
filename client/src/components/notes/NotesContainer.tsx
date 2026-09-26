@@ -387,7 +387,7 @@ export function NotesContainer({
             <div className="text-center py-8 text-gray-400">
               <Lightbulb className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p className="text-sm">No notes yet</p>
-              <p className="text-xs mt-1 text-gray-500">Create a note or generate AI insights to get started</p>
+              <p className="text-xs mt-1 text-muted-foreground">Create a note or generate AI insights to get started</p>
             </div>
           )}
         </div>
