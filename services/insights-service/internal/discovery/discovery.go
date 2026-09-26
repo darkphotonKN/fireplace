@@ -4,7 +4,7 @@
 //
 // Ported from the api-gateway's internal/discovery during the strangler move of
 // the insights domain. Crawl and extraction behaviour is unchanged; what was
-// dropped is code the gateway never reached — the recursive DOM walk
+// dropped is code the gateway never reached, the recursive DOM walk
 // (parseHtml/walkTree, superseded by the regex extractor and only ever called
 // from a commented-out line) and debugPageContent. The concept struct is gone
 // too: only its Description was ever read, so this takes plain search terms.
