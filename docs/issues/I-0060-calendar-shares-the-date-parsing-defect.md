@@ -1,6 +1,6 @@
 ---
 id: I-0060
-status: in-progress
+status: done
 implements: FS-none
 blocked_by: []
 labels: [bug]

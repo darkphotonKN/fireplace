@@ -13,8 +13,8 @@
 ## Home
 
 - [x] Focus prompt on the authenticated home → FS-none
-- [ ] Dashboard home for signed-in users → FS-KSJFR
-- [ ] Day-gated focus prompt → FS-KSJFR
+- [x] Dashboard home for signed-in users → FS-KSJFR
+- [x] Day-gated focus prompt → FS-KSJFR
 
 ## API integration
 

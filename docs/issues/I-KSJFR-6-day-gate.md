@@ -1,6 +1,6 @@
 ---
 id: I-KSJFR-6
-status: in-progress
+status: done
 implements: FS-KSJFR
 blocked_by: [I-KSJFR-1, I-KSJFR-2]
 labels: [feature]
