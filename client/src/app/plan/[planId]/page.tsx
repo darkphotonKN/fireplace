@@ -139,9 +139,6 @@ export default function PlanDetail({
               className="pointer-events-none absolute -top-10 -right-10 w-40 h-40 rounded-full bg-amber-400/10 blur-3xl"
             />
             <div className="relative p-6">
-              <p className="mb-3 text-xs font-medium uppercase tracking-wide text-amber-500/80">
-                Today&apos;s reminders · resets daily
-              </p>
               <Todo fixedTaskType="daily" dailyAIOnly />
             </div>
           </Card>
