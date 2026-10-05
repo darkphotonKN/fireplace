@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import Logo from '@/components/Logo';
 
 interface FormErrors {
   name?: string;
@@ -127,7 +128,11 @@ export default function AuthPage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-layout">
       <div className="w-full max-w-md px-6">
-        <h1 className="text-3xl font-bold text-center mb-2" style={{ color: 'rgb(247, 111, 83)' }}>
+        <h1
+          className="flex items-center justify-center gap-2 text-3xl font-bold mb-2"
+          style={{ color: 'rgb(247, 111, 83)' }}
+        >
+          <Logo />
           Fireplace
         </h1>
         <p className="text-center mb-8 text-base text-[#2e2e2e]/50 dark:text-[#d1cfc0]/50">
