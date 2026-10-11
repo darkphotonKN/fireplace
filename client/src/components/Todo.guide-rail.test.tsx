@@ -75,6 +75,13 @@ async function renderList() {
   await screen.findByText('item A');
 }
 
+// The type filter's tab, not the view toggle's "Checklist", which sits in the
+// toggle's "View" group (FS-FSFEC R3).
+const typeFilter = (name: string) =>
+  screen
+    .getAllByRole('button', { name })
+    .find((b) => !b.closest('[role="group"][aria-label="View"]'))!;
+
 describe('Todo guide rail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -112,7 +119,7 @@ describe('Todo guide rail', () => {
     ]);
     await renderList();
     expect(railOf('A')).toBe('parent');
-    fireEvent.click(screen.getByRole('button', { name: 'Checklist' }));
+    fireEvent.click(typeFilter('Checklist'));
     await screen.findByText('item A');
     expect(screen.queryByText('item C')).toBeNull();
     expect(railOf('A')).toBeNull();

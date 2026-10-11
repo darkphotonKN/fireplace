@@ -64,8 +64,12 @@ const EIGHT = [
 ];
 
 const cards = () => document.querySelectorAll('[data-checklist-card]');
-const toggle = (name: 'List view' | 'Card view') =>
-  screen.getByRole('button', { name });
+// The toggle's "Checklist" shares its name with the type filter's tab; the
+// "View" group is what tells them apart (FS-FSFEC R3).
+const toggle = (name: 'Checklist' | 'Milestones') =>
+  within(screen.getByRole('group', { name: 'View' })).getByRole('button', {
+    name,
+  });
 
 async function renderTodo(items: unknown[] = EIGHT) {
   fetchChecklist.mockImplementation(async () => items);
@@ -86,14 +90,24 @@ describe('Todo list / blocks toggle', () => {
     // Six blocks, not eight: a block is taller than a row, so a page holds
     // fewer of them.
     expect(cards().length).toBe(6);
-    expect(toggle('Card view').getAttribute('aria-pressed')).toBe('true');
+    expect(toggle('Milestones').getAttribute('aria-pressed')).toBe('true');
     // The guide rail belongs to the rows; a card carries its own structure.
     expect(document.querySelector('[data-guide-rail]')).toBeNull();
 
-    fireEvent.click(toggle('List view'));
+    fireEvent.click(toggle('Checklist'));
 
     expect(cards().length).toBe(0);
     expect(document.querySelectorAll('li[tabindex]').length).toBe(9);
+  });
+
+  it('should name the two readings Milestones and Checklist, inside a View group', async () => {
+    await renderTodo();
+    expect(toggle('Milestones').getAttribute('title')).toBe('Milestones');
+    expect(toggle('Checklist').getAttribute('title')).toBe('Checklist');
+    // The type filter keeps its own "Checklist", outside the group.
+    expect(screen.getAllByRole('button', { name: 'Checklist' }).length).toBe(2);
+    expect(screen.queryByRole('button', { name: 'Card view' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'List view' })).toBeNull();
   });
 
   it('should page the blocks at six where the same list needs no pages', async () => {
@@ -102,7 +116,7 @@ describe('Todo list / blocks toggle', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     expect(cards().length).toBe(2);
 
-    fireEvent.click(toggle('List view'));
+    fireEvent.click(toggle('Checklist'));
 
     // Eight top-level items fit one page of rows.
     expect(screen.queryByTestId('page-counter')).toBeNull();
@@ -113,8 +127,8 @@ describe('Todo list / blocks toggle', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     expect(screen.getByTestId('page-counter').textContent).toBe('2 of 2');
 
-    fireEvent.click(toggle('List view'));
-    fireEvent.click(toggle('Card view'));
+    fireEvent.click(toggle('Checklist'));
+    fireEvent.click(toggle('Milestones'));
 
     // Ten rows a page and six blocks a page disagree about where anything
     // is, so the view starts again at the top rather than somewhere random.
@@ -133,7 +147,7 @@ describe('Todo list / blocks toggle', () => {
 
   it('should remember the view for the next visit', async () => {
     const first = await renderTodo();
-    fireEvent.click(toggle('List view'));
+    fireEvent.click(toggle('Checklist'));
     expect(window.localStorage.getItem('checklistView')).toBe('list');
     first.unmount();
 
@@ -158,6 +172,6 @@ describe('Todo list / blocks toggle', () => {
     render(<Todo fixedTaskType="daily" />);
     await screen.findByText('item P0');
 
-    expect(screen.queryByRole('button', { name: 'Card view' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'View' })).toBeNull();
   });
 });

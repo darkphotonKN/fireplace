@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 /**
  * FS-0009 R1, R6, R7.2, R9 — moving an item one place from the actions panel.
@@ -203,7 +203,9 @@ describe('Todo reorder from the actions panel', () => {
     });
 
     // The same order, drawn the other way — no per-view ordering state (R1.1).
-    fireEvent.click(screen.getByRole('button', { name: 'List view' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'View' })).getByRole('button', {
+        name: 'Checklist',
+      }));
     expect(order()).toEqual(['item B', 'item A', 'item C']);
   });
 

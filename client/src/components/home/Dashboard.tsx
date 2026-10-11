@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import type { Plan } from "@/api/plans";
-import { progressOf } from "@/lib/homePlans";
+import MilestoneStrip from "@/components/MilestoneStrip";
+import { cardProgressOf, type CardProgress } from "@/lib/homePlans";
 import { selectHomeWork } from "@/lib/homeWork";
 import FirstRun from "./FirstRun";
 import OtherPlans from "./OtherPlans";
@@ -137,6 +138,11 @@ function ContinueBlock({
  * than growing the row under the cursor (R22). A plan whose items failed keeps
  * that slot empty for good: `0/0` there would claim the plan is empty when all
  * we know is that we couldn't ask.
+ *
+ * A plan with milestones fills the same slot with its strip instead of the
+ * fraction (FS-FSFEC R23). The strip is drawn on one line, so it settles into
+ * the footer row the pill already holds open (R27), and in neutral tokens,
+ * because coral on this page is the Today block's alone (R28).
  */
 function ContinueCard({
   plan,
@@ -148,7 +154,7 @@ function ContinueCard({
   tickedIds: readonly string[];
 }) {
   const progress =
-    items.status === "ready" ? progressOf(items.items, tickedIds) : null;
+    items.status === "ready" ? cardProgressOf(items.items, tickedIds) : null;
 
   return (
     <li>
@@ -164,11 +170,22 @@ function ContinueCard({
           <span className="rounded-full bg-muted px-3 py-1 capitalize">
             {plan.planType}
           </span>
-          <span data-testid={`continue-progress-${plan.id}`}>
-            {progress ? `${progress.done}/${progress.total}` : ""}
+          <span
+            data-testid={`continue-progress-${plan.id}`}
+            className="flex min-w-0 flex-1 justify-end"
+          >
+            <ProgressSlot progress={progress} />
           </span>
         </span>
       </Link>
     </li>
+  );
+}
+
+function ProgressSlot({ progress }: { progress: CardProgress | null }) {
+  if (!progress) return null;
+  if (progress.kind === "count") return <>{`${progress.done}/${progress.total}`}</>;
+  return (
+    <MilestoneStrip reading={progress.reading} tone="neutral" layout="inline" />
   );
 }
