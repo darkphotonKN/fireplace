@@ -88,6 +88,17 @@ const item = (id: string, done: boolean): ChecklistItem =>
     updatedAt: '2026-01-01T00:00:00Z',
   }) as ChecklistItem;
 
+/**
+ * An item that is not a milestone, for the tests about the done/total slot.
+ *
+ * A top-level long-term task is a milestone (FS-FSFEC R1), and a plan with one
+ * shows its strip instead of the fraction (R23). A plan of daily items has no
+ * milestones and keeps done/total exactly as before (R26, §Edge States), which
+ * is the reading these tests are about.
+ */
+const daily = (id: string, done: boolean): ChecklistItem =>
+  ({ ...item(id, done), scope: 'daily' }) as ChecklistItem;
+
 /** `count` plans, oldest first in the response so ordering has to be earned. */
 const plansAged = (count: number) =>
   Array.from({ length: count }, (_, i) =>
@@ -168,7 +179,7 @@ describe('Dashboard — Continue where you left off', () => {
       plan('d', '2026-06-01T00:00:00Z', { name: 'Forgotten' }),
     ]);
     listChecklists.mockImplementation(async (id: string) =>
-      id === 'a' ? [item('1', true), item('2', false), item('3', true)] : [],
+      id === 'a' ? [daily('1', true), daily('2', false), daily('3', true)] : [],
     );
 
     render(<Home />);
@@ -227,7 +238,7 @@ describe('Dashboard — Continue where you left off', () => {
     expect(screen.queryByText(/loading/i)).toBeNull();
     expect(screen.getByTestId('continue-progress-a')).toHaveTextContent('');
 
-    items.resolve([item('1', true)]);
+    items.resolve([daily('1', true)]);
     expect(await screen.findByText('1/1')).toBeInTheDocument();
   });
 
@@ -241,7 +252,7 @@ describe('Dashboard — Continue where you left off', () => {
     const slotWhileLoading = await screen.findByTestId('continue-progress-a');
     expect(slotWhileLoading).toBeInTheDocument();
 
-    items.resolve([item('1', false)]);
+    items.resolve([daily('1', false)]);
     await screen.findByText('0/1');
 
     // Same element, filled in — not a node that appeared and pushed the row.
@@ -258,7 +269,7 @@ describe('Dashboard — partial and total failure', () => {
     ]);
     listChecklists.mockImplementation(async (id: string) => {
       if (id === 'b') throw new Error('nope');
-      return [item('1', true)];
+      return [daily('1', true)];
     });
 
     render(<Home />);
@@ -331,7 +342,7 @@ describe('Dashboard — partial and total failure', () => {
   it('should re-run the fan-out from Today\'s retry', async () => {
     listPlans.mockResolvedValue(plansAged(1));
     listChecklists.mockRejectedValueOnce(new Error('nope'));
-    listChecklists.mockResolvedValue([item('1', false)]);
+    listChecklists.mockResolvedValue([daily('1', false)]);
 
     render(<Home />);
 

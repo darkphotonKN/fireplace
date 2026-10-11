@@ -107,7 +107,7 @@ export default function LayoutContent({ children }: LayoutContentProps) {
           style={{ left: isHomePage ? "0" : isCollapsed ? "0" : "16rem" }}
         >
           <div className="h-full max-w-7xl mx-auto px-8 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 text-2xl">
               <Logo />
               <Link href="/">
                 <h1 className="text-2xl font-bold">Fireplace</h1>

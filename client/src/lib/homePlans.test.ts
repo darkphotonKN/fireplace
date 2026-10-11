@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   FOCUSED_PLAN_COUNT,
   byRecentlyUpdated,
+  cardProgressOf,
   progressOf,
 } from './homePlans';
 import type { Plan } from '@/api/plans';
@@ -109,5 +110,58 @@ describe('progressOf', () => {
       done: 1,
       total: 1,
     });
+  });
+});
+
+describe('cardProgressOf (FS-FSFEC R23–R26)', () => {
+  const with_ = (base: ChecklistItem, extra: Partial<ChecklistItem>) =>
+    ({ ...base, ...extra }) as ChecklistItem;
+
+  it('should read milestones when the plan has any, R1 filter applied', () => {
+    const progress = cardProgressOf([
+      item('A', true),
+      item('B', false),
+      with_(item('A1', true), { parentId: 'A' }),
+      with_(item('habit', false), { scope: 'daily' }),
+      with_(item('gone', false), { archived: true }),
+      with_(item('idea', false), { type: 'note' }),
+    ]);
+
+    expect(progress.kind).toBe('milestones');
+    if (progress.kind !== 'milestones') return;
+    expect(progress.reading.milestones.map((m) => m.id)).toEqual(['A', 'B']);
+    expect([progress.reading.closed, progress.reading.total]).toEqual([1, 2]);
+  });
+
+  it('should fall back to done/total, unchanged, when the plan has no milestones', () => {
+    const items = [
+      with_(item('habit', true), { scope: 'daily' }),
+      with_(item('stretch', false), { scope: 'daily' }),
+      with_(item('idea', false), { type: 'note' }),
+    ];
+
+    expect(cardProgressOf(items)).toEqual({ kind: 'count', ...progressOf(items) });
+    expect(cardProgressOf([])).toEqual({ kind: 'count', done: 0, total: 0 });
+  });
+
+  it('should count this visit\'s ticks from Today in the strip, as in done/total', () => {
+    const items = [
+      item('A', false),
+      with_(item('A1', false), { parentId: 'A' }),
+      with_(item('A2', true), { parentId: 'A' }),
+      item('B', false),
+    ];
+
+    const before = cardProgressOf(items);
+    const after = cardProgressOf(items, ['A1', 'B']);
+
+    if (before.kind !== 'milestones' || after.kind !== 'milestones') {
+      throw new Error('expected milestones');
+    }
+    expect(before.reading.milestones.map((m) => m.progress)).toEqual([0.5, 0]);
+    expect(after.reading.milestones.map((m) => m.progress)).toEqual([1, 1]);
+    expect(after.reading.closed).toBe(1);
+    // The overlay is a reading; the fetched items are left as they were.
+    expect(items.map((i) => i.done)).toEqual([false, false, true, false]);
   });
 });

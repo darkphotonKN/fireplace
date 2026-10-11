@@ -37,7 +37,7 @@ export default function ChromeBar() {
       )}
     >
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3">
-        <span className="flex items-center gap-2">
+        <span className="flex items-center gap-2 text-lg">
           <Logo />
           <span className="text-lg font-bold text-foreground">Fireplace</span>
         </span>

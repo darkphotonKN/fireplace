@@ -74,6 +74,9 @@ import {
 } from '@/lib/nesting';
 import { clampPage, pageCount, pageOfItem, pageSlice, PAGE_SIZE } from '@/lib/paging';
 import ChecklistGrid from '@/components/ChecklistGrid';
+import MilestoneStrip from '@/components/MilestoneStrip';
+import MilestoneComposer from '@/components/MilestoneComposer';
+import { readMilestones } from '@/lib/milestones';
 import ItemActions from '@/components/ItemActions';
 import ItemDateChip from '@/components/ItemDateChip';
 import { loadCollapsedIds, saveCollapsedIds } from '@/lib/collapsedGroups';
@@ -214,7 +217,14 @@ export default function Todo({
     }
   }, []);
   const chooseView = (next: 'list' | 'grid') => {
+    // Choosing the view already showing changes nothing, so a nest made in
+    // it stays put.
+    if (next === view) return;
     setView(next);
+    // Either way the list bar comes back at top level: a nest from before the
+    // grid would otherwise catch text typed for a milestone (FS-FSFEC R41,
+    // FS-0007 R8.10).
+    setAddBarParentId(null);
     try {
       window.localStorage.setItem(VIEW_KEY, next);
     } catch {
@@ -254,6 +264,15 @@ export default function Todo({
   const [addBarParentId, setAddBarParentId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const newTodoInputRef = useRef<HTMLInputElement>(null);
+  // The milestone the grid's composer is filling, reported by the composer
+  // (which owns its own state) so the grid can trace its card (FS-FSFEC R33).
+  const [tracedId, setTracedId] = useState<string | null>(null);
+  // Where an empty plan's grid invites its first milestone. The composer draws
+  // the invitation into it and stands in for its resting bar with it, so it is
+  // the composer's own door rather than a second one (FS-FSFEC R46, D5).
+  const [invitationSlot, setInvitationSlot] = useState<HTMLDivElement | null>(
+    null
+  );
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -625,6 +644,37 @@ export default function Todo({
     }
   };
 
+  // A just-created item fades in where it landed, so the eye finds it; the
+  // flag clears after a second so a re-render never replays it.
+  const markArriving = (id: string) => {
+    setNewTodoAnimations((prev) => ({ ...prev, [id]: true }));
+    setTimeout(
+      () => setNewTodoAnimations((prev) => ({ ...prev, [id]: false })),
+      1000
+    );
+  };
+
+  // The one create path behind both add bars, the list's and the grid's
+  // composer (FS-FSFEC R31, R39): the item is appended, followed to whatever
+  // page it landed on (FS-0008 R16, R17) and faded in there. Throws, so each
+  // bar reports a failure in its own words and keeps its text to retry.
+  const createArriving = async (
+    text: string,
+    type: 'task' | 'note',
+    parentId?: string
+  ): Promise<ChecklistItem> => {
+    const created = await createChecklistItem(
+      text,
+      planId,
+      taskType as 'daily' | 'longterm',
+      { type, parentId }
+    );
+    setTodos((prev) => [...prev, created]);
+    setPendingJumpId(created.id);
+    markArriving(created.id);
+    return created;
+  };
+
   // Add a new todo
   const addTodo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -632,36 +682,16 @@ export default function Todo({
 
     try {
       setIsSubmitting(true);
-      const newItem = await createChecklistItem(
-        newTodo,
-        planId,
-        taskType as 'daily' | 'longterm',
-        // addBarParent is only ever a real top-level task, never a note or
-        // a child, so this can't ask for a nest the server would refuse.
-        { type: newTodoType, parentId: addBarParent?.id }
-      );
+      // addBarParent is only ever a real top-level task, never a note or a
+      // child, so this can't ask for a nest the server would refuse. The add
+      // bar sits outside the paged list, so its text, nesting and focus are
+      // untouched by the jump to the new item's page (R18).
+      await createArriving(newTodo, newTodoType, addBarParent?.id);
       // A child landing in a collapsed parent would be invisible; open it so
       // the arrival is seen, and remember that (R8.9). After the create, so a
       // failure leaves the parent as it was.
       if (addBarParent) setParentCollapsed(addBarParent.id, false);
-      setTodos((prev) => [...prev, newItem]);
-      // Follow it to its page once the rows have it (R16, R17). The add bar
-      // sits outside the paged list, so its text, nesting and focus are
-      // untouched by the move (R18).
-      setPendingJumpId(newItem.id);
       setNewTodo('');
-      // Add animation for the new todo
-      setNewTodoAnimations((prev) => ({
-        ...prev,
-        [newItem.id]: true,
-      }));
-      // Remove animation after 1 second
-      setTimeout(() => {
-        setNewTodoAnimations((prev) => ({
-          ...prev,
-          [newItem.id]: false,
-        }));
-      }, 1000);
     } catch (error) {
       console.error('Failed to add todo:', error);
     } finally {
@@ -953,6 +983,17 @@ export default function Todo({
   // is remembered. A block is taller than a row, hence its own page size.
   const canUseGrid = taskType === 'longterm' && !showArchived && !showSettings;
   const isGrid = canUseGrid && view === 'grid';
+
+  // The plan's milestones read off the whole list, not this page or this
+  // filter (FS-FSFEC R16), and off the same optimistic state the items are
+  // drawn from, so a tick moves its segment at once (R20).
+  const milestoneReading = useMemo(() => readMilestones(todos), [todos]);
+  // An empty plan invites its first milestone instead of showing a lone bar
+  // under nothing (R46). Empty means the whole list, as the strip reads it,
+  // so a list the filter has emptied keeps its filter-empty text (R47); and
+  // under Notes the composer makes notes, so the notes-empty text stays too.
+  const invitesFirstMilestone =
+    isGrid && !todos?.length && !(enableTypeFilter && listTypeFilter === 'note');
   const pageSize = isGrid ? GRID_PAGE_SIZE : PAGE_SIZE;
 
   const totalPages = pageCount(rowGroups.length, pageSize);
@@ -995,6 +1036,9 @@ export default function Todo({
     () => resolveAddBarTarget(rowGroups, addBarParentId),
     [rowGroups, addBarParentId]
   );
+  // The grid composer's traced milestone, by the same rule: it can take steps
+  // exactly when the list bar could nest under it (FS-FSFEC R38).
+  const resolveMilestone = (id: string) => resolveAddBarTarget(rowGroups, id);
   // Short enough for the placeholder; the aria-label carries the full text.
   const addBarParentLabel =
     addBarParent && addBarParent.description.length > 32
@@ -1131,7 +1175,13 @@ export default function Todo({
   // A block's own composer. The gesture already says which parent, so unlike
   // the add bar there is no Tab to interpret and no page to jump to: the step
   // lands in the card it was typed into, which is on screen by definition.
-  const addChildTodo = async (parentId: string, text: string) => {
+  // Also the grid composer's step add, which fills a milestone it traces
+  // (FS-FSFEC R32, R34). Resolves to the step, or null once the failure is
+  // shown, so a caller can keep its text to retry.
+  const addChildTodo = async (
+    parentId: string,
+    text: string
+  ): Promise<ChecklistItem | null> => {
     try {
       const created = await createChecklistItem(
         text,
@@ -1143,15 +1193,45 @@ export default function Todo({
       // A first step turns a childless block into one that folds, so make
       // sure it isn't born folded on a stale collapsed id.
       setParentCollapsed(parentId, false);
-      setNewTodoAnimations((prev) => ({ ...prev, [created.id]: true }));
-      setTimeout(
-        () => setNewTodoAnimations((prev) => ({ ...prev, [created.id]: false })),
-        1000
-      );
+      markArriving(created.id);
+      return created;
     } catch (error) {
       console.error('Failed to add step:', error);
       setError('Failed to add step. Please try again.');
+      return null;
     }
+  };
+
+  // The grid composer's naming step: a new top-level item at the end of the
+  // list, a milestone or a note card (FS-FSFEC R39), arriving the way the
+  // list bar's rows do (R31). Null once a failure is shown, and the composer
+  // keeps the name.
+  const createTopLevel = async (
+    text: string,
+    type: 'task' | 'note'
+  ): Promise<ChecklistItem | null> => {
+    try {
+      return await createArriving(text, type);
+    } catch (error) {
+      console.error(`Failed to add ${type}:`, error);
+      setError(
+        `Failed to add ${type === 'note' ? 'note' : 'milestone'}. Please try again.`
+      );
+      return null;
+    }
+  };
+
+  // The grid composer's filling step. Unlike a card's own composer, the
+  // traced milestone may have been paged away from, so the view goes back to
+  // meet the step, as the list bar's nested add does (FS-FSFEC R37, FS-0008
+  // R16).
+  const addMilestoneStep = async (
+    parentId: string,
+    text: string
+  ): Promise<ChecklistItem | null> => {
+    const created = await addChildTodo(parentId, text);
+    if (created) setPendingJumpId(created.id);
+    return created;
   };
 
   /**
@@ -1518,15 +1598,21 @@ export default function Todo({
                 ))}
               </div>
             )}
-            {/* Rows or blocks. Two glyphs in one pill rather than a single
-                switch, so which reading you are in is visible without
-                remembering what the icon means. */}
+            {/* The checklist or the milestone reading. Two glyphs in one pill
+                rather than a single switch, so which reading you are in is
+                visible without remembering what the icon means. Grouped as
+                "View" so its "Checklist" is told apart from the type
+                filter's (FS-FSFEC R3). */}
             {canUseGrid && (
-              <div className="flex items-center gap-0.5 rounded-full border border-foreground/10 p-0.5">
+              <div
+                role="group"
+                aria-label="View"
+                className="flex items-center gap-0.5 rounded-full border border-foreground/10 p-0.5"
+              >
                 {(
                   [
-                    ['list', List, 'List view'],
-                    ['grid', LayoutGrid, 'Card view'],
+                    ['list', List, 'Checklist'],
+                    ['grid', LayoutGrid, 'Milestones'],
                   ] as const
                 ).map(([value, Icon, label]) => (
                   <button
@@ -1785,6 +1871,12 @@ export default function Todo({
       {!showSettings && !showArchived && (
         <div className="space-y-4">
 
+          {/* The plan's progress across its milestones, in both readings.
+              Outside the scrolling list area so it never scrolls away. Long-
+              term only, which is exactly where the milestone reading exists
+              (R15, R22). */}
+          {canUseGrid && <MilestoneStrip reading={milestoneReading} />}
+
           {/* List area (FS-0008 R13). The card has no height of its own, so
               sticky would have nothing to stick inside — this box supplies
               the bounded scrollport the rows scroll in and the add bar pins
@@ -1828,7 +1920,9 @@ export default function Todo({
             {moveAnnouncement}
           </span>
 
-          {orderedRows.length === 0 ? (
+          {invitesFirstMilestone ? (
+            <div ref={setInvitationSlot} className="mt-4" />
+          ) : orderedRows.length === 0 ? (
             <div className="py-4 text-center">
               <p className="text-muted-foreground text-base">
                 {enableTypeFilter && taskType === 'longterm' && listTypeFilter === 'note'
@@ -1871,6 +1965,8 @@ export default function Todo({
                 onOutdent={outdentTodo}
                 moveProps={moveProps}
                 canDrag={canDrag}
+                tracedId={tracedId}
+                arriving={newTodoAnimations}
               />
             </div>
           ) : (
@@ -2143,110 +2239,133 @@ export default function Todo({
                 data-add-bar-fade
                 className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-card to-transparent"
               />
-              {/* One hairline runs under the whole row (icon, text, button) so
+              {/* In the grid the bar is the new-milestone composer instead:
+                  Tab there steps out to a new milestone, so none of this
+                  form's nesting, type toggle or Tab tip applies (FS-FSFEC
+                  R29, R44). */}
+              {/* List view: one hairline runs under the whole row (icon, text, button) so
                   everything sits on the same line with py-3 of air above it.
                   On focus an ember underline draws in from the left over it. */}
-              <form
-                onSubmit={addTodo}
-                className={cn(
-                  'group/add relative flex items-center border-b border-foreground/15 py-3 transition-[margin,border-color] duration-300 focus-within:border-transparent',
-                  addBarParent && 'ml-6'
-                )}
-              >
-                {/* Nested under the last group, the bar joins its guide rail:
-                    at ml-6, -left-4 is the checkbox column (8px). The piece
-                    reaches 28px up (space-y-4 + pt-3) to the list's bottom
-                    edge and 28px down (py-3 + half of h-8) to the icon's centre. */}
-                {addBarRailParentId && (
-                  <span
-                    aria-hidden
-                    data-guide-rail="add-bar"
-                    className="pointer-events-none absolute -left-4 -top-7 h-14 w-px bg-foreground/15 animate-in fade-in duration-300"
-                  />
-                )}
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute inset-x-0 -bottom-px h-px origin-left scale-x-0 bg-gradient-to-r from-primary via-primary/60 to-primary/0 shadow-[0_0_10px_rgba(247,111,83,0.45)] transition-transform duration-500 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] group-focus-within/add:scale-x-100"
-                />
-
-                {/* Type toggle for the next item to be created. -ml-2 on a w-8
-                    hit area centres the glyph over the list's checkbox column,
-                    so the typed text starts where row text starts (24px). */}
-                <button
-                  type="button"
-                  onClick={() =>
+              {isGrid ? (
+                // The type and the typed text are the list bar's own, so the
+                // filter sets both bars' type (R39) and text survives a
+                // switch of view either way (R41).
+                <MilestoneComposer
+                  type={newTodoType}
+                  onToggleType={() =>
                     setNewTodoType((t) => (t === 'task' ? 'note' : 'task'))
                   }
-                  title={
-                    newTodoType === 'task'
-                      ? 'Creating a task — click to switch to note'
-                      : 'Creating a note — click to switch to task'
-                  }
-                  aria-label={
-                    newTodoType === 'task'
-                      ? 'Switch to adding a note'
-                      : 'Switch to adding a task'
-                  }
-                  className="-ml-2 grid h-8 w-8 shrink-0 place-items-center rounded-full text-foreground/40 transition-colors duration-300 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 group-focus-within/add:text-primary"
-                >
-                  {/* Both glyphs share one grid cell and cross-fade on swap. */}
-                  <CheckSquare
-                    strokeWidth={1.75}
-                    className={cn(
-                      'col-start-1 row-start-1 h-[18px] w-[18px] transition-all duration-300',
-                      newTodoType === 'task'
-                        ? 'rotate-0 scale-100 opacity-100'
-                        : '-rotate-90 scale-75 opacity-0'
-                    )}
-                  />
-                  <FileText
-                    strokeWidth={1.75}
-                    className={cn(
-                      'col-start-1 row-start-1 h-[18px] w-[18px] transition-all duration-300',
-                      newTodoType === 'note'
-                        ? 'rotate-0 scale-100 opacity-100'
-                        : 'rotate-90 scale-75 opacity-0'
-                    )}
-                  />
-                </button>
-                {/* readOnly, not disabled, while saving: a disabled input
-                    drops focus, which would break rapid back-to-back entry.
-                    addTodo already ignores submits while one is in flight. */}
-                <input
-                  ref={newTodoInputRef}
-                  type="text"
-                  value={newTodo}
-                  onChange={(e) => setNewTodo(e.target.value)}
-                  onFocus={maybeShowTabHint}
-                  onKeyDown={handleAddBarKeyDown}
-                  placeholder={
-                    addBarParent
-                      ? `${newTodoType === 'note' ? 'Jot a note' : 'Add'} under “${addBarParentLabel}”…`
-                      : newTodoType === 'note'
-                      ? 'Jot down a note…'
-                      : 'Add something to do…'
-                  }
-                  aria-label={`${newTodoType === 'note' ? 'New note' : 'New task'}${
-                    addBarParent ? ` under “${addBarParent.description}”` : ''
-                  }`}
-                  className="h-8 min-w-0 flex-1 bg-transparent text-base leading-8 text-foreground caret-primary placeholder:italic placeholder:text-foreground/35 focus:outline-none read-only:opacity-60"
-                  readOnly={isSubmitting || isTyping}
+                  text={newTodo}
+                  onTextChange={setNewTodo}
+                  onCreate={createTopLevel}
+                  onAddStep={addMilestoneStep}
+                  resolveMilestone={resolveMilestone}
+                  onTraceChange={setTracedId}
+                  invitation={invitesFirstMilestone ? invitationSlot : null}
                 />
-                {/* Quiet until there's something to add, then it warms up. */}
-                <button
-                  type="submit"
+              ) : (
+                <form
+                  onSubmit={addTodo}
                   className={cn(
-                    'ml-3 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-60',
-                    newTodo.trim()
-                      ? 'bg-primary text-primary-foreground shadow-[0_2px_14px_-3px_rgba(247,111,83,0.6)] hover:bg-primary/90'
-                      : 'text-foreground/40 hover:bg-primary/10 hover:text-primary'
+                    'group/add relative flex items-center border-b border-foreground/15 py-3 transition-[margin,border-color] duration-300 focus-within:border-transparent',
+                    addBarParent && 'ml-6'
                   )}
-                  disabled={isSubmitting || isTyping}
                 >
-                  <Plus strokeWidth={2.25} className="h-3.5 w-3.5" />
-                  {isSubmitting ? 'Adding…' : 'Add'}
-                </button>
-              </form>
+                  {/* Nested under the last group, the bar joins its guide rail:
+                      at ml-6, -left-4 is the checkbox column (8px). The piece
+                      reaches 28px up (space-y-4 + pt-3) to the list's bottom
+                      edge and 28px down (py-3 + half of h-8) to the icon's centre. */}
+                  {addBarRailParentId && (
+                    <span
+                      aria-hidden
+                      data-guide-rail="add-bar"
+                      className="pointer-events-none absolute -left-4 -top-7 h-14 w-px bg-foreground/15 animate-in fade-in duration-300"
+                    />
+                  )}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 -bottom-px h-px origin-left scale-x-0 bg-gradient-to-r from-primary via-primary/60 to-primary/0 shadow-[0_0_10px_rgba(247,111,83,0.45)] transition-transform duration-500 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] group-focus-within/add:scale-x-100"
+                  />
+
+                  {/* Type toggle for the next item to be created. -ml-2 on a w-8
+                      hit area centres the glyph over the list's checkbox column,
+                      so the typed text starts where row text starts (24px). */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNewTodoType((t) => (t === 'task' ? 'note' : 'task'))
+                    }
+                    title={
+                      newTodoType === 'task'
+                        ? 'Creating a task — click to switch to note'
+                        : 'Creating a note — click to switch to task'
+                    }
+                    aria-label={
+                      newTodoType === 'task'
+                        ? 'Switch to adding a note'
+                        : 'Switch to adding a task'
+                    }
+                    className="-ml-2 grid h-8 w-8 shrink-0 place-items-center rounded-full text-foreground/40 transition-colors duration-300 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 group-focus-within/add:text-primary"
+                  >
+                    {/* Both glyphs share one grid cell and cross-fade on swap. */}
+                    <CheckSquare
+                      strokeWidth={1.75}
+                      className={cn(
+                        'col-start-1 row-start-1 h-[18px] w-[18px] transition-all duration-300',
+                        newTodoType === 'task'
+                          ? 'rotate-0 scale-100 opacity-100'
+                          : '-rotate-90 scale-75 opacity-0'
+                      )}
+                    />
+                    <FileText
+                      strokeWidth={1.75}
+                      className={cn(
+                        'col-start-1 row-start-1 h-[18px] w-[18px] transition-all duration-300',
+                        newTodoType === 'note'
+                          ? 'rotate-0 scale-100 opacity-100'
+                          : 'rotate-90 scale-75 opacity-0'
+                      )}
+                    />
+                  </button>
+                  {/* readOnly, not disabled, while saving: a disabled input
+                      drops focus, which would break rapid back-to-back entry.
+                      addTodo already ignores submits while one is in flight. */}
+                  <input
+                    ref={newTodoInputRef}
+                    type="text"
+                    value={newTodo}
+                    onChange={(e) => setNewTodo(e.target.value)}
+                    onFocus={maybeShowTabHint}
+                    onKeyDown={handleAddBarKeyDown}
+                    placeholder={
+                      addBarParent
+                        ? `${newTodoType === 'note' ? 'Jot a note' : 'Add'} under “${addBarParentLabel}”…`
+                        : newTodoType === 'note'
+                        ? 'Jot down a note…'
+                        : 'Add something to do…'
+                    }
+                    aria-label={`${newTodoType === 'note' ? 'New note' : 'New task'}${
+                      addBarParent ? ` under “${addBarParent.description}”` : ''
+                    }`}
+                    className="h-8 min-w-0 flex-1 bg-transparent text-base leading-8 text-foreground caret-primary placeholder:italic placeholder:text-foreground/35 focus:outline-none read-only:opacity-60"
+                    readOnly={isSubmitting || isTyping}
+                  />
+                  {/* Quiet until there's something to add, then it warms up. */}
+                  <button
+                    type="submit"
+                    className={cn(
+                      'ml-3 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-60',
+                      newTodo.trim()
+                        ? 'bg-primary text-primary-foreground shadow-[0_2px_14px_-3px_rgba(247,111,83,0.6)] hover:bg-primary/90'
+                        : 'text-foreground/40 hover:bg-primary/10 hover:text-primary'
+                    )}
+                    disabled={isSubmitting || isTyping}
+                  >
+                    <Plus strokeWidth={2.25} className="h-3.5 w-3.5" />
+                    {isSubmitting ? 'Adding…' : 'Add'}
+                  </button>
+                </form>
+              )}
 
               {/* The "Get Suggestion" trigger and its result panel are gone for
                   now — the space mattered more than the button. getAISuggestion

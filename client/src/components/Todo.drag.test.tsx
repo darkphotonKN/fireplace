@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 /**
  * FS-0009 R3, R4, R5, R7, R8 — picking an item up and dropping it somewhere
@@ -194,7 +194,9 @@ describe('Todo drag to reorder', () => {
 
     // The same order drawn the other way — the order is the item's, not the
     // view's (R1.1, R1.2).
-    fireEvent.click(screen.getByRole('button', { name: 'List view' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'View' })).getByRole('button', {
+        name: 'Checklist',
+      }));
     expect(order()).toEqual(['item C', 'item A', 'item B']);
   });
 

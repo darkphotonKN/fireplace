@@ -75,6 +75,13 @@ async function renderList() {
   await screen.findByText('item A');
 }
 
+// The type filter's tab, not the view toggle's "Checklist", which sits in the
+// toggle's "View" group (FS-FSFEC R3).
+const typeFilter = (name: string) =>
+  screen
+    .getAllByRole('button', { name })
+    .find((b) => !b.closest('[role="group"][aria-label="View"]'))!;
+
 describe('Todo collapse and expand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -381,7 +388,7 @@ describe('Todo collapse and expand all (FS-0007 R7)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
 
     // Checklist hides D's only child (a note), so D is no longer a parent here.
-    fireEvent.click(screen.getByRole('button', { name: 'Checklist' }));
+    fireEvent.click(typeFilter('Checklist'));
     fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
     expect(screen.getByText('item B')).toBeTruthy();
 

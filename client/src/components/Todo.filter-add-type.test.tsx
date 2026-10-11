@@ -59,8 +59,12 @@ const addInput = () =>
 // The add bar's type, read the way a user reads it: off the input's name.
 const addType = () =>
   addInput().getAttribute('aria-label')?.startsWith('New note') ? 'note' : 'task';
+// The type filter's tab, not the view toggle's "Checklist", which sits in the
+// toggle's "View" group (FS-FSFEC R3).
 const filter = (label: string) =>
-  screen.getByRole('button', { name: label });
+  screen
+    .getAllByRole('button', { name: label })
+    .find((b) => !b.closest('[role="group"][aria-label="View"]'))!;
 const flipType = () =>
   fireEvent.click(
     screen.getByRole('button', { name: /^Switch to adding a/ })
@@ -77,6 +81,9 @@ describe('Todo filter sets the add bar type', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    // This is the list's add bar; in the grid the bar is the new-milestone
+    // composer (FS-FSFEC R29), whose notes (R39) are covered with its edges.
+    window.localStorage.setItem('checklistView', 'list');
   });
 
   it('should set the add bar to note on Notes and back to task on Checklist, placeholder following', async () => {

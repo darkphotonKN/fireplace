@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { ChevronRight, FileText, Plus } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronRight, FileText, Plus, X } from 'lucide-react';
 import {
   SortableContext,
   rectSortingStrategy,
@@ -12,18 +12,19 @@ import ItemActions from '@/components/ItemActions';
 import SortableItem from '@/components/SortableItem';
 import ItemDateChip from '@/components/ItemDateChip';
 import { cn } from '@/lib/utils';
+import { isComplete, readMilestones, type Milestone } from '@/lib/milestones';
 import type { ChecklistGroup } from '@/lib/nesting';
 import type { ChecklistItem } from '@/services/api';
 
 /**
- * The same groups the list renders, drawn as blocks: one card per top-level
+ * The same groups the list renders, drawn as cards: one card per top-level
  * item, its children inside it, and a progress meter over the task children.
  *
- * A prototype of the "blocks of progress" reading of a plan, sitting behind
- * the header's view toggle. It shares the list's collapse state, its type
- * filter and its paging — only the drawing differs — and deliberately carries
- * a slimmer row than the list: check, rename, remove, add. Scheduling, moving
- * scope, archiving and the note/task flip stay in list view for now.
+ * The milestone reading of a plan, behind the header's view toggle. It shares
+ * the list's collapse state, its type filter and its paging — only the drawing
+ * differs. Cards and steps carry the list row's actions panel — rename,
+ * dates, the note/task flip, archive, remove, move — less indent, which has
+ * nowhere to go between cards; a step can be outdented out of its card.
  */
 
 export interface ChecklistGridProps {
@@ -59,6 +60,17 @@ export interface ChecklistGridProps {
    * each other only within their own sets (R4.1, R4.2, R5.1).
    */
   canDrag: (id: string) => boolean;
+  /**
+   * The milestone the new-milestone composer is filling, if any. Its card is
+   * ringed and starred so the target of the composer's input can be found
+   * wherever it sits on the page (FS-FSFEC R33).
+   */
+  tracedId?: string | null;
+  /**
+   * Items just created, which fade in where they landed — the same arrival
+   * the list gives a new row, so a card made from the composer is found.
+   */
+  arriving?: Readonly<Record<string, boolean>>;
 }
 
 const isNote = (item: ChecklistItem) => (item.type ?? 'task') === 'note';
@@ -68,6 +80,9 @@ function taskProgress(children: ChecklistItem[]) {
   const tasks = children.filter((c) => !isNote(c));
   return { done: tasks.filter((c) => c.done).length, total: tasks.length };
 }
+
+/** A milestone's progress as one comparable value: what a dismissal holds to. */
+const pairOf = (m: Milestone) => `${m.steps.done}/${m.steps.total}`;
 
 export default function ChecklistGrid({
   groups,
@@ -83,6 +98,8 @@ export default function ChecklistGrid({
   onOutdent,
   moveProps,
   canDrag,
+  tracedId = null,
+  arriving = {},
 }: ChecklistGridProps) {
   // Rename and add live here rather than in the list's shared edit state: the
   // two views are never on screen together, and a card's input has nothing to
@@ -93,6 +110,33 @@ export default function ChecklistGrid({
   const [addText, setAddText] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const addInputRef = useRef<HTMLInputElement>(null);
+
+  // Each card's milestone, read by the same derivation the strip uses so the
+  // two can't disagree about a card's progress or whether it is complete.
+  const milestones = useMemo(() => {
+    const items = groups.flatMap((g) => [g.item, ...g.children]);
+    return new Map<string, Milestone>(
+      readMilestones(items).milestones.map((m) => [m.id, m])
+    );
+  }, [groups]);
+
+  // Nudges waved off, each with the done/total it was waved off at. Memory
+  // only, so a reload or remount offers again (R12). A dismissal lasts while
+  // that pair holds: once the progress moves it is forgotten, so unticking
+  // and re-ticking a step brings the offer back even at the same pair.
+  // Milestones off this page keep theirs; nothing can tick them from here.
+  const [dismissed, setDismissed] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setDismissed((prev) => {
+      const kept = Object.entries(prev).filter(([id, at]) => {
+        const m = milestones.get(id);
+        return !m || pairOf(m) === at;
+      });
+      return kept.length === Object.keys(prev).length
+        ? prev
+        : Object.fromEntries(kept);
+    });
+  }, [milestones]);
 
   // Opening the composer, or coming back after a save, puts the cursor in it
   // so steps can be entered back to back the way the add bar allows.
@@ -158,9 +202,13 @@ export default function ChecklistGrid({
     <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {groups.map(({ item, children }) => {
         const collapsed = collapsedIds.has(item.id);
-        const { done, total } = taskProgress(children);
+        const milestone = milestones.get(item.id);
+        const { done, total } = milestone?.steps ?? taskProgress(children);
         const noteCount = children.length - total;
         const composing = addingIn === item.id;
+        const complete = !!milestone && isComplete(milestone);
+        const nudging = complete && dismissed[item.id] !== pairOf(milestone);
+        const traced = item.id === tracedId;
 
         return (
           <SortableItem
@@ -175,6 +223,8 @@ export default function ChecklistGrid({
           <div
             {...bind}
             data-checklist-card={item.id}
+            data-complete={complete || undefined}
+            data-traced={traced || undefined}
             data-actions-anchor
             className={cn(
               'group/card rounded-xl bg-foreground/[0.04] px-4 py-4 backdrop-blur-sm',
@@ -183,7 +233,14 @@ export default function ChecklistGrid({
               // an ember glow sits under it, the same one the Add button
               // wears once there is something to add.
               'hover:bg-foreground/[0.06] hover:shadow-[0_2px_18px_-12px_rgba(247,111,83,0.55)]',
-              item.done && 'opacity-60'
+              // Complete: the hover glow, held, with a hairline of ember so
+              // it reads as a state rather than a hover.
+              complete &&
+                'shadow-[0_0_0_1px_rgba(247,111,83,0.28),0_4px_24px_-10px_rgba(247,111,83,0.6)]',
+              item.done && 'opacity-60',
+              // Traced: a ring of ember, composing with any glow above.
+              traced && 'ring-2 ring-primary/60',
+              arriving[item.id] && 'animate-fadeIn'
             )}
           >
             {/* Head: what the block is, and how far along it is. */}
@@ -212,6 +269,15 @@ export default function ChecklistGrid({
                   item.done && 'line-through text-foreground/50',
                   isNote(item) && 'italic font-normal text-foreground/75'
                 )
+              )}
+              {traced && (
+                <span
+                  aria-hidden
+                  data-traced-mark
+                  className="shrink-0 text-sm leading-6 text-primary"
+                >
+                  ✦
+                </span>
               )}
               {handle && (
                 <span
@@ -290,6 +356,42 @@ export default function ChecklistGrid({
             )}
             {children.length === 0 && (
               <ItemDateChip item={item} className="mt-2" />
+            )}
+
+            {/* Every step done: say so and offer to close it. Only an offer,
+                through the checkbox's own handler; nothing here sets done on
+                its own (R10, R11, R13). */}
+            {nudging && (
+              <div
+                data-completion-nudge
+                className="mt-2.5 flex items-center gap-2 rounded-lg bg-primary/[0.08] px-3 py-1.5 text-sm"
+              >
+                <span className="min-w-0 flex-1 text-foreground/70">
+                  All steps done. Close this milestone?
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onToggleDone(item.id)}
+                  aria-label={`Close ${item.description}`}
+                  className="shrink-0 rounded-md px-2 py-0.5 font-medium text-primary outline-none transition-colors hover:bg-primary/10 focus-visible:bg-primary/10"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDismissed((prev) => ({
+                      ...prev,
+                      [item.id]: pairOf(milestone),
+                    }))
+                  }
+                  aria-label={`Not now, ${item.description}`}
+                  title="Not now"
+                  className="-mr-1 grid h-6 w-6 shrink-0 place-items-center rounded-md text-foreground/40 outline-none transition-colors hover:text-foreground/70 focus-visible:text-foreground/70"
+                >
+                  <X aria-hidden className="h-3.5 w-3.5" />
+                </button>
+              </div>
             )}
 
             {/* Steps. Folded away with the same state the list folds with, so

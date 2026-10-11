@@ -1,5 +1,6 @@
 import type { Plan } from "@/api/plans";
 import type { ChecklistItem } from "@/api/checklists";
+import { readMilestones, type MilestoneReading } from "@/lib/milestones";
 
 /**
  * How far home looks (ADR-0013).
@@ -61,16 +62,52 @@ export function progressOf(
   items: ChecklistItem[],
   tickedIds: readonly string[] = [],
 ): Progress {
-  const live = items
+  const live = asOfThisVisit(items, tickedIds)
     .filter((item) => !item.archived)
     .filter((item) => (item.type ?? "task") === "task");
   return {
-    // A row ticked from Today during this visit counts here too. Without it the
-    // Continue card for that plan keeps its pre-tick number while Today shows
-    // the row struck through and the status line has already decremented —
-    // two blocks on one screen disagreeing about one plan, which is the exact
-    // thing the single-derivation rule exists to prevent one level up.
-    done: live.filter((item) => item.done || tickedIds.includes(item.id)).length,
+    done: live.filter((item) => item.done).length,
     total: live.length,
   };
+}
+
+/**
+ * What a Continue card shows in its progress slot: the plan's milestones when
+ * it has any (FS-FSFEC R23), else done/total exactly as before (R26).
+ *
+ * `readMilestones` applies R1 itself, scope included — which matters here more
+ * than inside `Todo`, because the fan-out carries every scope and a daily-only
+ * plan must not grow a strip (R24).
+ */
+export type CardProgress =
+  | { kind: "milestones"; reading: MilestoneReading }
+  | ({ kind: "count" } & Progress);
+
+export function cardProgressOf(
+  items: ChecklistItem[],
+  tickedIds: readonly string[] = [],
+): CardProgress {
+  const reading = readMilestones(asOfThisVisit(items, tickedIds));
+  if (reading.total > 0) return { kind: "milestones", reading };
+  return { kind: "count", ...progressOf(items, tickedIds) };
+}
+
+/**
+ * The plan's items with this visit's ticks from Today laid over them.
+ *
+ * A row ticked from Today counts as done on its Continue card too. Without it
+ * the card keeps its pre-tick number while Today shows the row struck through
+ * and the status line has already decremented — two blocks on one screen
+ * disagreeing about one plan, which is the exact thing the single-derivation
+ * rule exists to prevent one level up. Both readings of the card go through
+ * here, so the strip and the count can't disagree either (FS-FSFEC R25).
+ */
+function asOfThisVisit(
+  items: ChecklistItem[],
+  tickedIds: readonly string[],
+): ChecklistItem[] {
+  if (tickedIds.length === 0) return items;
+  return items.map((item) =>
+    !item.done && tickedIds.includes(item.id) ? { ...item, done: true } : item,
+  );
 }

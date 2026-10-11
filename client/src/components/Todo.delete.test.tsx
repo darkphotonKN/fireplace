@@ -87,7 +87,9 @@ beforeEach(() => {
 describe('Todo — deleting an item from the list', () => {
   it('should delete through the API layer, not a hand-written fetch', async () => {
     await renderTodo();
-    fireEvent.click(screen.getByRole('button', { name: 'List view' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'View' })).getByRole('button', {
+        name: 'Checklist',
+      }));
 
     openActions('item P0');
     fireEvent.click(screen.getByRole('menuitem', { name: /delete/i }));
@@ -99,7 +101,9 @@ describe('Todo — deleting an item from the list', () => {
 
   it('should take the deleted row off the list', async () => {
     await renderTodo();
-    fireEvent.click(screen.getByRole('button', { name: 'List view' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'View' })).getByRole('button', {
+        name: 'Checklist',
+      }));
 
     openActions('item P0');
     fireEvent.click(screen.getByRole('menuitem', { name: /delete/i }));
@@ -111,7 +115,9 @@ describe('Todo — deleting an item from the list', () => {
   it('should keep the row and say so when the delete fails', async () => {
     deleteChecklistItem.mockRejectedValue(new Error('nope'));
     await renderTodo();
-    fireEvent.click(screen.getByRole('button', { name: 'List view' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'View' })).getByRole('button', {
+        name: 'Checklist',
+      }));
 
     openActions('item P0');
     fireEvent.click(screen.getByRole('menuitem', { name: /delete/i }));
