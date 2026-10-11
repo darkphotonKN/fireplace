@@ -25,7 +25,7 @@
 
 - [x] Plan creation form → FS-none
 - [ ] Guided and custom plan creation → FS-0006
-- [ ] Plan progress across its milestones → FS-FSFEC
+- [x] Plan progress across its milestones → FS-FSFEC
 
 ## Checklists
 
@@ -34,8 +34,8 @@
 - [ ] Paged list with a pinned add bar → FS-0008
 - [ ] Drag to reorder items → FS-0009
 - [x] Card view of a plan's items → FS-none
-- [ ] Milestones as blocks of progress → FS-FSFEC
-- [ ] New-milestone composer → FS-FSFEC
+- [x] Milestones as blocks of progress → FS-FSFEC
+- [x] New-milestone composer → FS-FSFEC
 
 ## Project Overview
 

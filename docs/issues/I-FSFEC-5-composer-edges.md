@@ -1,6 +1,6 @@
 ---
 id: I-FSFEC-5
-status: open
+status: done
 implements: FS-FSFEC
 blocked_by: [I-FSFEC-4]
 labels: [feature]
