@@ -40,6 +40,12 @@ func (r *recordingVideos) SuggestVideos(ctx context.Context, planID, userID uuid
 	return r.videos, nil
 }
 
+type allowAccess struct{}
+
+func (allowAccess) RequireMember(ctx context.Context, planID, userID uuid.UUID) error {
+	return nil
+}
+
 func newInsightsAPI(t *testing.T, s SuggestionsService, v VideoSuggestionsService) humatest.TestAPI {
 	return newInsightsAPIAs(t, s, v, uuid.New())
 }
@@ -47,7 +53,7 @@ func newInsightsAPI(t *testing.T, s SuggestionsService, v VideoSuggestionsServic
 func newInsightsAPIAs(t *testing.T, s SuggestionsService, v VideoSuggestionsService, userID uuid.UUID) humatest.TestAPI {
 	t.Helper()
 	_, api := humatest.New(t, huma.DefaultConfig("test", "1"))
-	RegisterInsightsOperations(api, s, v, func(ctx huma.Context, next func(huma.Context)) {
+	RegisterInsightsOperations(api, s, v, allowAccess{}, func(ctx huma.Context, next func(huma.Context)) {
 		next(huma.WithContext(ctx, auth.WithUserID(ctx.Context(), userID)))
 	}, nil)
 	return api.(humatest.TestAPI)

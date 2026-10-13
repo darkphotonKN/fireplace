@@ -67,6 +67,9 @@ export interface ChecklistItem {
   type?: ChecklistItemType;
   /** Parent item id when nested; null/undefined for top-level rows. */
   parentId?: string | null;
+  /** Free text the item carries (at most 280 characters after trimming).
+   *  Set only through the item PATCH; omitted by the server when unset. */
+  intention?: string | null;
 }
 
 export interface CalendarItem {
@@ -126,6 +129,8 @@ export interface UpdateChecklistItemRequest {
   type?: ChecklistItemType;
   /** Omit to leave parent_id alone; null to outdent; UUID to indent. */
   parentId?: string | null;
+  /** Omit to leave it alone; the server trims it, and empty clears it. */
+  intention?: string;
 }
 
 export interface DeleteChecklistItemResponse {

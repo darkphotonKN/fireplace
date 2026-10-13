@@ -42,10 +42,13 @@ const tieBreak = ", created_at ASC, id ASC"
 // orderBySequence is the plain list order, sequence first.
 const orderBySequence = " ORDER BY sequence ASC" + tieBreak
 
+// GetByID reads a row wherever it lives. It serves the service's own checks
+// (a parent's plan, whether a reorder id exists at all), never a caller's
+// item-by-id request: those go through GetInPlan.
 func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-	       archived, created_at, updated_at, plan_id
+	       intention, archived, created_at, updated_at, plan_id
 	FROM checklist_items WHERE id = $1`
 	var item Item
 	if err := r.db.GetContext(ctx, &item, query, id); err != nil {
@@ -54,10 +57,24 @@ func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Item, error) {
 	return &item, nil
 }
 
+// GetInPlan reads a row only when it belongs to planID. A row in another plan
+// is ErrNotFound, the same as a missing one (FS-12ZMF R11).
+func (r *repository) GetInPlan(ctx context.Context, planID, id uuid.UUID) (*Item, error) {
+	query := `
+	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
+	       intention, archived, created_at, updated_at, plan_id
+	FROM checklist_items WHERE id = $1 AND plan_id = $2`
+	var item Item
+	if err := r.db.GetContext(ctx, &item, query, id, planID); err != nil {
+		return nil, wrapDBErr("get item "+id.String()+" in plan "+planID.String(), err)
+	}
+	return &item, nil
+}
+
 func (r *repository) ListByPlanID(ctx context.Context, in ListItemsInput) ([]*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-	       archived, created_at, updated_at, plan_id
+	       intention, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1 AND archived = false`
 
@@ -89,7 +106,7 @@ func (r *repository) ListByPlanID(ctx context.Context, in ListItemsInput) ([]*It
 func (r *repository) ListArchivedByPlanID(ctx context.Context, planID uuid.UUID, scope *string) ([]*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-	       archived, created_at, updated_at, plan_id
+	       intention, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1 AND archived = true`
 	args := []interface{}{planID}
@@ -114,7 +131,7 @@ func (r *repository) ListArchivedByPlanID(ctx context.Context, planID uuid.UUID,
 func (r *repository) ListSiblings(ctx context.Context, in SiblingSetInput) ([]*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-	       archived, created_at, updated_at, plan_id
+	       intention, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
 	  AND scope = $2
@@ -163,7 +180,7 @@ func (r *repository) Reorder(ctx context.Context, ids []uuid.UUID) ([]*Item, err
 
 		if err := tx.SelectContext(ctx, &items, `
 		SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-		       archived, created_at, updated_at, plan_id
+		       intention, archived, created_at, updated_at, plan_id
 		FROM checklist_items
 		WHERE id = ANY($1::uuid[])
 		ORDER BY sequence ASC`+tieBreak, pq.Array(idStrings)); err != nil {
@@ -199,7 +216,7 @@ func (r *repository) Create(ctx context.Context, in CreateItemInput, sequenceNo 
 	INSERT INTO checklist_items (description, done, sequence, scope, type, parent_id, plan_id)
 	VALUES (:description, :done, :sequence, :scope, :type, :parent_id, :plan_id)
 	RETURNING id, description, done, sequence, plan_id, scope, type, parent_id, start_date,
-	          due_date, archived, created_at, updated_at`
+	          due_date, intention, archived, created_at, updated_at`
 
 	scope := ScopeLongterm
 	if in.Scope != nil {
@@ -255,6 +272,7 @@ func (r *repository) Update(ctx context.Context, in UpdateItemInput) error {
 
 	params := map[string]interface{}{
 		"id":          in.ID,
+		"plan_id":     in.PlanID,
 		"description": in.Description,
 		"done":        in.Done,
 		"scope":       in.Scope,
@@ -271,7 +289,12 @@ func (r *repository) Update(ctx context.Context, in UpdateItemInput) error {
 		}
 	}
 
-	query := `UPDATE checklist_items SET ` + setClause + ` WHERE id = :id`
+	if in.SetIntention {
+		setClause += `, intention = :intention`
+		params["intention"] = in.Intention
+	}
+
+	query := `UPDATE checklist_items SET ` + setClause + ` WHERE id = :id AND plan_id = :plan_id`
 	res, err := r.db.NamedExecContext(ctx, query, params)
 	if err != nil {
 		return wrapDBErr("update item "+in.ID.String(), err)
@@ -282,10 +305,10 @@ func (r *repository) Update(ctx context.Context, in UpdateItemInput) error {
 	return nil
 }
 
-func (r *repository) UpdateDates(ctx context.Context, id uuid.UUID, startDate, dueDate *time.Time) error {
+func (r *repository) UpdateDates(ctx context.Context, planID, id uuid.UUID, startDate, dueDate *time.Time) error {
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE checklist_items SET start_date = $2, due_date = $3 WHERE id = $1`,
-		id, startDate, dueDate)
+		`UPDATE checklist_items SET start_date = $3, due_date = $4 WHERE id = $1 AND plan_id = $2`,
+		id, planID, startDate, dueDate)
 	if err != nil {
 		return wrapDBErr("update dates "+id.String(), err)
 	}
@@ -295,8 +318,8 @@ func (r *repository) UpdateDates(ctx context.Context, id uuid.UUID, startDate, d
 	return nil
 }
 
-func (r *repository) Delete(ctx context.Context, id uuid.UUID) error {
-	res, err := r.db.ExecContext(ctx, `DELETE FROM checklist_items WHERE id = $1`, id)
+func (r *repository) Delete(ctx context.Context, planID, id uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM checklist_items WHERE id = $1 AND plan_id = $2`, id, planID)
 	if err != nil {
 		return wrapDBErr("delete item "+id.String(), err)
 	}
@@ -332,7 +355,7 @@ func (r *repository) BulkResetDailyItems(ctx context.Context) (int64, error) {
 func (r *repository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item, error) {
 	query := `
 	SELECT ci.id, ci.description, ci.done, ci.sequence, ci.scope, ci.type, ci.parent_id,
-	       ci.start_date, ci.due_date, ci.archived, ci.created_at, ci.updated_at, ci.plan_id
+	       ci.start_date, ci.due_date, ci.intention, ci.archived, ci.created_at, ci.updated_at, ci.plan_id
 	FROM checklist_items ci
 	JOIN plans p ON ci.plan_id = p.id
 	WHERE p.user_id = $1 AND ci.archived = false
@@ -351,7 +374,7 @@ func (r *repository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item
 func (r *repository) ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-	       archived, created_at, updated_at, plan_id
+	       intention, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
 	  AND archived = false

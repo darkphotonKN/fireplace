@@ -10,6 +10,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// Relation is the caller's relation to one plan, as plan-service answers it
+// (ADR-0015 §1). The gateway decides what each relation may do.
+type Relation string
+
+const (
+	RelationNone   Relation = "none"
+	RelationOwner  Relation = "owner"
+	RelationMember Relation = "member"
+)
+
 // --- HTTP request shapes (kept 1:1 with the monolith API the FE expects) ---
 
 // CreatePlanReq is the body for POST /plans.
@@ -81,6 +91,11 @@ type UpdateChecklistReq struct {
 	// example belongs in the schema hook, where it is emitted against the
 	// published type rather than the Go one.
 	ParentID OptUUID `json:"parentId,omitempty"`
+	// Free text the item carries. Omit to leave it unchanged; send a string to
+	// set it. plan-service trims it and stores an empty result as null, and
+	// rejects a trimmed value over 280 characters with 400 (a domain rule, so
+	// deliberately not a schema maxLength — ADR-0005).
+	Intention *string `json:"intention,omitempty" doc:"Free text the item carries. Omit to leave it unchanged; send a string to set it. The server trims it, an empty result clears it, and more than 280 characters after trimming is rejected with 400." example:"Prove the plan works end to end"`
 }
 
 // UpdateDatesReq is the body for PATCH /plans/{id}/checklists/{checklist_id}/dates.
@@ -203,6 +218,11 @@ type PlanResp struct {
 	Description string    `json:"description"`
 	PlanType    string    `json:"planType"`
 	DailyReset  bool      `json:"dailyReset"`
+	// Relation is the caller's relation to this plan (FS-12ZMF R23, D14), so the
+	// client picks its controls without a second call. Never "none": a plan the
+	// caller has no relation to is never returned. Set by the handler, which
+	// knows the caller; plan-service's Plan message does not carry it.
+	Relation Relation `json:"relation" enum:"owner,member" doc:"The caller's relation to this plan: owner, or member of a plan shared with them."`
 	// camelCase, matching UserResponse, ProfileResponse and ChecklistResp's own
 	// startDate/dueDate. These were the last snake_case keys on the surface —
 	// publishing one entity under two spellings is a defect the retrofit would
@@ -221,6 +241,7 @@ type ChecklistResp struct {
 	ParentID    *uuid.UUID `json:"parentId,omitempty" format:"uuid"`
 	StartDate   *time.Time `json:"startDate,omitempty" format:"date-time"`
 	DueDate     *time.Time `json:"dueDate,omitempty" format:"date-time"`
+	Intention   *string    `json:"intention,omitempty" doc:"Free text the item carries; omitted when unset." example:"Prove the plan works end to end"`
 	Scope       string     `json:"scope" enum:"daily,longterm" example:"daily"`
 	Archived    bool       `json:"archived" example:"false"`
 	// camelCase, matching every other published entity. This type already spelled

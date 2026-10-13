@@ -18,6 +18,20 @@ components:
         - sourceContext
         - generatedAt
       type: object
+    AddPlanMemberReq:
+      additionalProperties: false
+      properties:
+        email:
+          description: Email of an existing Fireplace account. Surrounding whitespace is trimmed, then matched exactly, as sign-in does.
+          examples:
+            - friend@example.com
+          format: email
+          maxLength: 254
+          minLength: 1
+          type: string
+      required:
+        - email
+      type: object
     ArchiveReq:
       additionalProperties: false
       properties:
@@ -127,6 +141,11 @@ components:
           examples:
             - 3f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8
           format: uuid
+          type: string
+        intention:
+          description: Free text the item carries; omitted when unset.
+          examples:
+            - Prove the plan works end to end
           type: string
         parentId:
           format: uuid
@@ -312,6 +331,36 @@ components:
         - createdAt
         - updatedAt
       type: object
+    PlanMemberResp:
+      additionalProperties: false
+      properties:
+        email:
+          description: The account's email
+          type: string
+        id:
+          description: The person's user id
+          format: uuid
+          type: string
+        name:
+          description: Display name if set, otherwise account name
+          type: string
+        relation:
+          description: owner for the plan's owner, member for everyone it is shared with
+          enum:
+            - owner
+            - member
+          type: string
+        since:
+          description: "Owner: when the plan was created. Member: when they were added."
+          format: date-time
+          type: string
+      required:
+        - id
+        - name
+        - email
+        - relation
+        - since
+      type: object
     PlanResp:
       additionalProperties: false
       properties:
@@ -330,6 +379,12 @@ components:
           type: string
         planType:
           type: string
+        relation:
+          description: "The caller's relation to this plan: owner, or member of a plan shared with them."
+          enum:
+            - owner
+            - member
+          type: string
         updatedAt:
           format: date-time
           type: string
@@ -343,6 +398,7 @@ components:
         - description
         - planType
         - dailyReset
+        - relation
         - createdAt
         - updatedAt
       type: object
@@ -524,6 +580,11 @@ components:
           examples:
             - true
           type: boolean
+        intention:
+          description: Free text the item carries. Omit to leave it unchanged; send a string to set it. The server trims it, an empty result clears it, and more than 280 characters after trimming is rejected with 400.
+          examples:
+            - Prove the plan works end to end
+          type: string
         parentId:
           description: Send a UUID to set it, null to clear it, or omit the field to leave it unchanged.
           examples:
@@ -803,6 +864,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
         "422":
           content:
             application/problem+json:
@@ -853,6 +920,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
         "422":
           content:
             application/problem+json:
@@ -903,6 +976,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
         "422":
           content:
             application/problem+json:
@@ -926,7 +1005,7 @@ paths:
       summary: Suggest learning videos for a plan
   /api/plans:
     get:
-      description: Returns every plan owned by the authenticated user.
+      description: Returns every plan the caller owns or is a member of, each once, newest first, unpaged. Each plan's `relation` says which.
       operationId: listPlans
       responses:
         "200":
@@ -1139,7 +1218,7 @@ paths:
       summary: List plans shared with the caller
   /api/plans/{id}:
     delete:
-      description: Deletes a plan. Answers 204 with no body.
+      description: "Deletes a plan. Answers 204 with no body. Owner only: a member gets 403, and anyone else 404."
       operationId: deletePlan
       parameters:
         - description: Plan id
@@ -1192,7 +1271,7 @@ paths:
         - bearerAuth: []
       summary: Delete a plan
     get:
-      description: "Returns one plan by id. NOTE: per-user authorization is not implemented yet (FS-0005) — any authenticated caller can currently read any plan by id. 403 is listed because it is the status this operation will use once ownership is enforced."
+      description: Returns one plan by id to its owner or a member. `relation` says which. Answers 404 when the caller has no relation to the plan, exactly as when no such plan exists.
       operationId: getPlan
       parameters:
         - description: Plan id
@@ -1249,7 +1328,7 @@ paths:
         - bearerAuth: []
       summary: Get a plan
     patch:
-      description: Partial update. Omitted fields are left unchanged.
+      description: "Partial update. Omitted fields are left unchanged. Owner only: a member gets 403, and anyone else 404."
       operationId: updatePlan
       parameters:
         - description: Plan id
@@ -1864,7 +1943,7 @@ paths:
         - bearerAuth: []
       summary: Get a checklist item
     patch:
-      description: "Partial update. `parentId` is three-state: send a UUID to re-parent, null to clear, or omit to leave unchanged. Conversion and re-parenting rules are enforced downstream."
+      description: "Partial update. `parentId` is three-state: send a UUID to re-parent, null to clear, or omit to leave unchanged. `intention` is free text: omit it to leave it unchanged or send a string to set it; the server trims it, an empty result clears it, and more than 280 characters after trimming is 400 VALIDATION_FAILED. Conversion, re-parenting and the intention length rules are enforced downstream."
       operationId: updateChecklist
       parameters:
         - description: Plan id
@@ -2093,6 +2172,193 @@ paths:
       security:
         - bearerAuth: []
       summary: Set or clear a checklist item's dates
+  /api/plans/{id}/members:
+    get:
+      description: The plan's owner first, then its members in the order they were added. Open to the owner and to members. Answers 404 when the caller has no relation to the plan, exactly as when no such plan exists.
+      operationId: listPlanMembers
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/PlanMemberResp"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: List a plan's people
+    post:
+      description: "Shares the plan with the account that uses this email. Owner only: a member gets 403, and anyone else 404. Adding someone already on the plan answers 201 with their existing entry and original `since`. 400 `NO_ACCOUNT_FOR_EMAIL` when no account uses the email; 400 `MEMBER_IS_OWNER` when it is the owner's own."
+      operationId: addPlanMember
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddPlanMemberReq"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanMemberResp"
+          description: Created
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Add a member to a plan by email
+  /api/plans/{id}/members/{userId}:
+    delete:
+      description: "Ends the member's access from their next request. Answers 204 with no body. Owner only: a member gets 403, and anyone else 404. 404 too when the user is not a member, including the owner's own id."
+      operationId: removePlanMember
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: The member's user id
+          in: path
+          name: userId
+          required: true
+          schema:
+            description: The member's user id
+            format: uuid
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Remove a member from a plan
   /api/plans/{id}/notes:
     get:
       description: Returns the plan's notes, optionally filtered. `tags` is repeatable — `?tags=a&tags=b` filters on both. Omitting a filter and sending it empty are equivalent. For `isRead`/`isDismissed`, any value other than `true` reads as false.
@@ -2511,7 +2777,7 @@ paths:
       summary: Update a note
   /api/plans/{id}/toggle-daily-reset:
     patch:
-      description: Flips dailyReset and returns the updated plan. Takes no body.
+      description: "Flips dailyReset and returns the updated plan. Takes no body. Owner only: a member gets 403, and anyone else 404."
       operationId: toggleDailyReset
       parameters:
         - description: Plan id

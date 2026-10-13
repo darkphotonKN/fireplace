@@ -488,3 +488,33 @@ describe('Dashboard — first run (R43)', () => {
     expect(screen.queryByRole('heading', { name: 'Your first plan' })).toBeNull();
   });
 });
+
+describe('Dashboard — shared plans (FS-12ZMF R26)', () => {
+  it('should mark a shared Continue card and leave an owned one unmarked', async () => {
+    listPlans.mockResolvedValue([
+      plan('a', '2026-09-01T00:00:00Z', { name: 'Their kitchen', relation: 'member' }),
+      plan('b', '2026-08-01T00:00:00Z', { name: 'My garden', relation: 'owner' }),
+    ]);
+
+    render(<Home />);
+
+    const shared = await screen.findByRole('link', { name: /their kitchen/i });
+    const owned = screen.getByRole('link', { name: /my garden/i });
+    expect(within(shared).getByText('shared')).toBeInTheDocument();
+    expect(within(owned).queryByText('shared')).toBeNull();
+  });
+
+  it('should count shared plans toward the same four-request cap (ADR-0013)', async () => {
+    listPlans.mockResolvedValue(
+      plansAged(6).map((p, i): Plan => ({ ...p, relation: i % 2 ? 'member' : 'owner' })),
+    );
+
+    render(<Home />);
+    await screen.findByRole('heading', { name: /continue where you left off/i });
+    await waitFor(() => expect(listChecklists).toHaveBeenCalledTimes(3));
+    await settle();
+
+    expect(listPlans).toHaveBeenCalledTimes(1);
+    expect(listChecklists).toHaveBeenCalledTimes(3);
+  });
+});

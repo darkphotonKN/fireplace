@@ -16,7 +16,7 @@ import (
 
 type Service interface {
 	Create(ctx context.Context, in CreateItemInput) (*Item, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*Item, error)
+	GetInPlan(ctx context.Context, planID, id uuid.UUID) (*Item, error)
 	ListByPlanID(ctx context.Context, in ListItemsInput) ([]*Item, error)
 	ListArchivedByPlanID(ctx context.Context, planID uuid.UUID, scope *string) ([]*Item, error)
 	ListUpcoming(ctx context.Context, planID uuid.UUID) ([]*Item, error)
@@ -25,8 +25,8 @@ type Service interface {
 	Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 	Reorder(ctx context.Context, in ReorderInput) ([]*Item, error)
 	UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, error)
-	Archive(ctx context.Context, id uuid.UUID, archived bool) (*Item, error)
-	Delete(ctx context.Context, id uuid.UUID) error
+	Archive(ctx context.Context, planID, id uuid.UUID, archived bool) (*Item, error)
+	Delete(ctx context.Context, planID, id uuid.UUID) error
 	DailyReset(ctx context.Context) (int64, error)
 }
 
@@ -43,6 +43,22 @@ func NewHandler(s Service) *Handler {
 // flows through the shared mapper like any other domain error.
 func badUUID(field, value string) error {
 	return fmt.Errorf("%w: %s %q", commonconstants.ErrUUIDCouldNotBeParsed, field, value)
+}
+
+// itemRef parses an item-by-id request's item id and the plan it is addressed
+// under. The plan id is required: a request without one is a caller bug and is
+// refused, never run unscoped (FS-12ZMF R12).
+func itemRef(rawID, rawPlanID string) (id, planID uuid.UUID, err error) {
+	if id, err = uuid.Parse(rawID); err != nil {
+		return uuid.Nil, uuid.Nil, badUUID("id", rawID)
+	}
+	if rawPlanID == "" {
+		return uuid.Nil, uuid.Nil, fmt.Errorf("%w: plan_id is required", commonconstants.ErrInvalidInput)
+	}
+	if planID, err = uuid.Parse(rawPlanID); err != nil {
+		return uuid.Nil, uuid.Nil, badUUID("plan_id", rawPlanID)
+	}
+	return id, planID, nil
 }
 
 func (h *Handler) CreateItem(ctx context.Context, req *pb.CreateItemRequest) (*pb.ChecklistItem, error) {
@@ -80,11 +96,11 @@ func (h *Handler) CreateItem(ctx context.Context, req *pb.CreateItemRequest) (*p
 }
 
 func (h *Handler) GetItem(ctx context.Context, req *pb.GetItemRequest) (*pb.ChecklistItem, error) {
-	id, err := uuid.Parse(req.Id)
+	id, planID, err := itemRef(req.Id, req.PlanId)
 	if err != nil {
-		return nil, commongrpc.Fail(ctx, "checklistitem: get", badUUID("id", req.Id))
+		return nil, commongrpc.Fail(ctx, "checklistitem: get", err)
 	}
-	item, err := h.service.GetByID(ctx, id)
+	item, err := h.service.GetInPlan(ctx, planID, id)
 	if err != nil {
 		return nil, commongrpc.Fail(ctx, "checklistitem: get", err)
 	}
@@ -160,17 +176,25 @@ func (h *Handler) ListItemsInDateWindow(ctx context.Context, req *pb.ListItemsIn
 }
 
 func (h *Handler) UpdateItem(ctx context.Context, req *pb.UpdateItemRequest) (*pb.ChecklistItem, error) {
-	id, err := uuid.Parse(req.Id)
+	id, planID, err := itemRef(req.Id, req.PlanId)
 	if err != nil {
-		return nil, commongrpc.Fail(ctx, "checklistitem: update", badUUID("id", req.Id))
+		return nil, commongrpc.Fail(ctx, "checklistitem: update", err)
 	}
 
 	in := UpdateItemInput{
 		ID:          id,
+		PlanID:      planID,
 		Description: req.Description,
 		Done:        req.Done,
 		Type:        req.Type,
 		Scope:       req.Scope,
+	}
+
+	// Intention: unset leaves the column alone; any string, empty included, is
+	// a set the service trims (an empty result clears it).
+	if req.Intention != nil {
+		in.SetIntention = true
+		in.Intention = req.Intention
 	}
 
 	// Parent_id three-state: clear_parent_id wins (clears column); else if
@@ -233,12 +257,12 @@ func (h *Handler) ReorderItems(ctx context.Context, req *pb.ReorderItemsRequest)
 }
 
 func (h *Handler) UpdateItemDates(ctx context.Context, req *pb.UpdateItemDatesRequest) (*pb.ChecklistItem, error) {
-	id, err := uuid.Parse(req.Id)
+	id, planID, err := itemRef(req.Id, req.PlanId)
 	if err != nil {
-		return nil, commongrpc.Fail(ctx, "checklistitem: update dates", badUUID("id", req.Id))
+		return nil, commongrpc.Fail(ctx, "checklistitem: update dates", err)
 	}
 
-	in := UpdateDatesInput{ID: id}
+	in := UpdateDatesInput{ID: id, PlanID: planID}
 	if req.StartDate != nil {
 		in.SetStart = true
 		t := req.StartDate.AsTime()
@@ -258,11 +282,11 @@ func (h *Handler) UpdateItemDates(ctx context.Context, req *pb.UpdateItemDatesRe
 }
 
 func (h *Handler) ArchiveItem(ctx context.Context, req *pb.ArchiveItemRequest) (*pb.ChecklistItem, error) {
-	id, err := uuid.Parse(req.Id)
+	id, planID, err := itemRef(req.Id, req.PlanId)
 	if err != nil {
-		return nil, commongrpc.Fail(ctx, "checklistitem: archive", badUUID("id", req.Id))
+		return nil, commongrpc.Fail(ctx, "checklistitem: archive", err)
 	}
-	item, err := h.service.Archive(ctx, id, req.Archived)
+	item, err := h.service.Archive(ctx, planID, id, req.Archived)
 	if err != nil {
 		return nil, commongrpc.Fail(ctx, "checklistitem: archive", err)
 	}
@@ -270,11 +294,11 @@ func (h *Handler) ArchiveItem(ctx context.Context, req *pb.ArchiveItemRequest) (
 }
 
 func (h *Handler) DeleteItem(ctx context.Context, req *pb.DeleteItemRequest) (*emptypb.Empty, error) {
-	id, err := uuid.Parse(req.Id)
+	id, planID, err := itemRef(req.Id, req.PlanId)
 	if err != nil {
-		return nil, commongrpc.Fail(ctx, "checklistitem: delete", badUUID("id", req.Id))
+		return nil, commongrpc.Fail(ctx, "checklistitem: delete", err)
 	}
-	if err := h.service.Delete(ctx, id); err != nil {
+	if err := h.service.Delete(ctx, planID, id); err != nil {
 		return nil, commongrpc.Fail(ctx, "checklistitem: delete", err)
 	}
 	return &emptypb.Empty{}, nil
@@ -303,6 +327,7 @@ func itemToProto(i *Item) *pb.ChecklistItem {
 		Archived:    i.Archived,
 		CreatedAt:   timestamppb.New(i.CreatedAt),
 		UpdatedAt:   timestamppb.New(i.UpdatedAt),
+		Intention:   i.Intention,
 	}
 	if i.ParentID != nil {
 		s := i.ParentID.String()

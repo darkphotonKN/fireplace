@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Ref,
+} from 'react';
 import { createPortal } from 'react-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -13,6 +21,7 @@ import {
   FileText,
   IndentDecrease,
   IndentIncrease,
+  Maximize2,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -35,10 +44,20 @@ import type { ChecklistItem } from '@/services/api';
  * viewport, the panel would otherwise be trapped inside the card.
  */
 
+/** What a caller can ask of the panel from outside its trigger. */
+export interface ItemActionsHandle {
+  /**
+   * Opens straight onto the date picker the menu's Dates row opens, for a
+   * date chip that stands outside the menu (FS-043WP R19).
+   */
+  openDates: () => void;
+}
+
 export interface ItemActionsProps {
   item: ChecklistItem;
   onEdit: () => void;
-  onToggleType: () => void;
+  /** Offered only where it is handed over: a milestone's page has none (FS-043WP R17). */
+  onToggleType?: () => void;
   onArchive: () => void;
   onDelete: () => void;
   /** Both ends together: null clears that end. */
@@ -53,8 +72,11 @@ export interface ItemActionsProps {
    */
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  /** A milestone's page (FS-043WP R6); offered only where it is handed over. */
+  onOpen?: () => void;
   /** Extra classes for the trigger, e.g. when it should stay visible. */
   triggerClassName?: string;
+  ref?: Ref<ItemActionsHandle>;
 }
 
 const PANEL_WIDTH = 208; // w-52
@@ -82,7 +104,9 @@ export default function ItemActions({
   onOutdent,
   onMoveUp,
   onMoveDown,
+  onOpen,
   triggerClassName,
+  ref,
 }: ItemActionsProps) {
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -177,6 +201,16 @@ export default function ItemActions({
     setPicking(true);
   };
 
+  // Placed before it shows, as the trigger does; the layout effect then
+  // settles it on the picker's real size.
+  useImperativeHandle(ref, () => ({
+    openDates: () => {
+      setPlace(measure({ width: PANEL_WIDTH, height: menuHeightGuess(5) }));
+      openPicker();
+      setOpen(true);
+    },
+  }));
+
   const saveDates = () => {
     const [start, end] = range;
     // A range picked but not finished is a single day, which is what the
@@ -203,10 +237,12 @@ export default function ItemActions({
           // right spot rather than a flight in from the corner. Outside the
           // state updater, which has to stay free of side effects.
           if (!open) {
-            // Five rows are always there (dates, rename, type flip, archive,
-            // delete); the rest are offered only where they apply.
+            // Four rows are always there (dates, rename, archive, delete);
+            // the rest are offered only where they apply.
             const rows =
-              5 +
+              4 +
+              (onToggleType ? 1 : 0) +
+              (onOpen ? 1 : 0) +
               (onIndent || onOutdent ? 1 : 0) +
               (onMoveUp ? 1 : 0) +
               (onMoveDown ? 1 : 0);
@@ -288,6 +324,17 @@ export default function ItemActions({
               </div>
             ) : (
               <>
+                {onOpen && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={rowClass}
+                    onClick={run(onOpen)}
+                  >
+                    <Maximize2 aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+                    Open
+                  </button>
+                )}
                 <button type="button" role="menuitem" className={rowClass} onClick={openPicker}>
                   <CalendarDays aria-hidden strokeWidth={1.75} className="h-4 w-4" />
                   {item.startDate || item.dueDate ? 'Change dates' : 'Set dates'}
@@ -296,19 +343,21 @@ export default function ItemActions({
                   <Pencil aria-hidden strokeWidth={1.75} className="h-4 w-4" />
                   Rename
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={rowClass}
-                  onClick={run(onToggleType)}
-                >
-                  {isNote ? (
-                    <CheckSquare aria-hidden strokeWidth={1.75} className="h-4 w-4" />
-                  ) : (
-                    <FileText aria-hidden strokeWidth={1.75} className="h-4 w-4" />
-                  )}
-                  {isNote ? 'Make a task' : 'Make a note'}
-                </button>
+                {onToggleType && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={rowClass}
+                    onClick={run(onToggleType)}
+                  >
+                    {isNote ? (
+                      <CheckSquare aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+                    ) : (
+                      <FileText aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+                    )}
+                    {isNote ? 'Make a task' : 'Make a note'}
+                  </button>
+                )}
                 {(onIndent || onOutdent) && (
                   <button
                     type="button"

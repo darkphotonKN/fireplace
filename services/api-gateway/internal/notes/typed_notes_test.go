@@ -29,9 +29,9 @@ func (r *recordingService) GetNotesByPlanID(planID uuid.UUID, filters *FilterOpt
 	return nil, nil
 }
 
-type allowOwnership struct{}
+type allowAccess struct{}
 
-func (allowOwnership) AssertPlanOwnership(ctx context.Context, planID, userID uuid.UUID) error {
+func (allowAccess) RequireMember(ctx context.Context, planID, userID uuid.UUID) error {
 	return nil
 }
 
@@ -40,7 +40,7 @@ func newNotesAPI(t *testing.T, svc NotesService) humatest.TestAPI {
 	_, api := humatest.New(t, huma.DefaultConfig("test", "1"))
 	// No auth middleware: these tests are about parameter handling. The identity
 	// bridge is exercised by the config-level tests.
-	RegisterNotesOperations(api, svc, allowOwnership{}, func(ctx huma.Context, next func(huma.Context)) {
+	RegisterNotesOperations(api, svc, allowAccess{}, func(ctx huma.Context, next func(huma.Context)) {
 		next(huma.WithContext(ctx, auth.WithUserID(ctx.Context(), uuid.New())))
 	}, nil)
 	return api.(humatest.TestAPI)
@@ -214,9 +214,9 @@ func TestNoteOperations_NoteFromAnotherPlanIs404AndDoesNotMutate(t *testing.T) {
 	})
 }
 
-// A nil ownership checker must fail CLOSED. The failure mode of an
+// A nil access checker must fail CLOSED. The failure mode of an
 // authorization seam is never "allow".
-func TestNotesOperations_NilOwnershipFailsClosed(t *testing.T) {
+func TestNotesOperations_NilAccessFailsClosed(t *testing.T) {
 	_, api := humatest.New(t, huma.DefaultConfig("test", "1"))
 	RegisterNotesOperations(api, &recordingService{}, nil, func(ctx huma.Context, next func(huma.Context)) {
 		next(huma.WithContext(ctx, auth.WithUserID(ctx.Context(), uuid.New())))
@@ -224,7 +224,7 @@ func TestNotesOperations_NilOwnershipFailsClosed(t *testing.T) {
 
 	resp := api.(humatest.TestAPI).Get("/api/plans/" + uuid.New().String() + "/notes")
 	if resp.Code == http.StatusOK {
-		t.Fatalf("status = 200 with no ownership checker; must fail closed")
+		t.Fatalf("status = 200 with no access checker; must fail closed")
 	}
 }
 

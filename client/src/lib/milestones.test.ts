@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  findMilestone,
   isComplete,
+  nextStep,
   readMilestones,
   type MilestoneSourceItem,
 } from './milestones';
@@ -99,5 +101,65 @@ describe('isComplete', () => {
     ]).milestones[0];
     expect(isComplete(closedFull)).toBe(false);
     expect(isComplete(byId('M3'))).toBe(false);
+  });
+});
+
+describe('findMilestone', () => {
+  // Every item in MIXED belongs to plan-1 unless it says otherwise.
+  const inPlan = MIXED.map((i) => ({ ...i, planId: 'plan-1' }));
+
+  it('should find a milestone with the same reading the strip gives it, and its live steps in order', () => {
+    const found = findMilestone(inPlan, 'M4', 'plan-1')!;
+    expect(found.milestone).toEqual(
+      readMilestones(inPlan).milestones.find((m) => m.id === 'M4')
+    );
+    expect(found.item.id).toBe('M4');
+    // The archived step is out; notes stay in, as notes (R29).
+    expect(found.steps.map((s) => s.id)).toEqual(['M4a']);
+    expect(
+      findMilestone(inPlan, 'M1', 'plan-1')!.steps.map((s) => s.id)
+    ).toEqual(['M1a', 'M1b', 'M1c', 'M1d', 'M1n']);
+  });
+
+  it.each([
+    ['unknown', 'nope'],
+    ['a top-level note', 'N0'],
+    ['a step', 'M1a'],
+    ['archived', 'A0'],
+    ['daily', 'D0'],
+  ])('should not find %s (R33)', (_why, id) => {
+    expect(findMilestone(inPlan, id, 'plan-1')).toBeNull();
+  });
+
+  it("should not find another plan's milestone under this plan (G4)", () => {
+    expect(findMilestone(inPlan, 'M1', 'plan-2')).toBeNull();
+  });
+});
+
+describe('nextStep', () => {
+  const step = (id: string, extra: Partial<MilestoneSourceItem> = {}) =>
+    item(id, { parentId: 'M', ...extra });
+
+  it.each([
+    [
+      'the first open task step, in order',
+      [step('a', { done: true }), step('b'), step('c')],
+      'b',
+    ],
+    [
+      'past notes: a note is never the next step (R26)',
+      [step('n', { type: 'note' }), step('a', { done: true }), step('b')],
+      'b',
+    ],
+    [
+      'past archived steps',
+      [step('x', { archived: true }), step('a')],
+      'a',
+    ],
+    ['nothing once every task step is done', [step('a', { done: true })], null],
+    ['nothing with only notes (G12)', [step('n', { type: 'note' })], null],
+    ['nothing with no steps at all', [], null],
+  ])('should give %s', (_why, steps, want) => {
+    expect(nextStep(steps)?.id ?? null).toBe(want);
   });
 });

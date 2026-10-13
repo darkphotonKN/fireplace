@@ -20,14 +20,15 @@ import (
 // transcribed from model.go rather than from a protobuf message. The domain
 // type `Note` never appears in the generated schema (R5).
 
-// PlanOwnership answers "may this caller act on this plan?".
+// PlanAccess answers "may this caller act on this plan?" for an
+// owner-or-member operation, which every notes operation is (FS-12ZMF R7).
 //
-// plan-service deliberately does NOT enforce ownership on direct reads — it
-// treats the gateway as a trusted caller and expects the gateway to assert
-// ownership where it matters. Notes never asserted it, so every notes endpoint
-// was once reachable by any authenticated user for any plan id.
-type PlanOwnership interface {
-	AssertPlanOwnership(ctx context.Context, planID, userID uuid.UUID) error
+// It is the gateway's one plan-access seam (plangw.Access, ADR-0015), declared
+// here at the consumer. It answers an error wrapping ErrNotFound when the caller
+// has no relation to the plan, so a stranger gets 404 rather than a 403 that
+// would confirm the plan exists (R5, R10).
+type PlanAccess interface {
+	RequireMember(ctx context.Context, planID, userID uuid.UUID) error
 }
 
 // NotesService is the narrow seam these operations depend on. *Service
@@ -252,7 +253,7 @@ func (in *ListNotesInput) filters() *FilterOptions {
 
 // RegisterNotesOperations registers the serialized notes surface. Handlers may
 // be nil: registration never invokes them.
-func RegisterNotesOperations(api huma.API, svc NotesService, ownership PlanOwnership,
+func RegisterNotesOperations(api huma.API, svc NotesService, access PlanAccess,
 	protect func(huma.Context, func(huma.Context)), secured []map[string][]string,
 ) {
 	mw := huma.Middlewares{protect}
@@ -262,19 +263,19 @@ func RegisterNotesOperations(api huma.API, svc NotesService, ownership PlanOwner
 	}
 	writeErrs := append([]int{http.StatusBadRequest}, errs...)
 
-	// authorize resolves the caller, then asserts they may act on the plan.
-	// A nil ownership checker fails CLOSED — the failure mode of an
+	// authorize resolves the caller, then asks whether they may act on the
+	// plan. A nil access checker fails CLOSED — the failure mode of an
 	// authorization seam must never be "allow".
 	authorize := func(ctx context.Context, op string, planID uuid.UUID) error {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
 			return apierr.ProblemFor("notes: "+op, apierr.ErrNoIdentity())
 		}
-		if ownership == nil {
+		if access == nil {
 			return apierr.ProblemFor("notes: "+op,
-				fmt.Errorf("%w: ownership checker not configured", commonconstants.ErrForbidden))
+				fmt.Errorf("%w: plan access checker not configured", commonconstants.ErrForbidden))
 		}
-		if err := ownership.AssertPlanOwnership(ctx, planID, userID); err != nil {
+		if err := access.RequireMember(ctx, planID, userID); err != nil {
 			return apierr.ProblemFor("notes: "+op, err)
 		}
 		return nil
@@ -306,8 +307,8 @@ func RegisterNotesOperations(api huma.API, svc NotesService, ownership PlanOwner
 	// The plan check alone is not enough: these operations are keyed by note id
 	// and the service looks a note up by that id ALONE, so without the second
 	// stage a caller who owns any plan could read or delete a note in someone
-	// else's plan just by putting their own plan id in the path. Ownership of
-	// the container does not imply ownership of an arbitrary claimed item.
+	// else's plan just by putting their own plan id in the path. Access to the
+	// container does not imply access to an arbitrary claimed item (R14).
 	authorizeNote := func(ctx context.Context, op string, planID, noteID uuid.UUID) error {
 		if err := authorize(ctx, op, planID); err != nil {
 			return err

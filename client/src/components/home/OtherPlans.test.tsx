@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 
 /**
  * FS-KSJFR slice 3 (I-KSJFR-3): Your other plans.
@@ -202,5 +202,24 @@ describe('OtherPlans — visual conformance (R47–R51)', () => {
     expect(container.querySelector('.backdrop-blur-sm')).toBeNull();
     expect(container.querySelector('.rounded-2xl')).toBeNull();
     expect(container.querySelector('.shadow-lg')).toBeNull();
+  });
+});
+
+describe('OtherPlans — shared plans (FS-12ZMF R26)', () => {
+  it('should mark a shared row and leave an owned row unmarked', () => {
+    render(
+      <OtherPlans
+        plans={[
+          ...ordered(3),
+          plan('p3', { name: 'Their kitchen', relation: 'member' }),
+          plan('p4', { name: 'My garden', relation: 'owner' }),
+        ]}
+      />,
+    );
+
+    const shared = screen.getByRole('link', { name: /their kitchen/i });
+    const owned = screen.getByRole('link', { name: /my garden/i });
+    expect(within(shared).getByText('shared')).toBeInTheDocument();
+    expect(within(owned).queryByText('shared')).toBeNull();
   });
 });

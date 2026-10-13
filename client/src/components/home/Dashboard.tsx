@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import type { Plan } from "@/api/plans";
 import MilestoneStrip from "@/components/MilestoneStrip";
+import SharedMark from "@/components/SharedMark";
 import { cardProgressOf, type CardProgress } from "@/lib/homePlans";
 import { selectHomeWork } from "@/lib/homeWork";
 import FirstRun from "./FirstRun";
@@ -162,7 +163,10 @@ function ContinueCard({
         href={`/plan/${plan.id}`}
         className="flex h-full flex-col rounded-lg border border-border bg-card p-6 text-card-foreground shadow-sm transition-colors hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <span className="text-lg font-bold">{plan.name}</span>
+        <span className="flex items-baseline gap-2">
+          <span className="text-lg font-bold">{plan.name}</span>
+          <SharedMark plan={plan} />
+        </span>
         {plan.focus ? (
           <span className="mt-2 text-base text-muted-foreground">{plan.focus}</span>
         ) : null}

@@ -9,6 +9,7 @@ import (
 	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 type repository struct {
@@ -57,6 +58,27 @@ func (r *repository) GetByEmail(ctx context.Context, email string) (*User, error
 		return nil, wrapDBErr("get user by email", err)
 	}
 	return &u, nil
+}
+
+// GetByIDs reads every user among ids in one query, in no particular order. An
+// id with no user is simply absent from the result. The password hash is never
+// read.
+func (r *repository) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*User, error) {
+	users := []*User{}
+	if len(ids) == 0 {
+		return users, nil
+	}
+	strs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		strs = append(strs, id.String())
+	}
+	err := r.DB.SelectContext(ctx, &users,
+		`SELECT id, email, name, '' AS password, display_name, bio, created_at, updated_at
+		 FROM users WHERE id = ANY($1::uuid[])`, pq.Array(strs))
+	if err != nil {
+		return nil, wrapDBErr("get users by ids", err)
+	}
+	return users, nil
 }
 
 func (r *repository) ListAll(ctx context.Context) ([]*User, error) {

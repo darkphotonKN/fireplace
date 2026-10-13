@@ -106,3 +106,51 @@ export const searchPlans = async (
   if (error) throw apiErrorFrom(error, response.status);
   return data!;
 };
+
+/**
+ * The people on a plan (FS-12ZMF R15–R19): the owner first, then members in
+ * the order they were added. Listing is open to the owner and to members;
+ * adding and removing are the owner's alone (403 for a member).
+ */
+export type PlanMember = components["schemas"]["PlanMemberResp"];
+
+export const listPlanMembers = async (planId: string): Promise<PlanMember[]> => {
+  const { data, error, response } = await api.GET("/api/plans/{id}/members", {
+    params: { path: { id: planId } },
+  });
+  if (error) throw apiErrorFrom(error, response.status);
+  // The contract marks the array nullable. A plan always has its owner, but
+  // an empty list is the honest reading of a null.
+  return data ?? [];
+};
+
+/**
+ * Re-adding someone already on the plan answers 201 with their existing
+ * entry, so every success reads the same. Refusals carry
+ * `NO_ACCOUNT_FOR_EMAIL` or `MEMBER_IS_OWNER` (400), or 422 for a malformed
+ * email.
+ */
+export const addPlanMember = async (
+  planId: string,
+  email: string,
+): Promise<PlanMember> => {
+  const { data, error, response } = await api.POST("/api/plans/{id}/members", {
+    params: { path: { id: planId } },
+    body: { email },
+  });
+  if (error) throw apiErrorFrom(error, response.status);
+  markTouchedToday();
+  return data!;
+};
+
+export const removePlanMember = async (
+  planId: string,
+  userId: string,
+): Promise<void> => {
+  const { error, response } = await api.DELETE(
+    "/api/plans/{id}/members/{userId}",
+    { params: { path: { id: planId, userId } } },
+  );
+  if (error) throw apiErrorFrom(error, response.status);
+  markTouchedToday();
+};

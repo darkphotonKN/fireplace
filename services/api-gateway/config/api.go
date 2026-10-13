@@ -51,11 +51,20 @@ type APIDeps struct {
 	Plans      plangw.PlansClient
 	Checklists plangw.ChecklistsClient
 
+	// PlanAccess is the one plan-access seam (ADR-0015) every plan-scoped
+	// operation asks first: plans, checklists, notes and insights here, and the
+	// calendar through its LocalClient. Nil refuses every plan-scoped request
+	// with 403; it never allows.
+	PlanAccess *plangw.Access
+
+	// Members is plan-service's member half, and People resolves member ids
+	// and emails against the gateway's users table (FS-12ZMF R15–R21).
+	Members plangw.MembersClient
+	People  plangw.People
+
 	// Notes is a gateway-LOCAL domain: unlike the fields above it is not a
-	// downstream client but this service's own service object, paired with the
-	// ownership checker its operations authorize against.
-	Notes          notes.NotesService
-	NotesOwnership notes.PlanOwnership
+	// downstream client but this service's own service object.
+	Notes notes.NotesService
 
 	// insights is served in-process today; these two seams are what the gRPC
 	// repoint will swap out (ADR-0002 slice ⓪ established the contract first).
@@ -155,10 +164,11 @@ func RegisterAPI(engine *gin.Engine, deps APIDeps, protect func(huma.Context, fu
 	api := humagin.New(engine, cfg)
 	authgw.RegisterOperations(api, deps.Profile, protect, Secured)
 	authgw.RegisterUsersOperations(api, deps.Users, protect, Secured)
-	plangw.RegisterPlanOperations(api, deps.Plans, protect, Secured)
-	plangw.RegisterChecklistOperations(api, deps.Checklists, protect, Secured)
-	notes.RegisterNotesOperations(api, deps.Notes, deps.NotesOwnership, protect, Secured)
-	insights.RegisterInsightsOperations(api, deps.Suggestions, deps.VideoSuggestions, protect, Secured)
+	plangw.RegisterPlanOperations(api, deps.Plans, deps.PlanAccess, protect, Secured)
+	plangw.RegisterChecklistOperations(api, deps.Checklists, deps.PlanAccess, protect, Secured)
+	plangw.RegisterMemberOperations(api, deps.Members, deps.People, deps.PlanAccess, protect, Secured)
+	notes.RegisterNotesOperations(api, deps.Notes, deps.PlanAccess, protect, Secured)
+	insights.RegisterInsightsOperations(api, deps.Suggestions, deps.VideoSuggestions, deps.PlanAccess, protect, Secured)
 	useranalytics.RegisterAnalyticsOperations(api, deps.Analytics, protect, Secured)
 	calendargw.RegisterCalendarOperations(api, deps.Calendar, protect, Secured)
 	return api

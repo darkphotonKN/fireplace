@@ -2,9 +2,11 @@ package insights
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/apierr"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
 	"github.com/google/uuid"
@@ -25,10 +27,9 @@ import (
 // caller depends only on what it consumes. Both are satisfied by the
 // insights-service gRPC client (internal/gateway/insights).
 //
-// Both carry userID, which the in-process implementation did not: it took a
-// plan id alone and asserted nothing, so any authenticated caller could read
-// suggestions for any plan. insights-service reaches plan context through
-// plan-service, which enforces ownership.
+// Both carry userID, which the in-process implementation did not. Neither is
+// where access is decided: plan-service's GetPlan does not check the caller, so
+// these routes ask the gateway's access seam first (PlanAccess below).
 type SuggestionsService interface {
 	GenerateSuggestions(ctx context.Context, planID, userID uuid.UUID) (string, error)
 	GenerateDailySuggestions(ctx context.Context, planID, userID uuid.UUID) ([]string, error)
@@ -36,6 +37,13 @@ type SuggestionsService interface {
 
 type VideoSuggestionsService interface {
 	SuggestVideos(ctx context.Context, planID, userID uuid.UUID) ([]VideoSuggestionResponse, error)
+}
+
+// PlanAccess is the gateway's one plan-access seam (plangw.Access, ADR-0015),
+// declared at the consumer. All three operations are owner-or-member on their
+// plan_id (FS-12ZMF R4, R7): a caller with no relation gets 404.
+type PlanAccess interface {
+	RequireMember(ctx context.Context, planID, userID uuid.UUID) error
 }
 
 // --- transport mirror ------------------------------------------------------
@@ -69,17 +77,28 @@ type PlanIDQueryInput struct {
 }
 
 func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSuggestionsService,
+	access PlanAccess,
 	protect func(huma.Context, func(huma.Context)), secured []map[string][]string,
 ) {
 	mw := huma.Middlewares{protect}
 	errs := []int{
-		http.StatusUnauthorized, http.StatusUnprocessableEntity, http.StatusServiceUnavailable,
+		http.StatusUnauthorized, http.StatusNotFound, http.StatusUnprocessableEntity,
+		http.StatusServiceUnavailable,
 	}
 
-	identity := func(ctx context.Context, op string) (uuid.UUID, error) {
+	// authorize resolves the caller, then asks whether they may read the plan.
+	// A nil access checker fails CLOSED (R8).
+	authorize := func(ctx context.Context, op string, planID uuid.UUID) (uuid.UUID, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
 			return uuid.Nil, apierr.ProblemFor(op, apierr.ErrNoIdentity())
+		}
+		if access == nil {
+			return uuid.Nil, apierr.ProblemFor(op,
+				fmt.Errorf("%w: plan access checker not configured", commonconstants.ErrForbidden))
+		}
+		if err := access.RequireMember(ctx, planID, userID); err != nil {
+			return uuid.Nil, apierr.ProblemFor(op, err)
 		}
 		return userID, nil
 	}
@@ -93,7 +112,7 @@ func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSugge
 			"and current checklist. The body is the suggestion itself.",
 		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDQueryInput) (*SuggestionOutput, error) {
-		userID, err := identity(ctx, "insights: generate suggestions")
+		userID, err := authorize(ctx, "insights: generate suggestions", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +132,7 @@ func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSugge
 			"items, each nudged away from the previous so the set does not repeat itself.",
 		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDQueryInput) (*DailySuggestionsOutput, error) {
-		userID, err := identity(ctx, "insights: generate daily suggestions")
+		userID, err := authorize(ctx, "insights: generate daily suggestions", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +155,7 @@ func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSugge
 			"one recommended video per term.",
 		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDQueryInput) (*VideoSuggestionsOutput, error) {
-		userID, err := identity(ctx, "insights: suggested video links")
+		userID, err := authorize(ctx, "insights: suggested video links", in.PlanID)
 		if err != nil {
 			return nil, err
 		}

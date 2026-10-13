@@ -32,6 +32,48 @@ type SearchResult struct {
 	UpdatedAt   time.Time `db:"updated_at"`
 }
 
+// Relation is a user's relation to one plan: exactly one of owner, member or
+// none (ADR-0015 §1). A plan that does not exist is none.
+type Relation string
+
+const (
+	RelationNone   Relation = "none"
+	RelationOwner  Relation = "owner"
+	RelationMember Relation = "member"
+)
+
+// Access is the answer to "what is this user to this plan". OwnerID is set
+// whenever the plan exists, whatever the relation, and is uuid.Nil otherwise.
+type Access struct {
+	Relation Relation
+	OwnerID  uuid.UUID
+}
+
+// AccessRow is what the database holds for one (plan, user) pair: who owns the
+// plan, and whether a plan_shares row exists for the user. The share's role is
+// not read: it does not change the relation in v1 (FS-12ZMF R3).
+type AccessRow struct {
+	OwnerID uuid.UUID `db:"owner_id"`
+	Shared  bool      `db:"shared"`
+}
+
+// Member is one share on a plan: the user it names, and when it was written
+// (FS-12ZMF R15). plan-service never holds a member's name or email; the
+// gateway resolves those.
+type Member struct {
+	UserID uuid.UUID `db:"user_id"`
+	Since  time.Time `db:"created_at"`
+}
+
+// Members is a plan's people as plan-service knows them: the owner, when the
+// plan was made (the owner's "since"), and the members in the order they were
+// added. The owner is never among Members.
+type Members struct {
+	OwnerID       uuid.UUID
+	PlanCreatedAt time.Time
+	Members       []*Member
+}
+
 // Service-layer inputs (proto request → these, then service → repo).
 
 type CreatePlanInput struct {

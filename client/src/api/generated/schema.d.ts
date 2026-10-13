@@ -93,7 +93,7 @@ export interface paths {
         };
         /**
          * List the caller's plans
-         * @description Returns every plan owned by the authenticated user.
+         * @description Returns every plan the caller owns or is a member of, each once, newest first, unpaged. Each plan's `relation` says which.
          */
         get: operations["listPlans"];
         put?: never;
@@ -157,21 +157,21 @@ export interface paths {
         };
         /**
          * Get a plan
-         * @description Returns one plan by id. NOTE: per-user authorization is not implemented yet (FS-0005) — any authenticated caller can currently read any plan by id. 403 is listed because it is the status this operation will use once ownership is enforced.
+         * @description Returns one plan by id to its owner or a member. `relation` says which. Answers 404 when the caller has no relation to the plan, exactly as when no such plan exists.
          */
         get: operations["getPlan"];
         put?: never;
         post?: never;
         /**
          * Delete a plan
-         * @description Deletes a plan. Answers 204 with no body.
+         * @description Deletes a plan. Answers 204 with no body. Owner only: a member gets 403, and anyone else 404.
          */
         delete: operations["deletePlan"];
         options?: never;
         head?: never;
         /**
          * Update a plan
-         * @description Partial update. Omitted fields are left unchanged.
+         * @description Partial update. Omitted fields are left unchanged. Owner only: a member gets 403, and anyone else 404.
          */
         patch: operations["updatePlan"];
         trace?: never;
@@ -303,7 +303,7 @@ export interface paths {
         head?: never;
         /**
          * Update a checklist item
-         * @description Partial update. `parentId` is three-state: send a UUID to re-parent, null to clear, or omit to leave unchanged. Conversion and re-parenting rules are enforced downstream.
+         * @description Partial update. `parentId` is three-state: send a UUID to re-parent, null to clear, or omit to leave unchanged. `intention` is free text: omit it to leave it unchanged or send a string to set it; the server trims it, an empty result clears it, and more than 280 characters after trimming is 400 VALIDATION_FAILED. Conversion, re-parenting and the intention length rules are enforced downstream.
          */
         patch: operations["updateChecklist"];
         trace?: never;
@@ -346,6 +346,50 @@ export interface paths {
          * @description Both dates are three-state: send "YYYY-MM-DD" to set, null to clear, or omit to leave unchanged. When both are present, startDate must be on or before dueDate — enforced downstream, not by this schema.
          */
         patch: operations["updateChecklistDates"];
+        trace?: never;
+    };
+    "/api/plans/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a plan's people
+         * @description The plan's owner first, then its members in the order they were added. Open to the owner and to members. Answers 404 when the caller has no relation to the plan, exactly as when no such plan exists.
+         */
+        get: operations["listPlanMembers"];
+        put?: never;
+        /**
+         * Add a member to a plan by email
+         * @description Shares the plan with the account that uses this email. Owner only: a member gets 403, and anyone else 404. Adding someone already on the plan answers 201 with their existing entry and original `since`. 400 `NO_ACCOUNT_FOR_EMAIL` when no account uses the email; 400 `MEMBER_IS_OWNER` when it is the owner's own.
+         */
+        post: operations["addPlanMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{id}/members/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a member from a plan
+         * @description Ends the member's access from their next request. Answers 204 with no body. Owner only: a member gets 403, and anyone else 404. 404 too when the user is not a member, including the owner's own id.
+         */
+        delete: operations["removePlanMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/plans/{id}/notes": {
@@ -435,7 +479,7 @@ export interface paths {
         head?: never;
         /**
          * Toggle a plan's daily-reset flag
-         * @description Flips dailyReset and returns the updated plan. Takes no body.
+         * @description Flips dailyReset and returns the updated plan. Takes no body. Owner only: a member gets 403, and anyone else 404.
          */
         patch: operations["toggleDailyReset"];
         trace?: never;
@@ -555,6 +599,14 @@ export interface components {
             generatedFrom: string;
             sourceContext: string;
         };
+        AddPlanMemberReq: {
+            /**
+             * Format: email
+             * @description Email of an existing Fireplace account. Surrounding whitespace is trimmed, then matched exactly, as sign-in does.
+             * @example friend@example.com
+             */
+            email: string;
+        };
         ArchiveReq: {
             /** @example true */
             archived: boolean;
@@ -608,6 +660,11 @@ export interface components {
              * @example 3f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8
              */
             id: string;
+            /**
+             * @description Free text the item carries; omitted when unset.
+             * @example Prove the plan works end to end
+             */
+            intention?: string;
             /** Format: uuid */
             parentId?: string;
             /**
@@ -693,6 +750,27 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PlanMemberResp: {
+            /** @description The account's email */
+            email: string;
+            /**
+             * Format: uuid
+             * @description The person's user id
+             */
+            id: string;
+            /** @description Display name if set, otherwise account name */
+            name: string;
+            /**
+             * @description owner for the plan's owner, member for everyone it is shared with
+             * @enum {string}
+             */
+            relation: "owner" | "member";
+            /**
+             * Format: date-time
+             * @description Owner: when the plan was created. Member: when they were added.
+             */
+            since: string;
+        };
         PlanResp: {
             /** Format: date-time */
             createdAt: string;
@@ -702,6 +780,11 @@ export interface components {
             id: string;
             name: string;
             planType: string;
+            /**
+             * @description The caller's relation to this plan: owner, or member of a plan shared with them.
+             * @enum {string}
+             */
+            relation: "owner" | "member";
             /** Format: date-time */
             updatedAt: string;
             userId: string;
@@ -813,6 +896,11 @@ export interface components {
             description?: string;
             /** @example true */
             done?: boolean;
+            /**
+             * @description Free text the item carries. Omit to leave it unchanged; send a string to set it. The server trims it, an empty result clears it, and more than 280 characters after trimming is rejected with 400.
+             * @example Prove the plan works end to end
+             */
+            intention?: string;
             /**
              * Format: uuid
              * @description Send a UUID to set it, null to clear it, or omit the field to leave it unchanged.
@@ -1026,6 +1114,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Unprocessable Entity */
             422: {
                 headers: {
@@ -1085,6 +1182,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Unprocessable Entity */
             422: {
                 headers: {
@@ -1137,6 +1243,15 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2528,6 +2643,241 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listPlanMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanMemberResp"][] | null;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    addPlanMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPlanMemberReq"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanMemberResp"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removePlanMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+                /** @description The member's user id */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {

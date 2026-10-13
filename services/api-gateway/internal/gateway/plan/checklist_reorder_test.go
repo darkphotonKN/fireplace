@@ -31,7 +31,7 @@ func (r *reorderRecorder) ReorderChecklists(ctx context.Context, planID, userID 
 // UpdateChecklist is recorded too: `order` is a static segment sitting beside
 // `{checklist_id}` on the same prefix, and a router that resolved it to the
 // wildcard would hand a reorder to the single-item update.
-func (r *reorderRecorder) UpdateChecklist(ctx context.Context, id, userID uuid.UUID, req UpdateChecklistReq) (*ChecklistResp, error) {
+func (r *reorderRecorder) UpdateChecklist(ctx context.Context, planID, id, userID uuid.UUID, req UpdateChecklistReq) (*ChecklistResp, error) {
 	r.updateCalled = true
 	return &ChecklistResp{ID: id}, nil
 }
@@ -39,7 +39,7 @@ func (r *reorderRecorder) UpdateChecklist(ctx context.Context, id, userID uuid.U
 func newReorderAPI(t *testing.T, rec *reorderRecorder) humatest.TestAPI {
 	t.Helper()
 	_, api := humatest.New(t, huma.DefaultConfig("test", "1"))
-	RegisterChecklistOperations(api, rec, func(ctx huma.Context, next func(huma.Context)) {
+	RegisterChecklistOperations(api, rec, allowAll(), func(ctx huma.Context, next func(huma.Context)) {
 		next(huma.WithContext(ctx, auth.WithUserID(ctx.Context(), uuid.New())))
 	}, nil)
 	return api.(humatest.TestAPI)

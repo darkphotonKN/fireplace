@@ -17,14 +17,10 @@ import (
 // The gateway supplies the caller identity and never restates a downstream rule
 // (ADR-0005).
 //
-// AUTHORIZATION IS NOT IMPLEMENTED YET (FS-0005). An earlier version of this
-// comment claimed ownership was enforced by plan-service and surfaced as 403.
-// That was written from reading AssertPlanOwnership rather than exercising it,
-// and a two-account probe disproved it: a non-owner reads a plan successfully.
-// What plan-service actually does today is uneven — DELETE 404s a non-owner,
-// PATCH silently no-ops, GET returns the plan. 403 stays in the Errors lists
-// because it is the status these operations will use once the check lands, and
-// declaring it now means adding the behaviour is not a contract change.
+// Every operation on a plan by id asks the access seam first (ADR-0015,
+// FS-12ZMF R4–R9): reading needs owner-or-member, and update, toggle and delete
+// are owner only. A stranger gets 404, a member on an owner-only operation 403,
+// both before plan-service is asked to do anything.
 
 // SearchResult is the transport mirror for a search hit.
 //
@@ -94,7 +90,7 @@ type ListSharedInput struct {
 // DeleteOutput carries no body: the operation answers 204.
 type DeleteOutput struct{}
 
-func RegisterPlanOperations(api huma.API, c PlansClient,
+func RegisterPlanOperations(api huma.API, c PlansClient, access *Access,
 	protect func(huma.Context, func(huma.Context)), secured []map[string][]string,
 ) {
 	mw := huma.Middlewares{protect}
@@ -103,11 +99,25 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 		http.StatusUnprocessableEntity, http.StatusServiceUnavailable,
 	}
 
+	// authorize resolves the caller and asks the access seam, in that order and
+	// before anything else the handler does.
+	authorize := func(ctx context.Context, op string, planID uuid.UUID, need Need) (uuid.UUID, Relation, error) {
+		userID, ok := auth.UserIDFromCtx(ctx)
+		if !ok {
+			return uuid.Nil, RelationNone, apierr.ProblemFor(op, apierr.ErrNoIdentity())
+		}
+		rel, err := access.Require(ctx, planID, userID, need)
+		if err != nil {
+			return uuid.Nil, RelationNone, apierr.ProblemFor(op, err)
+		}
+		return userID, rel, nil
+	}
+
 	huma.Register(api, huma.Operation{
 		OperationID: "listPlans", Method: http.MethodGet, Path: "/api/plans",
 		Middlewares: mw, Security: secured,
 		Summary:     "List the caller's plans",
-		Description: "Returns every plan owned by the authenticated user.",
+		Description: "Returns every plan the caller owns or is a member of, each once, newest first, unpaged. Each plan's `relation` says which.",
 		Errors:      []int{http.StatusUnauthorized, http.StatusServiceUnavailable},
 	}, func(ctx context.Context, _ *struct{}) (*PlanListOutput, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
@@ -118,7 +128,7 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 		if err != nil {
 			return nil, apierr.ProblemFor("list plans", err)
 		}
-		return &PlanListOutput{Body: derefPlans(plans)}, nil
+		return &PlanListOutput{Body: derefPlans(plans, userID)}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -168,27 +178,27 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 		if err != nil {
 			return nil, apierr.ProblemFor("list shared plans", err)
 		}
-		return &PlanListOutput{Body: derefPlans(plans)}, nil
+		return &PlanListOutput{Body: derefPlans(plans, userID)}, nil
 	})
 
 	huma.Register(api, huma.Operation{
 		OperationID: "getPlan", Method: http.MethodGet, Path: "/api/plans/{id}",
 		Middlewares: mw, Security: secured,
 		Summary: "Get a plan",
-		Description: "Returns one plan by id. NOTE: per-user authorization is not implemented yet " +
-			"(FS-0005) — any authenticated caller can currently read any plan by id. 403 is listed " +
-			"because it is the status this operation will use once ownership is enforced.",
+		Description: "Returns one plan by id to its owner or a member. `relation` says which. " +
+			"Answers 404 when the caller has no relation to the plan, exactly as when no such " +
+			"plan exists.",
 		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDInput) (*PlanOutput, error) {
-		userID, ok := auth.UserIDFromCtx(ctx)
-		if !ok {
-			return nil, apierr.ProblemFor("get plan", apierr.ErrNoIdentity())
+		userID, rel, err := authorize(ctx, "get plan", in.ID, NeedMember)
+		if err != nil {
+			return nil, err
 		}
 		plan, err := c.GetPlan(ctx, in.ID, userID)
 		if err != nil {
 			return nil, apierr.ProblemFor("get plan", err)
 		}
-		return &PlanOutput{Body: *plan}, nil
+		return &PlanOutput{Body: withRelation(*plan, rel)}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -210,57 +220,60 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 		if err != nil {
 			return nil, apierr.ProblemFor("create plan", err)
 		}
-		return &PlanOutput{Body: *plan}, nil
+		return &PlanOutput{Body: withRelation(*plan, RelationOwner)}, nil
 	})
 
 	huma.Register(api, huma.Operation{
 		OperationID: "updatePlan", Method: http.MethodPatch, Path: "/api/plans/{id}",
 		Middlewares: mw, Security: secured,
-		Summary:     "Update a plan",
-		Description: "Partial update. Omitted fields are left unchanged.",
-		Errors:      append([]int{http.StatusBadRequest}, errs...),
+		Summary: "Update a plan",
+		Description: "Partial update. Omitted fields are left unchanged. Owner only: a member " +
+			"gets 403, and anyone else 404.",
+		Errors: append([]int{http.StatusBadRequest}, errs...),
 	}, func(ctx context.Context, in *UpdatePlanInput) (*PlanOutput, error) {
-		userID, ok := auth.UserIDFromCtx(ctx)
-		if !ok {
-			return nil, apierr.ProblemFor("update plan", apierr.ErrNoIdentity())
+		userID, rel, err := authorize(ctx, "update plan", in.ID, NeedOwner)
+		if err != nil {
+			return nil, err
 		}
 		plan, err := c.UpdatePlan(ctx, in.ID, userID, in.Body)
 		if err != nil {
 			return nil, apierr.ProblemFor("update plan", err)
 		}
-		return &PlanOutput{Body: *plan}, nil
+		return &PlanOutput{Body: withRelation(*plan, rel)}, nil
 	})
 
 	huma.Register(api, huma.Operation{
 		OperationID: "toggleDailyReset", Method: http.MethodPatch,
 		Path:        "/api/plans/{id}/toggle-daily-reset",
 		Middlewares: mw, Security: secured,
-		Summary:     "Toggle a plan's daily-reset flag",
-		Description: "Flips dailyReset and returns the updated plan. Takes no body.",
-		Errors:      errs,
+		Summary: "Toggle a plan's daily-reset flag",
+		Description: "Flips dailyReset and returns the updated plan. Takes no body. Owner " +
+			"only: a member gets 403, and anyone else 404.",
+		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDInput) (*PlanOutput, error) {
-		userID, ok := auth.UserIDFromCtx(ctx)
-		if !ok {
-			return nil, apierr.ProblemFor("toggle daily_reset", apierr.ErrNoIdentity())
+		userID, rel, err := authorize(ctx, "toggle daily_reset", in.ID, NeedOwner)
+		if err != nil {
+			return nil, err
 		}
 		plan, err := c.ToggleDailyReset(ctx, in.ID, userID)
 		if err != nil {
 			return nil, apierr.ProblemFor("toggle daily_reset", err)
 		}
-		return &PlanOutput{Body: *plan}, nil
+		return &PlanOutput{Body: withRelation(*plan, rel)}, nil
 	})
 
 	huma.Register(api, huma.Operation{
 		OperationID: "deletePlan", Method: http.MethodDelete, Path: "/api/plans/{id}",
 		DefaultStatus: http.StatusNoContent,
 		Middlewares:   mw, Security: secured,
-		Summary:     "Delete a plan",
-		Description: "Deletes a plan. Answers 204 with no body.",
-		Errors:      errs,
+		Summary: "Delete a plan",
+		Description: "Deletes a plan. Answers 204 with no body. Owner only: a member gets 403, " +
+			"and anyone else 404.",
+		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDInput) (*DeleteOutput, error) {
-		userID, ok := auth.UserIDFromCtx(ctx)
-		if !ok {
-			return nil, apierr.ProblemFor("delete plan", apierr.ErrNoIdentity())
+		userID, _, err := authorize(ctx, "delete plan", in.ID, NeedOwner)
+		if err != nil {
+			return nil, err
 		}
 		if err := c.DeletePlan(ctx, in.ID, userID); err != nil {
 			return nil, apierr.ProblemFor("delete plan", err)
@@ -271,14 +284,28 @@ func RegisterPlanOperations(api huma.API, c PlansClient,
 
 // derefPlans copies to values and is explicitly non-nil, so an empty result
 // marshals to [] and never null (FS-0004 §Edge States).
-func derefPlans(in []*PlanResp) []PlanResp {
+//
+// It also stamps each plan's relation for the caller (R23, D14). That is not a
+// second access rule: a list only ever holds plans the caller owns or shares,
+// so a plan whose owner is not the caller is one shared with them.
+func derefPlans(in []*PlanResp, caller uuid.UUID) []PlanResp {
 	out := make([]PlanResp, 0, len(in))
 	for _, p := range in {
-		if p != nil {
-			out = append(out, *p)
+		if p == nil {
+			continue
 		}
+		rel := RelationMember
+		if p.UserID == caller {
+			rel = RelationOwner
+		}
+		out = append(out, withRelation(*p, rel))
 	}
 	return out
+}
+
+func withRelation(p PlanResp, rel Relation) PlanResp {
+	p.Relation = rel
+	return p
 }
 
 func itoa(i int) string { return strconv.Itoa(i) }

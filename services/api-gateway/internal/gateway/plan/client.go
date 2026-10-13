@@ -108,12 +108,14 @@ func (c *Client) GetPlan(ctx context.Context, id, userID uuid.UUID) (*PlanResp, 
 	return planFromProto(resp), nil
 }
 
+// ListPlans is every plan userID owns or is a member of, newest first, unpaged
+// (FS-12ZMF R22).
 func (c *Client) ListPlans(ctx context.Context, userID uuid.UUID) ([]*PlanResp, error) {
 	plans, err := c.planClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := plans.ListPlans(ctx, &pb.ListPlansRequest{UserId: userID.String()})
+	resp, err := plans.ListPlans(ctx, &pb.ListPlansRequest{UserId: userID.String(), IncludeShared: true})
 	if err != nil {
 		return nil, err
 	}
@@ -198,16 +200,103 @@ func (c *Client) DeletePlan(ctx context.Context, id, userID uuid.UUID) error {
 	return err
 }
 
-func (c *Client) AssertPlanOwnership(ctx context.Context, planID, userID uuid.UUID) error {
+// GetPlanAccess asks plan-service for userID's relation to planID. A missing
+// plan is RelationNone, not an error; an error means no answer, and callers
+// must fail closed on it (ADR-0015 §3).
+//
+// plan-service's answer also names the plan's owner, even for a stranger. It is
+// dropped here, at the boundary, so no gateway code can carry it any further.
+func (c *Client) GetPlanAccess(ctx context.Context, planID, userID uuid.UUID) (Relation, error) {
+	plans, err := c.planClient(ctx)
+	if err != nil {
+		return RelationNone, err
+	}
+	resp, err := plans.GetPlanAccess(ctx, &pb.GetPlanAccessRequest{
+		PlanId: planID.String(),
+		UserId: userID.String(),
+	})
+	if err != nil {
+		return RelationNone, err
+	}
+	return relationFromProto(resp.Relation), nil
+}
+
+// --- Plan member methods (FS-12ZMF R15–R21) ---
+
+func (c *Client) ListPlanMembers(ctx context.Context, planID, userID uuid.UUID) (*PlanMembers, error) {
+	plans, err := c.planClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := plans.ListPlanMembers(ctx, &pb.ListPlanMembersRequest{
+		PlanId: planID.String(),
+		UserId: userID.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return planMembersFromProto(resp), nil
+}
+
+func (c *Client) AddPlanMember(ctx context.Context, planID, userID, memberID uuid.UUID) (*Membership, error) {
+	plans, err := c.planClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := plans.AddPlanMember(ctx, &pb.AddPlanMemberRequest{
+		PlanId:       planID.String(),
+		UserId:       userID.String(),
+		MemberUserId: memberID.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	m := membershipFromProto(resp)
+	return &m, nil
+}
+
+func (c *Client) RemovePlanMember(ctx context.Context, planID, userID, memberID uuid.UUID) error {
 	plans, err := c.planClient(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = plans.AssertPlanOwnership(ctx, &pb.AssertPlanOwnershipRequest{
-		PlanId: planID.String(),
-		UserId: userID.String(),
+	_, err = plans.RemovePlanMember(ctx, &pb.RemovePlanMemberRequest{
+		PlanId:       planID.String(),
+		UserId:       userID.String(),
+		MemberUserId: memberID.String(),
 	})
 	return err
+}
+
+func planMembersFromProto(r *pb.ListPlanMembersResponse) *PlanMembers {
+	ownerID, _ := uuid.Parse(r.OwnerId)
+	out := &PlanMembers{
+		OwnerID:       ownerID,
+		PlanCreatedAt: r.PlanCreatedAt.AsTime(),
+		Members:       make([]Membership, 0, len(r.Members)),
+	}
+	for _, m := range r.Members {
+		out.Members = append(out.Members, membershipFromProto(m))
+	}
+	return out
+}
+
+func membershipFromProto(m *pb.PlanMember) Membership {
+	id, _ := uuid.Parse(m.UserId)
+	return Membership{UserID: id, Since: m.Since.AsTime()}
+}
+
+// relationFromProto maps plan-service's answer. Anything unrecognised is
+// RelationNone, so a check built on it fails closed.
+func relationFromProto(r pb.PlanRelation) Relation {
+	switch r {
+	case pb.PlanRelation_PLAN_RELATION_OWNER:
+		return RelationOwner
+	case pb.PlanRelation_PLAN_RELATION_MEMBER:
+		return RelationMember
+	default:
+		return RelationNone
+	}
 }
 
 // --- Checklist methods ---
@@ -242,12 +331,12 @@ func (c *Client) CreateChecklist(ctx context.Context, planID, userID uuid.UUID, 
 	return checklistFromProto(resp), nil
 }
 
-func (c *Client) GetChecklist(ctx context.Context, id, userID uuid.UUID) (*ChecklistResp, error) {
+func (c *Client) GetChecklist(ctx context.Context, planID, id, userID uuid.UUID) (*ChecklistResp, error) {
 	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := items.GetItem(ctx, &pb.GetItemRequest{Id: id.String(), UserId: userID.String()})
+	resp, err := items.GetItem(ctx, &pb.GetItemRequest{Id: id.String(), PlanId: planID.String(), UserId: userID.String()})
 	if err != nil {
 		return nil, err
 	}
@@ -315,19 +404,32 @@ func (c *Client) ListChecklistsByUser(ctx context.Context, userID uuid.UUID) ([]
 	return checklistSliceFromProto(resp.Items), nil
 }
 
-func (c *Client) UpdateChecklist(ctx context.Context, id, userID uuid.UUID, req UpdateChecklistReq) (*ChecklistResp, error) {
+func (c *Client) UpdateChecklist(ctx context.Context, planID, id, userID uuid.UUID, req UpdateChecklistReq) (*ChecklistResp, error) {
 	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	resp, err := items.UpdateItem(ctx, updateItemRequest(planID, id, userID, req))
+	if err != nil {
+		return nil, err
+	}
+	return checklistFromProto(resp), nil
+}
+
+// updateItemRequest maps the PATCH body onto the proto. parentId is three-state
+// (omit, null, value); intention is two-state (omit leaves it, any string sets
+// it, and plan-service trims and clears an empty result).
+func updateItemRequest(planID, id, userID uuid.UUID, req UpdateChecklistReq) *pb.UpdateItemRequest {
 	pbReq := &pb.UpdateItemRequest{
 		Id:          id.String(),
+		PlanId:      planID.String(),
 		UserId:      userID.String(),
 		Description: req.Description,
 		Done:        req.Done,
 		Type:        req.Type,
 		Scope:       req.Scope,
+		Intention:   req.Intention,
 	}
 	if req.ParentID.Present {
 		if req.ParentID.Valid {
@@ -337,12 +439,7 @@ func (c *Client) UpdateChecklist(ctx context.Context, id, userID uuid.UUID, req 
 			pbReq.ClearParentId = true
 		}
 	}
-
-	resp, err := items.UpdateItem(ctx, pbReq)
-	if err != nil {
-		return nil, err
-	}
-	return checklistFromProto(resp), nil
+	return pbReq
 }
 
 // ReorderChecklists hands one sibling set's complete order to plan-service,
@@ -377,7 +474,7 @@ func (c *Client) ReorderChecklists(ctx context.Context, planID, userID uuid.UUID
 	return checklistSliceFromProto(resp.Items), nil
 }
 
-func (c *Client) UpdateChecklistDates(ctx context.Context, id, userID uuid.UUID, req UpdateDatesReq) (*ChecklistResp, error) {
+func (c *Client) UpdateChecklistDates(ctx context.Context, planID, id, userID uuid.UUID, req UpdateDatesReq) (*ChecklistResp, error) {
 	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
@@ -385,6 +482,7 @@ func (c *Client) UpdateChecklistDates(ctx context.Context, id, userID uuid.UUID,
 
 	pbReq := &pb.UpdateItemDatesRequest{
 		Id:     id.String(),
+		PlanId: planID.String(),
 		UserId: userID.String(),
 	}
 	if req.StartDate.Present && req.StartDate.Valid {
@@ -400,13 +498,13 @@ func (c *Client) UpdateChecklistDates(ctx context.Context, id, userID uuid.UUID,
 	return checklistFromProto(resp), nil
 }
 
-func (c *Client) ArchiveChecklist(ctx context.Context, id, userID uuid.UUID, archived bool) (*ChecklistResp, error) {
+func (c *Client) ArchiveChecklist(ctx context.Context, planID, id, userID uuid.UUID, archived bool) (*ChecklistResp, error) {
 	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 	resp, err := items.ArchiveItem(ctx, &pb.ArchiveItemRequest{
-		Id: id.String(), UserId: userID.String(), Archived: archived,
+		Id: id.String(), PlanId: planID.String(), UserId: userID.String(), Archived: archived,
 	})
 	if err != nil {
 		return nil, err
@@ -414,12 +512,12 @@ func (c *Client) ArchiveChecklist(ctx context.Context, id, userID uuid.UUID, arc
 	return checklistFromProto(resp), nil
 }
 
-func (c *Client) DeleteChecklist(ctx context.Context, id, userID uuid.UUID) error {
+func (c *Client) DeleteChecklist(ctx context.Context, planID, id, userID uuid.UUID) error {
 	items, err := c.checklistClient(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = items.DeleteItem(ctx, &pb.DeleteItemRequest{Id: id.String(), UserId: userID.String()})
+	_, err = items.DeleteItem(ctx, &pb.DeleteItemRequest{Id: id.String(), PlanId: planID.String(), UserId: userID.String()})
 	return err
 }
 
@@ -490,6 +588,7 @@ func checklistFromProto(c *pb.ChecklistItem) *ChecklistResp {
 		Description: c.Description, Done: c.Done, Sequence: c.Sequence,
 		Type: c.Type, Scope: c.Scope, Archived: c.Archived,
 		CreatedAt: c.CreatedAt.AsTime(), UpdatedAt: c.UpdatedAt.AsTime(),
+		Intention: c.Intention,
 	}
 	if c.ParentId != nil {
 		pid, err := uuid.Parse(*c.ParentId)

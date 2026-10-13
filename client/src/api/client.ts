@@ -68,7 +68,9 @@ export type ErrorCode =
   | "FORBIDDEN"
   | "INTERNAL_ERROR"
   | "SERVICE_UNAVAILABLE"
-  | "PROFILE_NAME_EMPTY";
+  | "PROFILE_NAME_EMPTY"
+  | "NO_ACCOUNT_FOR_EMAIL"
+  | "MEMBER_IS_OWNER";
 
 /**
  * User-facing message per domain code.
@@ -90,6 +92,10 @@ const MESSAGES: Record<ErrorCode, string> = {
   // outage to 500.
   SERVICE_UNAVAILABLE: "That service is temporarily unavailable. Please try again in a moment.",
   PROFILE_NAME_EMPTY: "Name can't be empty.",
+  // Adding a person to a plan (FS-12ZMF R29). Both are 400s the owner can act
+  // on, so each gets its own words rather than VALIDATION_FAILED's.
+  NO_ACCOUNT_FOR_EMAIL: "No Fireplace account uses that email.",
+  MEMBER_IS_OWNER: "That's you. You already own this plan.",
 };
 
 export function messageFor(problem: Problem | undefined): string {

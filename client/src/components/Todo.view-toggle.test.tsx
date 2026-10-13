@@ -9,9 +9,10 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 
 const fetchChecklist = vi.fn();
 
+const push = vi.fn();
 vi.mock('next/navigation', () => ({
   useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
 }));
 
 vi.mock('@/components/ui/use-toast', () => ({
@@ -98,6 +99,13 @@ describe('Todo list / blocks toggle', () => {
 
     expect(cards().length).toBe(0);
     expect(document.querySelectorAll('li[tabindex]').length).toBe(9);
+  });
+
+  it("should open a milestone's page from its card menu (FS-043WP R6)", async () => {
+    await renderTodo();
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for item P0' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open' }));
+    expect(push).toHaveBeenCalledWith('/plan/plan-1/m/P0');
   });
 
   it('should name the two readings Milestones and Checklist, inside a View group', async () => {

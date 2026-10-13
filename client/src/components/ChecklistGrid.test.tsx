@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import ChecklistGrid from './ChecklistGrid';
 import type { ChecklistItem } from '@/services/api';
+
+import ChecklistGrid from './ChecklistGrid';
 
 /**
  * The blocks view: one card per top-level item, its steps inside it, and a
@@ -358,5 +359,80 @@ describe('ChecklistGrid traced milestone (FS-FSFEC R33)', () => {
 
     expect(traced()).toEqual([]);
     expect(document.querySelector('[data-traced-mark]')).toBeNull();
+  });
+});
+
+describe('ChecklistGrid the way into a milestone (FS-043WP R5–R7)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const href = (id: string) => `/plan/plan-1/m/${id}`;
+
+  it('should give every milestone card a real link to its page, named for it', () => {
+    renderGrid({ milestoneHref: href });
+    expect(
+      within(card('p1')).getByRole('link', { name: 'Open Learn Go' })
+    ).toHaveAttribute('href', '/plan/plan-1/m/p1');
+    expect(
+      within(card('p2')).getByRole('link', { name: 'Open Book flights' })
+    ).toHaveAttribute('href', '/plan/plan-1/m/p2');
+  });
+
+  it('should give a closed milestone its link too: it is still a milestone', () => {
+    renderGrid({
+      milestoneHref: href,
+      groups: [{ item: mk('p4', 'Done thing', { done: true }), children: [] }],
+    });
+    expect(
+      within(card('p4')).getByRole('link', { name: 'Open Done thing' })
+    ).toBeInTheDocument();
+  });
+
+  it('should give note cards and steps no way in', () => {
+    renderGrid({ milestoneHref: href });
+    expect(within(card('p3')).queryByRole('link')).toBeNull();
+    // p1's only link is its own; its steps carry none.
+    expect(within(card('p1')).getAllByRole('link')).toHaveLength(1);
+  });
+
+  it("should offer Open in a milestone card menu, handing the milestone to the caller's navigation", () => {
+    const onOpenMilestone = vi.fn();
+    renderGrid({ milestoneHref: href, onOpenMilestone });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open' }));
+    expect(onOpenMilestone).toHaveBeenCalledWith('p1');
+  });
+
+  it.each([
+    ['a step', 'Actions for goroutines'],
+    ['a note card', 'Actions for Reading list'],
+  ])('should not offer Open in %s menu', (_why, trigger) => {
+    renderGrid({ milestoneHref: href });
+    fireEvent.click(screen.getByRole('button', { name: trigger }));
+    expect(screen.queryByRole('menuitem', { name: 'Open' })).toBeNull();
+  });
+
+  it("should still rename when a card's title is clicked", () => {
+    const onOpenMilestone = vi.fn();
+    const { onRename } = renderGrid({ milestoneHref: href, onOpenMilestone });
+    fireEvent.click(screen.getByText('Learn Go'));
+    const input = screen.getByRole('textbox', { name: 'Rename Learn Go' });
+    fireEvent.change(input, { target: { value: 'Learn Go well' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRename).toHaveBeenCalledWith('p1', 'Learn Go well');
+    expect(onOpenMilestone).not.toHaveBeenCalled();
+  });
+
+  it('should never show why a milestone matters on its card (FS-043WP R25)', () => {
+    renderGrid({
+      milestoneHref: href,
+      groups: [
+        {
+          item: mk('p1', 'Learn Go', { intention: 'to build the backend' }),
+          children: [],
+        },
+      ],
+    });
+    expect(screen.queryByText(/to build the backend/)).toBeNull();
+    expect(screen.queryByText(/why does this matter/i)).toBeNull();
   });
 });

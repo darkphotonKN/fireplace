@@ -17,6 +17,7 @@ type Item struct {
 	ParentID    *uuid.UUID `db:"parent_id" json:"parent_id,omitempty"`
 	StartDate   *time.Time `db:"start_date" json:"start_date,omitempty"`
 	DueDate     *time.Time `db:"due_date" json:"due_date,omitempty"`
+	Intention   *string    `db:"intention" json:"intention,omitempty"`
 	Scope       string     `db:"scope" json:"scope"`
 	Archived    bool       `db:"archived" json:"archived"`
 	CreatedAt   time.Time  `db:"created_at" json:"created_at"`
@@ -31,6 +32,10 @@ const (
 	UpcomingMonth = "month"
 	TypeTask      = "task"
 	TypeNote      = "note"
+
+	// MaxIntentionChars bounds an item's intention, counted in characters
+	// (runes), not bytes. The column's CHECK holds the same limit.
+	MaxIntentionChars = 280
 )
 
 // CreateItemInput is the service-layer input for creating a checklist item.
@@ -47,21 +52,35 @@ type CreateItemInput struct {
 //	SetParent=false           → leave column alone
 //	SetParent=true, P=nil     → clear column (outdent)
 //	SetParent=true, P=&id     → re-parent (indent)
+//
+// Intention is three-state the same way (FS-043WP R38):
+//
+//	SetIntention=false        → leave column alone
+//	SetIntention=true, I=nil  → clear column
+//	SetIntention=true, I=&s   → trim s; an empty result clears, over 280 characters is refused
+//
+// PlanID is the plan the caller addressed: the write touches the row only when
+// it belongs to that plan (FS-12ZMF R11).
 type UpdateItemInput struct {
-	ID          uuid.UUID
-	Description *string
-	Done        *bool
-	Scope       *string
-	Type        *string
-	Archived    *bool
-	SetParent   bool
-	ParentID    *uuid.UUID
+	ID           uuid.UUID
+	PlanID       uuid.UUID
+	Description  *string
+	Done         *bool
+	Scope        *string
+	Type         *string
+	Archived     *bool
+	SetParent    bool
+	ParentID     *uuid.UUID
+	SetIntention bool
+	Intention    *string
 }
 
 // UpdateDatesInput allows setting / leaving start_date and due_date. The
 // SetX bool distinguishes "leave alone" from "set to this value (possibly nil)".
+// PlanID scopes the row the same way UpdateItemInput's does.
 type UpdateDatesInput struct {
 	ID        uuid.UUID
+	PlanID    uuid.UUID
 	SetStart  bool
 	StartDate *time.Time
 	SetDue    bool

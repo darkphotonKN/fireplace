@@ -29,6 +29,10 @@ const (
 	PlanService_ToggleDailyReset_FullMethodName    = "/plan.PlanService/ToggleDailyReset"
 	PlanService_DeletePlan_FullMethodName          = "/plan.PlanService/DeletePlan"
 	PlanService_AssertPlanOwnership_FullMethodName = "/plan.PlanService/AssertPlanOwnership"
+	PlanService_GetPlanAccess_FullMethodName       = "/plan.PlanService/GetPlanAccess"
+	PlanService_ListPlanMembers_FullMethodName     = "/plan.PlanService/ListPlanMembers"
+	PlanService_AddPlanMember_FullMethodName       = "/plan.PlanService/AddPlanMember"
+	PlanService_RemovePlanMember_FullMethodName    = "/plan.PlanService/RemovePlanMember"
 )
 
 // PlanServiceClient is the client API for PlanService service.
@@ -52,6 +56,26 @@ type PlanServiceClient interface {
 	// sibling services (calendar, notes, etc.) before they touch plan-scoped
 	// resources they own.
 	AssertPlanOwnership(ctx context.Context, in *AssertPlanOwnershipRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// GetPlanAccess answers the caller's relation to a plan (ADR-0015 §1-2). It
+	// never enforces anything: the gateway decides what each relation may do.
+	// A plan that does not exist is PLAN_RELATION_NONE, never NotFound, so the
+	// answer cannot tell a stranger apart from a missing plan.
+	GetPlanAccess(ctx context.Context, in *GetPlanAccessRequest, opts ...grpc.CallOption) (*GetPlanAccessResponse, error)
+	// Plan members (FS-12ZMF R15-R21). plan-service holds only user ids; the
+	// gateway resolves names and emails from its own users table.
+	//
+	// ListPlanMembers answers the plan's owner, its creation time and its members
+	// in add order. NotFound if no plan. The gateway decides who may ask.
+	ListPlanMembers(ctx context.Context, in *ListPlanMembersRequest, opts ...grpc.CallOption) (*ListPlanMembersResponse, error)
+	// AddPlanMember shares a plan the caller owns with member_user_id, with role
+	// 'edit'. Re-adding returns the existing member and its original since.
+	// InvalidArgument when member_user_id is the owner (MEMBER_IS_OWNER);
+	// NotFound when the caller owns no such plan.
+	AddPlanMember(ctx context.Context, in *AddPlanMemberRequest, opts ...grpc.CallOption) (*PlanMember, error)
+	// RemovePlanMember deletes member_user_id's share on a plan the caller owns.
+	// NotFound when there is no such share (the owner's own id included) or the
+	// caller owns no such plan.
+	RemovePlanMember(ctx context.Context, in *RemovePlanMemberRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type planServiceClient struct {
@@ -152,6 +176,46 @@ func (c *planServiceClient) AssertPlanOwnership(ctx context.Context, in *AssertP
 	return out, nil
 }
 
+func (c *planServiceClient) GetPlanAccess(ctx context.Context, in *GetPlanAccessRequest, opts ...grpc.CallOption) (*GetPlanAccessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPlanAccessResponse)
+	err := c.cc.Invoke(ctx, PlanService_GetPlanAccess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *planServiceClient) ListPlanMembers(ctx context.Context, in *ListPlanMembersRequest, opts ...grpc.CallOption) (*ListPlanMembersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPlanMembersResponse)
+	err := c.cc.Invoke(ctx, PlanService_ListPlanMembers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *planServiceClient) AddPlanMember(ctx context.Context, in *AddPlanMemberRequest, opts ...grpc.CallOption) (*PlanMember, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PlanMember)
+	err := c.cc.Invoke(ctx, PlanService_AddPlanMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *planServiceClient) RemovePlanMember(ctx context.Context, in *RemovePlanMemberRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, PlanService_RemovePlanMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PlanServiceServer is the server API for PlanService service.
 // All implementations must embed UnimplementedPlanServiceServer
 // for forward compatibility.
@@ -173,6 +237,26 @@ type PlanServiceServer interface {
 	// sibling services (calendar, notes, etc.) before they touch plan-scoped
 	// resources they own.
 	AssertPlanOwnership(context.Context, *AssertPlanOwnershipRequest) (*emptypb.Empty, error)
+	// GetPlanAccess answers the caller's relation to a plan (ADR-0015 §1-2). It
+	// never enforces anything: the gateway decides what each relation may do.
+	// A plan that does not exist is PLAN_RELATION_NONE, never NotFound, so the
+	// answer cannot tell a stranger apart from a missing plan.
+	GetPlanAccess(context.Context, *GetPlanAccessRequest) (*GetPlanAccessResponse, error)
+	// Plan members (FS-12ZMF R15-R21). plan-service holds only user ids; the
+	// gateway resolves names and emails from its own users table.
+	//
+	// ListPlanMembers answers the plan's owner, its creation time and its members
+	// in add order. NotFound if no plan. The gateway decides who may ask.
+	ListPlanMembers(context.Context, *ListPlanMembersRequest) (*ListPlanMembersResponse, error)
+	// AddPlanMember shares a plan the caller owns with member_user_id, with role
+	// 'edit'. Re-adding returns the existing member and its original since.
+	// InvalidArgument when member_user_id is the owner (MEMBER_IS_OWNER);
+	// NotFound when the caller owns no such plan.
+	AddPlanMember(context.Context, *AddPlanMemberRequest) (*PlanMember, error)
+	// RemovePlanMember deletes member_user_id's share on a plan the caller owns.
+	// NotFound when there is no such share (the owner's own id included) or the
+	// caller owns no such plan.
+	RemovePlanMember(context.Context, *RemovePlanMemberRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedPlanServiceServer()
 }
 
@@ -209,6 +293,18 @@ func (UnimplementedPlanServiceServer) DeletePlan(context.Context, *DeletePlanReq
 }
 func (UnimplementedPlanServiceServer) AssertPlanOwnership(context.Context, *AssertPlanOwnershipRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AssertPlanOwnership not implemented")
+}
+func (UnimplementedPlanServiceServer) GetPlanAccess(context.Context, *GetPlanAccessRequest) (*GetPlanAccessResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPlanAccess not implemented")
+}
+func (UnimplementedPlanServiceServer) ListPlanMembers(context.Context, *ListPlanMembersRequest) (*ListPlanMembersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListPlanMembers not implemented")
+}
+func (UnimplementedPlanServiceServer) AddPlanMember(context.Context, *AddPlanMemberRequest) (*PlanMember, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddPlanMember not implemented")
+}
+func (UnimplementedPlanServiceServer) RemovePlanMember(context.Context, *RemovePlanMemberRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemovePlanMember not implemented")
 }
 func (UnimplementedPlanServiceServer) mustEmbedUnimplementedPlanServiceServer() {}
 func (UnimplementedPlanServiceServer) testEmbeddedByValue()                     {}
@@ -393,6 +489,78 @@ func _PlanService_AssertPlanOwnership_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PlanService_GetPlanAccess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPlanAccessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PlanServiceServer).GetPlanAccess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PlanService_GetPlanAccess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PlanServiceServer).GetPlanAccess(ctx, req.(*GetPlanAccessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PlanService_ListPlanMembers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPlanMembersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PlanServiceServer).ListPlanMembers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PlanService_ListPlanMembers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PlanServiceServer).ListPlanMembers(ctx, req.(*ListPlanMembersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PlanService_AddPlanMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddPlanMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PlanServiceServer).AddPlanMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PlanService_AddPlanMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PlanServiceServer).AddPlanMember(ctx, req.(*AddPlanMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PlanService_RemovePlanMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemovePlanMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PlanServiceServer).RemovePlanMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PlanService_RemovePlanMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PlanServiceServer).RemovePlanMember(ctx, req.(*RemovePlanMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PlanService_ServiceDesc is the grpc.ServiceDesc for PlanService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -435,6 +603,22 @@ var PlanService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AssertPlanOwnership",
 			Handler:    _PlanService_AssertPlanOwnership_Handler,
+		},
+		{
+			MethodName: "GetPlanAccess",
+			Handler:    _PlanService_GetPlanAccess_Handler,
+		},
+		{
+			MethodName: "ListPlanMembers",
+			Handler:    _PlanService_ListPlanMembers_Handler,
+		},
+		{
+			MethodName: "AddPlanMember",
+			Handler:    _PlanService_AddPlanMember_Handler,
+		},
+		{
+			MethodName: "RemovePlanMember",
+			Handler:    _PlanService_RemovePlanMember_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

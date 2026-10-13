@@ -19,9 +19,14 @@ type Service interface {
 	ToggleDailyReset(ctx context.Context, id, userID uuid.UUID) (*Plan, error)
 	Delete(ctx context.Context, id, userID uuid.UUID) error
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]*Plan, error)
+	ListAccessible(ctx context.Context, userID uuid.UUID) ([]*Plan, error)
 	ListShared(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Plan, error)
 	Search(ctx context.Context, in SearchInput) ([]*SearchResult, error)
 	AssertOwnership(ctx context.Context, planID, userID uuid.UUID) error
+	GetAccess(ctx context.Context, planID, userID uuid.UUID) (*Access, error)
+	ListMembers(ctx context.Context, planID uuid.UUID) (*Members, error)
+	AddMember(ctx context.Context, planID, callerID, memberID uuid.UUID) (*Member, error)
+	RemoveMember(ctx context.Context, planID, callerID, memberID uuid.UUID) error
 }
 
 type Handler struct {
@@ -82,7 +87,11 @@ func (h *Handler) ListPlans(ctx context.Context, req *pb.ListPlansRequest) (*pb.
 	if err != nil {
 		return nil, commongrpc.Fail(ctx, "plan: list plans", badUUID("user_id", req.UserId))
 	}
-	plans, err := h.service.ListByUser(ctx, userID)
+	list := h.service.ListByUser
+	if req.IncludeShared {
+		list = h.service.ListAccessible
+	}
+	plans, err := list(ctx, userID)
 	if err != nil {
 		return nil, commongrpc.Fail(ctx, "plan: list plans", err)
 	}
@@ -202,6 +211,105 @@ func (h *Handler) AssertPlanOwnership(ctx context.Context, req *pb.AssertPlanOwn
 		return nil, commongrpc.Fail(ctx, "plan: assert ownership", err)
 	}
 	return &emptypb.Empty{}, nil
+}
+
+func (h *Handler) GetPlanAccess(ctx context.Context, req *pb.GetPlanAccessRequest) (*pb.GetPlanAccessResponse, error) {
+	const op = "plan: get plan access"
+	planID, err := uuid.Parse(req.PlanId)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, badUUID("plan_id", req.PlanId))
+	}
+	userID, err := uuid.Parse(req.UserId)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, badUUID("user_id", req.UserId))
+	}
+	access, err := h.service.GetAccess(ctx, planID, userID)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	resp := &pb.GetPlanAccessResponse{Relation: relationToProto(access.Relation)}
+	if access.OwnerID != uuid.Nil {
+		resp.OwnerId = access.OwnerID.String()
+	}
+	return resp, nil
+}
+
+func (h *Handler) ListPlanMembers(ctx context.Context, req *pb.ListPlanMembersRequest) (*pb.ListPlanMembersResponse, error) {
+	const op = "plan: list plan members"
+	planID, err := uuid.Parse(req.PlanId)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, badUUID("plan_id", req.PlanId))
+	}
+	if _, err := uuid.Parse(req.UserId); err != nil {
+		return nil, commongrpc.Fail(ctx, op, badUUID("user_id", req.UserId))
+	}
+	members, err := h.service.ListMembers(ctx, planID)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	out := make([]*pb.PlanMember, 0, len(members.Members))
+	for _, m := range members.Members {
+		out = append(out, memberToProto(m))
+	}
+	return &pb.ListPlanMembersResponse{
+		OwnerId:       members.OwnerID.String(),
+		PlanCreatedAt: timestamppb.New(members.PlanCreatedAt),
+		Members:       out,
+	}, nil
+}
+
+func (h *Handler) AddPlanMember(ctx context.Context, req *pb.AddPlanMemberRequest) (*pb.PlanMember, error) {
+	const op = "plan: add plan member"
+	planID, callerID, memberID, err := parseMemberRequest(req.PlanId, req.UserId, req.MemberUserId)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	m, err := h.service.AddMember(ctx, planID, callerID, memberID)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	return memberToProto(m), nil
+}
+
+func (h *Handler) RemovePlanMember(ctx context.Context, req *pb.RemovePlanMemberRequest) (*emptypb.Empty, error) {
+	const op = "plan: remove plan member"
+	planID, callerID, memberID, err := parseMemberRequest(req.PlanId, req.UserId, req.MemberUserId)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	if err := h.service.RemoveMember(ctx, planID, callerID, memberID); err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// parseMemberRequest parses the three ids every member write carries.
+func parseMemberRequest(planID, userID, memberUserID string) (plan, caller, member uuid.UUID, err error) {
+	if plan, err = uuid.Parse(planID); err != nil {
+		return plan, caller, member, badUUID("plan_id", planID)
+	}
+	if caller, err = uuid.Parse(userID); err != nil {
+		return plan, caller, member, badUUID("user_id", userID)
+	}
+	if member, err = uuid.Parse(memberUserID); err != nil {
+		return plan, caller, member, badUUID("member_user_id", memberUserID)
+	}
+	return plan, caller, member, nil
+}
+
+func memberToProto(m *Member) *pb.PlanMember {
+	return &pb.PlanMember{UserId: m.UserID.String(), Since: timestamppb.New(m.Since)}
+}
+
+func relationToProto(r Relation) pb.PlanRelation {
+	switch r {
+	case RelationOwner:
+		return pb.PlanRelation_PLAN_RELATION_OWNER
+	case RelationMember:
+		return pb.PlanRelation_PLAN_RELATION_MEMBER
+	default:
+		return pb.PlanRelation_PLAN_RELATION_NONE
+	}
 }
 
 func planToProto(p *Plan) *pb.Plan {
