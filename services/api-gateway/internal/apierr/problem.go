@@ -128,6 +128,21 @@ func ProblemFor(op string, err error) *Problem {
 	}
 }
 
+// Refusal is a 400 carrying a domain code an operation chose itself, for a
+// well-formed request the domain refused (ADR-0005). It bypasses CodeFor on
+// purpose: the operation knows which rule refused, and the wire message does
+// not carry that reliably.
+func Refusal(op string, code errcode.Code, detail string) *Problem {
+	return &Problem{
+		Type:   "about:blank",
+		Title:  http.StatusText(http.StatusBadRequest),
+		Status: http.StatusBadRequest,
+		Detail: op + ": " + detail,
+		Code:   code,
+		Errors: []*huma.ErrorDetail{},
+	}
+}
+
 func containsFold(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		match := true

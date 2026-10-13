@@ -17,19 +17,22 @@ import (
 // enforced by plan-service and described in prose on the request types. None of
 // it is encoded as a schema constraint: the contract is a shape agreement, not
 // a validator (ADR-0005).
+//
+// Every operation is owner-or-member (FS-12ZMF R7) and asks the access seam
+// before anything else: a stranger gets 404 whatever the operation (R5).
 
 // ChecklistsClient is the narrow seam these operations depend on.
 type ChecklistsClient interface {
 	CreateChecklist(ctx context.Context, planID, userID uuid.UUID, req CreateChecklistReq) (*ChecklistResp, error)
-	GetChecklist(ctx context.Context, id, userID uuid.UUID) (*ChecklistResp, error)
+	GetChecklist(ctx context.Context, planID, id, userID uuid.UUID) (*ChecklistResp, error)
 	ListChecklists(ctx context.Context, planID, userID uuid.UUID, scope, itemType *string) ([]*ChecklistResp, error)
 	ListArchivedChecklists(ctx context.Context, planID, userID uuid.UUID) ([]*ChecklistResp, error)
 	ListUpcomingChecklists(ctx context.Context, planID, userID uuid.UUID) ([]*ChecklistResp, error)
-	UpdateChecklist(ctx context.Context, id, userID uuid.UUID, req UpdateChecklistReq) (*ChecklistResp, error)
+	UpdateChecklist(ctx context.Context, planID, id, userID uuid.UUID, req UpdateChecklistReq) (*ChecklistResp, error)
 	ReorderChecklists(ctx context.Context, planID, userID uuid.UUID, req ReorderChecklistReq) ([]*ChecklistResp, error)
-	UpdateChecklistDates(ctx context.Context, id, userID uuid.UUID, req UpdateDatesReq) (*ChecklistResp, error)
-	ArchiveChecklist(ctx context.Context, id, userID uuid.UUID, archived bool) (*ChecklistResp, error)
-	DeleteChecklist(ctx context.Context, id, userID uuid.UUID) error
+	UpdateChecklistDates(ctx context.Context, planID, id, userID uuid.UUID, req UpdateDatesReq) (*ChecklistResp, error)
+	ArchiveChecklist(ctx context.Context, planID, id, userID uuid.UUID, archived bool) (*ChecklistResp, error)
+	DeleteChecklist(ctx context.Context, planID, id, userID uuid.UUID) error
 }
 
 // --- huma input/output wrappers -------------------------------------------
@@ -57,10 +60,10 @@ type ListChecklistsInput struct {
 	Type   string    `query:"type" enum:"task,note" doc:"Filter by item type; omit (or send empty) for all"`
 }
 
-// ChecklistItemInput carries both path params. The plan id is part of the URL
-// even where the handler does not need it — the item id is globally unique —
-// because the path expresses ownership and the legacy routes were shaped that
-// way.
+// ChecklistItemInput carries both path params. The item id is globally unique,
+// but the plan id is not decoration: it is passed to plan-service, which acts
+// only on an item in that plan and answers 404 for one in another (FS-12ZMF
+// R11, ADR-0015 §5).
 type ChecklistItemInput struct {
 	PlanID      uuid.UUID `path:"id" doc:"Plan id"`
 	ChecklistID uuid.UUID `path:"checklist_id" doc:"Checklist item id"`
@@ -96,7 +99,7 @@ type ArchiveChecklistInput struct {
 	Body        ArchiveReq
 }
 
-func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
+func RegisterChecklistOperations(api huma.API, c ChecklistsClient, access *Access,
 	protect func(huma.Context, func(huma.Context)), secured []map[string][]string,
 ) {
 	mw := huma.Middlewares{protect}
@@ -106,13 +109,17 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 	}
 	writeErrs := append([]int{http.StatusBadRequest}, errs...)
 
-	// identity resolves the caller once per handler. Unreachable behind the auth
-	// middleware, but it must still produce a contract-shaped error rather than
-	// a nil-pointer panic if the bridge ever yields nothing.
-	identity := func(ctx context.Context, op string) (uuid.UUID, error) {
+	// authorize resolves the caller once per handler, then asks the access seam
+	// whether they may act on the path's plan. A missing identity is unreachable
+	// behind the auth middleware, but it must still produce a contract-shaped
+	// error rather than a nil-pointer panic if the bridge ever yields nothing.
+	authorize := func(ctx context.Context, op string, planID uuid.UUID) (uuid.UUID, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
 			return uuid.Nil, apierr.ProblemFor(op, apierr.ErrNoIdentity())
+		}
+		if _, err := access.Require(ctx, planID, userID, NeedMember); err != nil {
+			return uuid.Nil, apierr.ProblemFor(op, err)
 		}
 		return userID, nil
 	}
@@ -126,7 +133,7 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 			"Omitting a filter and sending it empty are equivalent — both return every value.",
 		Errors: errs,
 	}, func(ctx context.Context, in *ListChecklistsInput) (*ChecklistListOutput, error) {
-		userID, err := identity(ctx, "list checklist items")
+		userID, err := authorize(ctx, "list checklist items", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
@@ -145,7 +152,7 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 		Description: "Returns only archived items.",
 		Errors:      errs,
 	}, func(ctx context.Context, in *PlanScopedInput) (*ChecklistListOutput, error) {
-		userID, err := identity(ctx, "list archived checklist items")
+		userID, err := authorize(ctx, "list archived checklist items", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
@@ -164,7 +171,7 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 		Description: "Returns items whose start date falls within the next week.",
 		Errors:      errs,
 	}, func(ctx context.Context, in *PlanScopedInput) (*ChecklistListOutput, error) {
-		userID, err := identity(ctx, "list upcoming checklist items")
+		userID, err := authorize(ctx, "list upcoming checklist items", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
@@ -183,11 +190,11 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 		Description: "Returns one checklist item by id.",
 		Errors:      errs,
 	}, func(ctx context.Context, in *ChecklistItemInput) (*ChecklistOutput, error) {
-		userID, err := identity(ctx, "get checklist item")
+		userID, err := authorize(ctx, "get checklist item", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
-		item, err := c.GetChecklist(ctx, in.ChecklistID, userID)
+		item, err := c.GetChecklist(ctx, in.PlanID, in.ChecklistID, userID)
 		if err != nil {
 			return nil, apierr.ProblemFor("get checklist item", err)
 		}
@@ -205,7 +212,7 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 			"downstream — a parent must be a top-level item in the same plan.",
 		Errors: writeErrs,
 	}, func(ctx context.Context, in *CreateChecklistInput) (*ChecklistOutput, error) {
-		userID, err := identity(ctx, "create checklist item")
+		userID, err := authorize(ctx, "create checklist item", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
@@ -234,7 +241,7 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 			"scope or plan, 404 when the plan or an id does not exist at all.",
 		Errors: writeErrs,
 	}, func(ctx context.Context, in *ReorderChecklistInput) (*ChecklistListOutput, error) {
-		userID, err := identity(ctx, "reorder checklist items")
+		userID, err := authorize(ctx, "reorder checklist items", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
@@ -251,15 +258,18 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 		Middlewares: mw, Security: secured,
 		Summary: "Update a checklist item",
 		Description: "Partial update. `parentId` is three-state: send a UUID to re-parent, " +
-			"null to clear, or omit to leave unchanged. Conversion and re-parenting rules are " +
+			"null to clear, or omit to leave unchanged. `intention` is free text: omit it to " +
+			"leave it unchanged or send a string to set it; the server trims it, an empty " +
+			"result clears it, and more than 280 characters after trimming is 400 " +
+			"VALIDATION_FAILED. Conversion, re-parenting and the intention length rules are " +
 			"enforced downstream.",
 		Errors: writeErrs,
 	}, func(ctx context.Context, in *UpdateChecklistInput) (*ChecklistOutput, error) {
-		userID, err := identity(ctx, "update checklist item")
+		userID, err := authorize(ctx, "update checklist item", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
-		item, err := c.UpdateChecklist(ctx, in.ChecklistID, userID, in.Body)
+		item, err := c.UpdateChecklist(ctx, in.PlanID, in.ChecklistID, userID, in.Body)
 		if err != nil {
 			return nil, apierr.ProblemFor("update checklist item", err)
 		}
@@ -276,11 +286,11 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 			"dueDate — enforced downstream, not by this schema.",
 		Errors: writeErrs,
 	}, func(ctx context.Context, in *UpdateDatesInput) (*ChecklistOutput, error) {
-		userID, err := identity(ctx, "update checklist dates")
+		userID, err := authorize(ctx, "update checklist dates", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
-		item, err := c.UpdateChecklistDates(ctx, in.ChecklistID, userID, in.Body)
+		item, err := c.UpdateChecklistDates(ctx, in.PlanID, in.ChecklistID, userID, in.Body)
 		if err != nil {
 			return nil, apierr.ProblemFor("update checklist dates", err)
 		}
@@ -296,11 +306,11 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 			"false unarchives.",
 		Errors: writeErrs,
 	}, func(ctx context.Context, in *ArchiveChecklistInput) (*ChecklistOutput, error) {
-		userID, err := identity(ctx, "archive checklist item")
+		userID, err := authorize(ctx, "archive checklist item", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
-		item, err := c.ArchiveChecklist(ctx, in.ChecklistID, userID, in.Body.Archived)
+		item, err := c.ArchiveChecklist(ctx, in.PlanID, in.ChecklistID, userID, in.Body.Archived)
 		if err != nil {
 			return nil, apierr.ProblemFor("archive checklist item", err)
 		}
@@ -316,11 +326,11 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient,
 		Description: "Deletes the item. Answers 204 with no body.",
 		Errors:      errs,
 	}, func(ctx context.Context, in *ChecklistItemInput) (*DeleteOutput, error) {
-		userID, err := identity(ctx, "delete checklist item")
+		userID, err := authorize(ctx, "delete checklist item", in.PlanID)
 		if err != nil {
 			return nil, err
 		}
-		if err := c.DeleteChecklist(ctx, in.ChecklistID, userID); err != nil {
+		if err := c.DeleteChecklist(ctx, in.PlanID, in.ChecklistID, userID); err != nil {
 			return nil, apierr.ProblemFor("delete checklist item", err)
 		}
 		return &DeleteOutput{}, nil

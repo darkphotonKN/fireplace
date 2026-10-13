@@ -24,8 +24,14 @@ const dateLayout = "2006-01-02"
 // consumer so the gateway's plan client is free to grow methods nobody here
 // calls, and so tests can substitute a fake.
 type PlanGateway interface {
-	AssertPlanOwnership(ctx context.Context, planID, userID uuid.UUID) error
 	ListItemsInDateWindow(ctx context.Context, planID, userID uuid.UUID, windowStart, windowEnd time.Time) ([]*planpb.ChecklistItem, error)
+}
+
+// PlanAccess is the gateway's one plan-access seam (plangw.Access, ADR-0015),
+// declared at the consumer. The calendar is owner-or-member (FS-12ZMF R7, R10):
+// it answers an error wrapping ErrNotFound for a caller with no relation.
+type PlanAccess interface {
+	RequireMember(ctx context.Context, planID, userID uuid.UUID) error
 }
 
 // LocalClient satisfies CalendarClient against plan-service directly. It is the
@@ -36,26 +42,35 @@ type PlanGateway interface {
 // model.go, and the handler's only job was copying one into the other. With the
 // process boundary removed, that hop had nothing left to justify it.
 type LocalClient struct {
-	plans PlanGateway
+	plans  PlanGateway
+	access PlanAccess
 }
 
-func NewLocalClient(plans PlanGateway) *LocalClient {
-	return &LocalClient{plans: plans}
+// NewLocalClient takes the access seam separately from the item source: a nil
+// access refuses every request with 403 rather than serving it unchecked (R8).
+func NewLocalClient(plans PlanGateway, access PlanAccess) *LocalClient {
+	return &LocalClient{plans: plans, access: access}
 }
 
-// GetCalendar resolves the requested window, verifies plan ownership against
-// plan-service, fetches checklist items overlapping the window, and formats the
-// response.
+// GetCalendar asks whether the caller may read the plan, resolves the requested
+// window, fetches checklist items overlapping it, and formats the response.
+//
+// Access comes first, before the window is even parsed: a caller with no
+// relation to the plan learns nothing from this route, not even that the query
+// was malformed (ADR-0015 §3).
 func (c *LocalClient) GetCalendar(ctx context.Context, planID, userID uuid.UUID, view, date string) (*GetCalendarResp, error) {
+	if c.access == nil {
+		return nil, fmt.Errorf("calendar: get calendar: %w: plan access checker not configured", commonconstants.ErrForbidden)
+	}
+	if err := c.access.RequireMember(ctx, planID, userID); err != nil {
+		return nil, fmt.Errorf("calendar: get calendar: %w", err)
+	}
+
 	if view == "" {
 		view = "month"
 	}
 	windowStart, windowEnd, err := resolveWindow(view, date)
 	if err != nil {
-		return nil, fmt.Errorf("calendar: get calendar: %w", err)
-	}
-
-	if err := c.plans.AssertPlanOwnership(ctx, planID, userID); err != nil {
 		return nil, fmt.Errorf("calendar: get calendar: %w", err)
 	}
 

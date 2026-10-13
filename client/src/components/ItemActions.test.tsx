@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import ItemActions from './ItemActions';
+import { createRef } from 'react';
+import { act, cleanup, render, screen, fireEvent } from '@testing-library/react';
+import ItemActions, { type ItemActionsHandle } from './ItemActions';
 import type { ChecklistItem } from '@/services/api';
 
 /**
@@ -201,5 +202,42 @@ describe('ItemActions', () => {
     rerender(<ItemActions item={item()} {...h} />);
     fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
     expect(screen.queryByRole('menuitem', { name: /^Move (up|down)$/ })).toBeNull();
+  });
+
+  it('should offer Open only when it is handed one, first in the menu (FS-043WP R6)', () => {
+    open();
+    expect(screen.queryByRole('menuitem', { name: 'Open' })).toBeNull();
+    cleanup();
+
+    const onOpen = vi.fn();
+    open({ onOpen });
+    const rows = screen.getAllByRole('menuitem');
+    expect(rows[0]).toHaveTextContent('Open');
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open' }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('should offer the note/task flip only when it is handed one (FS-043WP R17)', () => {
+    render(<ItemActions item={item()} {...handlers()} onToggleType={undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
+    expect(
+      screen.getAllByRole('menuitem').map((r) => r.textContent)
+    ).toEqual(['Set dates', 'Rename', 'Archive', 'Delete']);
+  });
+
+  it('should open its date picker when asked from outside the menu (FS-043WP R19)', () => {
+    const h = handlers();
+    const ref = createRef<ItemActionsHandle>();
+    render(<ItemActions ref={ref} item={item({ dueDate: '2026-03-10' })} {...h} />);
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    act(() => ref.current!.openDates());
+    expect(screen.getByText('Pick a day, or a start and an end.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(h.onSetDates).toHaveBeenCalledWith(null, null);
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 });

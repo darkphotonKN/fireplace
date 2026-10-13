@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { listPlans } from '@/api/plans';
 import { useSidebar } from './LayoutWrapper';
 import { useTheme } from '@/context/ThemeContext';
+import SharedMark from './SharedMark';
 
 interface Plan {
   id: string;
@@ -13,6 +14,7 @@ interface Plan {
   planType: string;
   focus?: string;
   description?: string;
+  relation?: 'owner' | 'member';
 }
 
 interface ApiResponse {
@@ -63,6 +65,7 @@ export default function Sidebar() {
       name: plan.name,
       href: `/plan/${plan.id}`,
       isActive: plan.id === planId,
+      relation: plan.relation,
     }));
 
   return (
@@ -201,6 +204,7 @@ export default function Sidebar() {
                     {/* Text content */}
                     <span className="relative z-10 transition-all duration-300 group-hover:translate-x-1">
                       {item.name}
+                      <SharedMark plan={item} className="ml-2" />
                     </span>
                   </Link>
                 </li>

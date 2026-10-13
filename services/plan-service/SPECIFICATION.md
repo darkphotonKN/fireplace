@@ -39,6 +39,7 @@ read-model, HTTP REST surface, AI suggestions) are listed under **Owned elsewher
 - [x] Plan name search
 - [x] Plan sharing, and listing owned ∪ shared-with-me
 - [x] Ownership assertion for sibling services
+- [x] Plan members and an owner-or-member access check → FS-12ZMF
 - [x] Cascade-delete a user's plans on `user.deleted`
 - [x] `plan.created` published via transactional outbox
 - [ ] `plan.deleted` event (marshaled, publish stubbed out)

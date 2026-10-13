@@ -45,4 +45,15 @@ const (
 	// so the field-level precision has to live in the code itself.
 	// See FS-0002 §Requirements 16.
 	ProfileNameEmpty Code = "PROFILE_NAME_EMPTY"
+
+	// Plan members (FS-12ZMF R17). Both are 400: a well-formed request the
+	// domain refused, not a malformed one (ADR-0005; malformed is 422).
+	//
+	// NoAccountForEmail: no Fireplace account uses the email the owner named.
+	// Decided by the gateway, which holds the users table.
+	NoAccountForEmail Code = "NO_ACCOUNT_FOR_EMAIL"
+	// MemberIsOwner: the email names the plan's own owner. plan-service owns
+	// the rule and answers InvalidArgument; the add-member operation attaches
+	// this code itself rather than leaving it to message sniffing.
+	MemberIsOwner Code = "MEMBER_IS_OWNER"
 )

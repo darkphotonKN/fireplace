@@ -17,8 +17,9 @@ import (
 // user_id is required by GetPlanRequest but plan-service does not enforce
 // ownership on direct reads — the gateway is a trusted caller. Where the
 // calling interface doesn't surface a user_id (e.g. notes.PlanService.GetById,
-// insights' planService.GetById), pass uuid.Nil. When ownership matters,
-// callers should use AssertPlanOwnership explicitly.
+// insights' planService.GetById), pass uuid.Nil. Whether the caller may touch
+// the plan at all is decided before these are reached, by the access seam
+// (Access, ADR-0015) at the top of every plan-scoped route.
 type Adapter struct {
 	client *Client
 }
@@ -34,11 +35,6 @@ func (a *Adapter) GetById(ctx context.Context, id uuid.UUID) (*models.Plan, erro
 		return nil, err
 	}
 	return planRespToModel(p), nil
-}
-
-// AssertPlanOwnership satisfies calendar.PlanOwnership.
-func (a *Adapter) AssertPlanOwnership(ctx context.Context, planID, userID uuid.UUID) error {
-	return a.client.AssertPlanOwnership(ctx, planID, userID)
 }
 
 // GetAllByPlanId satisfies insights.ChecklistInsightsService and

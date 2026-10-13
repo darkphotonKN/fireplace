@@ -31,6 +31,9 @@ import {
   getPlan,
   listSharedPlans,
   searchPlans,
+  listPlanMembers,
+  addPlanMember,
+  removePlanMember,
 } from './plans';
 import {
   createChecklistItem,
@@ -81,6 +84,8 @@ const mutations: [string, () => Promise<unknown>][] = [
   ['updatePlan', () => updatePlan('plan-1', { name: 'n' })],
   ['deletePlan', () => deletePlan('plan-1')],
   ['toggleDailyReset', () => toggleDailyReset('plan-1')],
+  ['addPlanMember', () => addPlanMember('plan-1', 'friend@example.com')],
+  ['removePlanMember', () => removePlanMember('plan-1', 'user-2')],
   ['createChecklistItem', () => createChecklistItem('plan-1', { description: 'd' })],
   ['updateChecklistItem', () => updateChecklistItem('plan-1', 'item-1', { done: true })],
   ['updateChecklistDates', () => updateChecklistDates('plan-1', 'item-1', { dueDate: '2026-03-09' })],
@@ -97,6 +102,7 @@ const reads: [string, () => Promise<unknown>][] = [
   ['getPlan', () => getPlan('plan-1')],
   ['listSharedPlans', () => listSharedPlans()],
   ['searchPlans', () => searchPlans('term')],
+  ['listPlanMembers', () => listPlanMembers('plan-1')],
   ['listChecklists', () => listChecklists('plan-1')],
   ['listArchivedChecklists', () => listArchivedChecklists('plan-1')],
   ['listUpcomingChecklists', () => listUpcomingChecklists('plan-1')],

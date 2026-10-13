@@ -68,7 +68,8 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 	accessTTL := parseDurationOr("ACCESS_TOKEN_TTL", 24*time.Hour)
 	refreshTTL := parseDurationOr("REFRESH_TOKEN_TTL", 168*time.Hour)
 
-	authService := authgw.NewService(authgw.NewRepository(db), publisher, jwtSecret, accessTTL, refreshTTL)
+	authRepo := authgw.NewRepository(db)
+	authService := authgw.NewService(authRepo, publisher, jwtSecret, accessTTL, refreshTTL)
 	authClient := authgw.NewLocalClient(authService)
 
 	// plan-service is remote — HTTP routes for /plans and /plans/:id/checklists
@@ -79,6 +80,9 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 	// client is consumed directly by the typed operations.
 	planGwClient := plangw.NewClient(registry)
 	planAdapter := plangw.NewAdapter(planGwClient)
+	// The one plan-access seam (ADR-0015): plan-service answers the relation,
+	// and every plan-scoped route below asks this before doing anything else.
+	planAccess := plangw.NewAccess(planGwClient)
 
 	userAnalyticsRepo := useranalytics.NewRepository(db)
 	userAnalyticsService := useranalytics.NewService(userAnalyticsRepo, planAdapter)
@@ -97,7 +101,7 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 	// folded back in. It owns no data: the read model is assembled entirely from
 	// plan-service's checklist items, reached through the SAME plan client
 	// everything else here uses rather than a second connection of its own.
-	calendarGwClient := calendargw.NewLocalClient(planGwClient)
+	calendarGwClient := calendargw.NewLocalClient(planGwClient, planAccess)
 
 	// --- PROTECTED ROUTES (auth middleware) ---
 
@@ -116,12 +120,14 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 	// stated trade, since the swaggo document that used to describe it was
 	// removed outright (ADR-0006 §5).
 	MountSerialized(router, APIDeps{
-		Profile:        authClient,
-		Users:          authClient,
-		Plans:          planGwClient,
-		Checklists:     planGwClient,
-		Notes:          notesService,
-		NotesOwnership: planAdapter,
+		Profile:    authClient,
+		Users:      authClient,
+		Plans:      planGwClient,
+		Checklists: planGwClient,
+		PlanAccess: planAccess,
+		Members:    planGwClient,
+		People:     planPeople{users: authRepo},
+		Notes:      notesService,
 
 		Suggestions:      insightsGwClient,
 		VideoSuggestions: insightsGwClient,

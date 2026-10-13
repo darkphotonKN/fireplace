@@ -30,7 +30,7 @@ func newFilterAPI(t *testing.T, rec *recordingClient) humatest.TestAPI {
 	_, api := humatest.New(t, huma.DefaultConfig("test", "1"))
 	// No auth middleware: these tests are about parameter handling, and the
 	// identity bridge is exercised by the config-level tests.
-	RegisterChecklistOperations(api, rec, func(ctx huma.Context, next func(huma.Context)) {
+	RegisterChecklistOperations(api, rec, allowAll(), func(ctx huma.Context, next func(huma.Context)) {
 		// Stand in for the real bridge: put an identity on the context the way
 		// BridgeIdentity does, without booting the middleware chain.
 		next(huma.WithContext(ctx, auth.WithUserID(ctx.Context(), uuid.New())))

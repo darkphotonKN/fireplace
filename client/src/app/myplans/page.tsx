@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { listPlans, searchPlans, deletePlan as apiDeletePlan } from "@/api/plans";
 import { useTheme } from "@/context/ThemeContext";
+import SharedMark from "@/components/SharedMark";
 
 const PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -28,6 +29,8 @@ interface PlanCard {
   planType?: string;
   focus?: string;
   description?: string;
+  /** Absent on search hits, which are owned-only (FS-12ZMF D17). */
+  relation?: "owner" | "member";
 }
 
 export default function MyPlans() {
@@ -240,10 +243,11 @@ export default function MyPlans() {
                     <Card className="backdrop-blur-sm rounded-xl shadow-xl border-0 bg-white/5 dark:bg-gray-900/10 h-full transition-all hover:shadow-2xl hover:-translate-y-1">
                       <div className="p-6">
                         <h3
-                          className="text-2xl font-semibold mb-2"
+                          className="flex items-baseline gap-3 text-2xl font-semibold mb-2"
                           style={{ color: "rgb(247, 111, 83)" }}
                         >
                           {plan.name}
+                          <SharedMark plan={plan} className="text-foreground" />
                         </h3>
                         {/* Search hits carry no planType — omit the label
                             rather than guessing. It previously defaulted to
@@ -269,28 +273,32 @@ export default function MyPlans() {
                       </div>
                     </Card>
                   </Link>
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setPlanToDelete(plan.id);
-                    }}
-                    className="absolute top-2 right-2 p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-100 dark:hover:bg-gray-800"
-                    title="Delete plan"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="w-4 h-4 text-muted-foreground hover:text-destructive transition-colors"
+                  {/* Deleting is the owner's alone (FS-12ZMF R27): a member
+                      gets no control rather than one that answers 403. */}
+                  {plan.relation !== "member" && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setPlanToDelete(plan.id);
+                      }}
+                      className="absolute top-2 right-2 p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-100 dark:hover:bg-gray-800"
+                      title="Delete plan"
                     >
-                      <path
-                        fillRule="evenodd"
-                        d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="w-4 h-4 text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

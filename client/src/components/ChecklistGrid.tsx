@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, FileText, Plus, X } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronRight, FileText, Maximize2, Plus } from 'lucide-react';
 import {
   SortableContext,
   rectSortingStrategy,
@@ -11,6 +12,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import ItemActions from '@/components/ItemActions';
 import SortableItem from '@/components/SortableItem';
 import ItemDateChip from '@/components/ItemDateChip';
+import CompletionNudge, { useCompletionNudges } from '@/components/CompletionNudge';
+import ProgressMeter from '@/components/ProgressMeter';
 import { cn } from '@/lib/utils';
 import { isComplete, readMilestones, type Milestone } from '@/lib/milestones';
 import type { ChecklistGroup } from '@/lib/nesting';
@@ -71,6 +74,18 @@ export interface ChecklistGridProps {
    * the list gives a new row, so a card made from the composer is found.
    */
   arriving?: Readonly<Record<string, boolean>>;
+  /**
+   * Where a milestone's own page lives (FS-043WP R5, R6). Given it, every
+   * milestone card carries a link there and an Open entry in its menu; note
+   * cards and steps never do, being no milestone. The grid knows which cards
+   * are milestones; the caller knows the plan and its URLs.
+   */
+  milestoneHref?: (id: string) => string;
+  /**
+   * The menu's Open on a milestone card (FS-043WP R6). Navigation stays with
+   * the caller, as the URLs do; without it the menu offers no Open.
+   */
+  onOpenMilestone?: (id: string) => void;
 }
 
 const isNote = (item: ChecklistItem) => (item.type ?? 'task') === 'note';
@@ -80,9 +95,6 @@ function taskProgress(children: ChecklistItem[]) {
   const tasks = children.filter((c) => !isNote(c));
   return { done: tasks.filter((c) => c.done).length, total: tasks.length };
 }
-
-/** A milestone's progress as one comparable value: what a dismissal holds to. */
-const pairOf = (m: Milestone) => `${m.steps.done}/${m.steps.total}`;
 
 export default function ChecklistGrid({
   groups,
@@ -100,6 +112,8 @@ export default function ChecklistGrid({
   canDrag,
   tracedId = null,
   arriving = {},
+  milestoneHref,
+  onOpenMilestone,
 }: ChecklistGridProps) {
   // Rename and add live here rather than in the list's shared edit state: the
   // two views are never on screen together, and a card's input has nothing to
@@ -113,30 +127,17 @@ export default function ChecklistGrid({
 
   // Each card's milestone, read by the same derivation the strip uses so the
   // two can't disagree about a card's progress or whether it is complete.
-  const milestones = useMemo(() => {
-    const items = groups.flatMap((g) => [g.item, ...g.children]);
-    return new Map<string, Milestone>(
-      readMilestones(items).milestones.map((m) => [m.id, m])
-    );
-  }, [groups]);
-
-  // Nudges waved off, each with the done/total it was waved off at. Memory
-  // only, so a reload or remount offers again (R12). A dismissal lasts while
-  // that pair holds: once the progress moves it is forgotten, so unticking
-  // and re-ticking a step brings the offer back even at the same pair.
-  // Milestones off this page keep theirs; nothing can tick them from here.
-  const [dismissed, setDismissed] = useState<Record<string, string>>({});
-  useEffect(() => {
-    setDismissed((prev) => {
-      const kept = Object.entries(prev).filter(([id, at]) => {
-        const m = milestones.get(id);
-        return !m || pairOf(m) === at;
-      });
-      return kept.length === Object.keys(prev).length
-        ? prev
-        : Object.fromEntries(kept);
-    });
-  }, [milestones]);
+  const reading = useMemo(
+    () => readMilestones(groups.flatMap((g) => [g.item, ...g.children])).milestones,
+    [groups]
+  );
+  const milestones = useMemo(
+    () => new Map<string, Milestone>(reading.map((m) => [m.id, m])),
+    [reading]
+  );
+  // The nudge and its memory of being waved off, shared with the milestone
+  // page so the offer behaves the same wherever it is made (FS-043WP R21).
+  const nudges = useCompletionNudges(reading);
 
   // Opening the composer, or coming back after a save, puts the cursor in it
   // so steps can be entered back to back the way the add bar allows.
@@ -207,8 +208,8 @@ export default function ChecklistGrid({
         const noteCount = children.length - total;
         const composing = addingIn === item.id;
         const complete = !!milestone && isComplete(milestone);
-        const nudging = complete && dismissed[item.id] !== pairOf(milestone);
         const traced = item.id === tracedId;
+        const openHref = milestone && milestoneHref?.(item.id);
 
         return (
           <SortableItem
@@ -279,6 +280,19 @@ export default function ChecklistGrid({
                   ✦
                 </span>
               )}
+              {/* The way into the milestone's page: a real link, so it opens
+                  in a new tab and copies. Always there but muted, so a page
+                  of cards isn't a page of buttons; the title keeps renaming. */}
+              {openHref && (
+                <Link
+                  href={openHref}
+                  aria-label={`Open ${item.description}`}
+                  title="Open"
+                  className="mt-[1px] grid h-6 w-6 shrink-0 place-items-center rounded-md text-foreground/30 outline-none transition-colors hover:text-primary focus-visible:text-primary"
+                >
+                  <Maximize2 aria-hidden strokeWidth={1.75} className="h-3.5 w-3.5" />
+                </Link>
+              )}
               {handle && (
                 <span
                   className="mt-[1px] shrink-0"
@@ -293,6 +307,11 @@ export default function ChecklistGrid({
               >
                 <ItemActions
                   item={item}
+                  onOpen={
+                    openHref && onOpenMilestone
+                      ? () => onOpenMilestone(item.id)
+                      : undefined
+                  }
                   onEdit={() => {
                     setEditingId(item.id);
                     setEditText(item.description);
@@ -329,23 +348,7 @@ export default function ChecklistGrid({
             {children.length > 0 && (
               <div className="mt-2.5 flex items-center gap-2.5">
                 {total > 0 ? (
-                  <>
-                    <span className="h-1 flex-1 overflow-hidden rounded-full bg-foreground/[0.08]">
-                      <span
-                        data-progress-fill
-                        style={{ width: `${(done / total) * 100}%` }}
-                        className="block h-full rounded-full bg-primary transition-[width] duration-500 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)]"
-                      />
-                    </span>
-                    <span
-                      className={cn(
-                        'shrink-0 text-sm tabular-nums transition-colors duration-500',
-                        done === total ? 'text-primary/80' : 'text-foreground/45'
-                      )}
-                    >
-                      {done}/{total}
-                    </span>
-                  </>
+                  <ProgressMeter done={done} total={total} />
                 ) : (
                   <span className="text-sm text-foreground/45">
                     {noteCount === 1 ? '1 note' : `${noteCount} notes`}
@@ -361,37 +364,13 @@ export default function ChecklistGrid({
             {/* Every step done: say so and offer to close it. Only an offer,
                 through the checkbox's own handler; nothing here sets done on
                 its own (R10, R11, R13). */}
-            {nudging && (
-              <div
-                data-completion-nudge
-                className="mt-2.5 flex items-center gap-2 rounded-lg bg-primary/[0.08] px-3 py-1.5 text-sm"
-              >
-                <span className="min-w-0 flex-1 text-foreground/70">
-                  All steps done. Close this milestone?
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onToggleDone(item.id)}
-                  aria-label={`Close ${item.description}`}
-                  className="shrink-0 rounded-md px-2 py-0.5 font-medium text-primary outline-none transition-colors hover:bg-primary/10 focus-visible:bg-primary/10"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDismissed((prev) => ({
-                      ...prev,
-                      [item.id]: pairOf(milestone),
-                    }))
-                  }
-                  aria-label={`Not now, ${item.description}`}
-                  title="Not now"
-                  className="-mr-1 grid h-6 w-6 shrink-0 place-items-center rounded-md text-foreground/40 outline-none transition-colors hover:text-foreground/70 focus-visible:text-foreground/70"
-                >
-                  <X aria-hidden className="h-3.5 w-3.5" />
-                </button>
-              </div>
+            {milestone && nudges.shows(milestone) && (
+              <CompletionNudge
+                title={item.description}
+                onClose={() => onToggleDone(item.id)}
+                onDismiss={() => nudges.dismiss(milestone)}
+                className="mt-2.5"
+              />
             )}
 
             {/* Steps. Folded away with the same state the list folds with, so

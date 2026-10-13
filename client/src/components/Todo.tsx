@@ -40,7 +40,8 @@ import {
 } from '@dnd-kit/sortable';
 import SortableItem from '@/components/SortableItem';
 import { getChecklistSuggestion, getDailyInsights } from '@/api/insights';
-import { getPlan, toggleDailyReset } from '@/api/plans';
+import { getPlan, toggleDailyReset, type PlanMember } from '@/api/plans';
+import PlanSharing from '@/components/PlanSharing';
 import { useParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/use-toast';
@@ -79,6 +80,7 @@ import MilestoneComposer from '@/components/MilestoneComposer';
 import { readMilestones } from '@/lib/milestones';
 import ItemActions from '@/components/ItemActions';
 import ItemDateChip from '@/components/ItemDateChip';
+import DeleteConfirm from '@/components/DeleteConfirm';
 import { loadCollapsedIds, saveCollapsedIds } from '@/lib/collapsedGroups';
 import { format } from 'date-fns';
 import {
@@ -157,6 +159,7 @@ export default function Todo({
 }: TodoProps = {}) {
   const params = useParams();
   const planId = params?.planId as string;
+  const router = useRouter();
   const { toast } = useToast();
 
   // First-time hint for Tab-to-nest, rate-limited to once per 24h.
@@ -309,6 +312,10 @@ export default function Todo({
   const [showSettings, setShowSettings] = useState(false);
   const [refreshDailyTasks, setRefreshDailyTasks] = useState(true);
   const [dailyReset, setDailyReset] = useState(false);
+  // The viewer's relation to the plan (FS-12ZMF), from getPlan. Null until the
+  // plan has loaded: Sharing waits for it, and owner-only settings are hidden
+  // only once it says "member" (R31).
+  const [relation, setRelation] = useState<PlanMember['relation'] | null>(null);
   const [isTogglingReset, setIsTogglingReset] = useState(false);
   const [lastToggleTime, setLastToggleTime] = useState(0);
   const TOGGLE_THROTTLE_MS = 1000; // 1 second throttle
@@ -1486,6 +1493,7 @@ export default function Todo({
         const planResponse = await getPlan(planId);
         // Bare resource, not planResponse.result — serialized (FS-0004).
         setDailyReset(planResponse.dailyReset);
+        setRelation(planResponse.relation ?? null);
       } catch (error) {
         console.error('Error fetching plan details:', error);
       }
@@ -1708,6 +1716,9 @@ export default function Todo({
       {/* Settings View */}
       {showSettings && !showArchived && (
         <div className="space-y-6 animate-slideIn">
+          {/* Daily reset is the owner's setting (FS-12ZMF R31). Shown only once
+              getPlan has said so: an unknown relation never offers it. */}
+          {relation === 'owner' && (
           <div className="flex items-center justify-between p-4 bg-white/5 dark:bg-gray-800/20 rounded-lg">
             <div>
               <h3 className="text-base font-medium mb-1">Refresh daily tasks</h3>
@@ -1734,6 +1745,9 @@ export default function Todo({
               ></div>
             </label>
           </div>
+          )}
+
+          {relation && <PlanSharing planId={planId} relation={relation} />}
 
           <button
             onClick={() => setShowArchived(true)}
@@ -1839,32 +1853,14 @@ export default function Todo({
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && todoToDelete && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-6 max-w-md w-full mx-4 animate-slideIn">
-            <h3 className="text-lg font-medium mb-2">Delete Task</h3>
-            <p className="text-gray-300 mb-4">
-              Are you sure you want to permanently delete "
-              {todoToDelete.description}"? This action cannot be undone.
-            </p>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setTodoToDelete(null);
-                }}
-                className="px-4 py-2 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-base"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteConfirm}
-                className="px-4 py-2 rounded bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-500 text-base"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteConfirm
+          description={todoToDelete.description}
+          onCancel={() => {
+            setShowDeleteModal(false);
+            setTodoToDelete(null);
+          }}
+          onConfirm={handleDeleteConfirm}
+        />
       )}
 
       {/* Main Tasks View */}
@@ -1897,13 +1893,16 @@ export default function Todo({
               page still hugs its content — a three-item plan shouldn't sit in
               a mostly empty box. flex-col with the rows growing keeps the bar
               at the bottom of the window when a page is short; when a page
-              overflows, the area scrolls and the bar pins as before. */}
+              overflows, the area scrolls and the bar pins as before.
+              A scroll box clips on every side, so -mx-1 px-1 widens it past
+              the content by the 2px a traced card's ring draws outside its
+              edge — without it the edge cards lose their outer side. */}
           <div
             className={cn(
               'flex flex-col space-y-4',
               totalPages > 1
-                ? 'h-[min(70vh,40rem)] overflow-y-auto'
-                : showAddBar && 'max-h-[70vh] overflow-y-auto'
+                ? '-mx-1 h-[min(70vh,40rem)] overflow-y-auto px-1'
+                : showAddBar && '-mx-1 max-h-[70vh] overflow-y-auto px-1'
             )}
           >
           <div className="flex-1">
@@ -1967,6 +1966,8 @@ export default function Todo({
                 canDrag={canDrag}
                 tracedId={tracedId}
                 arriving={newTodoAnimations}
+                milestoneHref={(id) => `/plan/${planId}/m/${id}`}
+                onOpenMilestone={(id) => router.push(`/plan/${planId}/m/${id}`)}
               />
             </div>
           ) : (

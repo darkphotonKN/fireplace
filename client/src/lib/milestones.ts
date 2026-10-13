@@ -20,6 +20,8 @@ export interface MilestoneSourceItem {
   type?: string;
   parentId?: string | null;
   archived?: boolean;
+  /** Only `findMilestone` reads it: a milestone belongs to one plan (G4). */
+  planId?: string;
 }
 
 export interface Milestone {
@@ -82,6 +84,47 @@ export function readMilestones(
 export function isComplete(milestone: Milestone): boolean {
   const { done, total } = milestone.steps;
   return !milestone.closed && total > 0 && done === total;
+}
+
+/**
+ * The one step to do next: the first live task step not yet done, in the
+ * steps' stored order (FS-043WP R26). Derived on every read and never stored,
+ * so ticking it simply lets the following one through. Notes are never next,
+ * so a milestone of only notes has none (G12). Whether a closed milestone
+ * shows it is the page's call (G11); this only reads the steps.
+ */
+export function nextStep<T extends MilestoneSourceItem>(
+  steps: readonly T[]
+): T | null {
+  return steps.find((s) => isLive(s) && isTask(s) && !s.done) ?? null;
+}
+
+/** One milestone as its page reads it (FS-043WP R10, R29). */
+export interface MilestoneDetail<T extends MilestoneSourceItem> {
+  milestone: Milestone;
+  /** The item itself, for what the reading leaves out: dates, the type. */
+  item: T;
+  /** Every live child, notes included, in stored order. */
+  steps: T[];
+}
+
+/**
+ * The milestone `id` of plan `planId`, or null when there is none: unknown,
+ * archived, daily, a note, a step, or another plan's item (R33, G4). Read
+ * through `readMilestones` so the page and the card can't disagree (R10).
+ * Pass the plan's whole long-term list, as for `readMilestones`.
+ */
+export function findMilestone<T extends MilestoneSourceItem>(
+  items: readonly T[],
+  id: string,
+  planId: string
+): MilestoneDetail<T> | null {
+  const item = items.find((i) => i.id === id);
+  if (!item || item.planId !== planId) return null;
+  const milestone = readMilestones(items).milestones.find((m) => m.id === id);
+  if (!milestone) return null;
+  const steps = items.filter((c) => c.parentId === id && isLive(c));
+  return { milestone, item, steps };
 }
 
 /** Task steps only: note children are shown but never counted (R1, R6). */

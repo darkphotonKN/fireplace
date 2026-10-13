@@ -15,7 +15,7 @@ or generated for them, and it stays editable for the plan's whole life.
 existing values are valid short drafts. Do not introduce the word in new code or prose — it
 survives only in migration history and in insights-service's prompt-context vocabulary.
 
-**Description** — a short blurb shown on the plans list and to collaborators on a shared plan.
+**Description** — a short blurb shown on the plans list and to the **members** of a shared plan.
 Prefilled from the Plan Draft, then independently editable. It describes the plan *to people*;
 the Plan Draft steers the plan *for the system*. Confusing the two is what produced the original
 duplication.
@@ -69,3 +69,28 @@ the authority; the Redis claim in front of it is an efficiency layer only.
 on creation, with `generated → touched` as the single legal transition. Enforced by a service-layer
 transition function and a `BEFORE UPDATE` trigger, so ADR-0007's protection is structural rather
 than conventional.
+
+**Intention** — a nullable free-text field on any checklist item (`intention`, ≤ 280 chars,
+trimmed, blank clears to null), set only through item update, never at create. Generic by design:
+this service never says *milestone* (ADR-0014); the client reads it as a milestone's "why it
+matters" (FS-043WP).
+
+## Access
+
+**Relation** — a user's relation to one plan, exactly one of **owner**, **member** or **none**
+(`PlanRelation`, answered by `GetPlanAccess`). This service answers it and enforces nothing per
+operation; the gateway decides what each relation may do (ADR-0015). Not a flag or a permission.
+
+**Owner** — the user in `plans.user_id`. Exactly one per plan; never also a member (adding the
+owner is `MEMBER_IS_OWNER`). Ownership wins over a stray share row.
+
+**Member** — a user with a `plan_shares` row for the plan. Not "collaborator", "sharee",
+"participant" or "editor" (rejected). The row's `role` (`edit` only in v1) does not change the
+relation. **Share** names the *row* (`CreateShare`, `ListShares`); **member** names the *person*.
+
+**None** — no relation, **including a plan that does not exist**. Never `NotFound` from this
+service: a missing plan and a stranger's plan are the same answer.
+
+**Shared plan** — from a given user's side, a plan they are a member of. Beware `ListSharedPlans`
+and `/api/plans/shared`: despite the name they return owned ∪ shared, each tagged with its
+relation.

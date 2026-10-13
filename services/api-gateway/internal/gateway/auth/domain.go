@@ -1,6 +1,7 @@
 package authgw
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +20,15 @@ type User struct {
 	Bio            *string   `db:"bio" json:"bio,omitempty"`
 	CreatedAt      time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt      time.Time `db:"updated_at" json:"updated_at"`
+}
+
+// ShownName is how other people see this user: the display name when one is
+// set, otherwise the account name (FS-12ZMF R15).
+func (u *User) ShownName() string {
+	if u.DisplayName != nil && strings.TrimSpace(*u.DisplayName) != "" {
+		return *u.DisplayName
+	}
+	return u.Name
 }
 
 type SignUpInput struct {

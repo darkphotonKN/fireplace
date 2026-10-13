@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { Plan } from "@/api/plans";
+import SharedMark from "@/components/SharedMark";
 import { FOCUSED_PLAN_COUNT, OTHER_PLANS_ROW_CAP } from "@/lib/homePlans";
 
 /**
@@ -47,7 +48,10 @@ export default function OtherPlans({ plans }: { plans: Plan[] }) {
               href={`/plan/${plan.id}`}
               className="flex items-center justify-between gap-4 px-2 py-3 text-base transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="truncate">{plan.name}</span>
+              <span className="flex min-w-0 items-baseline gap-2">
+                <span className="truncate">{plan.name}</span>
+                <SharedMark plan={plan} />
+              </span>
               {/* Labelled the way `/myplans` labels it — this row links there,
                   and a plan should not change its type's name on the way. A
                   plan with no type (search hits carry none) shows no label at

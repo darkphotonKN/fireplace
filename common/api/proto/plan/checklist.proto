@@ -48,6 +48,8 @@ message ChecklistItem {
   bool archived = 11;
   google.protobuf.Timestamp created_at = 12;
   google.protobuf.Timestamp updated_at = 13;
+  // intention is free text the item carries; unset when the column is NULL.
+  optional string intention = 14;
 }
 
 message CreateItemRequest {
@@ -65,6 +67,9 @@ message CreateItemRequest {
 message GetItemRequest {
   string id = 1;
   string user_id = 2;
+  // plan_id is the plan the caller addressed. The item must belong to it, or
+  // the request answers NotFound exactly like a missing item. Required.
+  string plan_id = 3;
 }
 
 message ListItemsRequest {
@@ -114,6 +119,13 @@ message UpdateItemRequest {
   //   clear_parent_id=false, parent_id unset → leave column alone
   bool clear_parent_id = 8;
   optional string parent_id = 9;
+  // plan_id is the plan the caller addressed. The item must belong to it, or
+  // the request answers NotFound exactly like a missing item. Required.
+  string plan_id = 10;
+  // intention: unset leaves the column alone; set is trimmed, and an empty
+  // result clears it to NULL. A trimmed value over 280 characters is
+  // InvalidArgument.
+  optional string intention = 11;
 }
 
 // ReorderItemsRequest addresses one sibling set and carries its complete, final
@@ -131,17 +143,26 @@ message UpdateItemDatesRequest {
   string user_id = 2;
   optional google.protobuf.Timestamp start_date = 3;
   optional google.protobuf.Timestamp due_date = 4;
+  // plan_id is the plan the caller addressed. The item must belong to it, or
+  // the request answers NotFound exactly like a missing item. Required.
+  string plan_id = 5;
 }
 
 message ArchiveItemRequest {
   string id = 1;
   string user_id = 2;
   bool archived = 3;
+  // plan_id is the plan the caller addressed. The item must belong to it, or
+  // the request answers NotFound exactly like a missing item. Required.
+  string plan_id = 4;
 }
 
 message DeleteItemRequest {
   string id = 1;
   string user_id = 2;
+  // plan_id is the plan the caller addressed. The item must belong to it, or
+  // the request answers NotFound exactly like a missing item. Required.
+  string plan_id = 3;
 }
 
 message DailyResetRequest {}

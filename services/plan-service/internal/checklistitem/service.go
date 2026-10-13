@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	commonbroker "github.com/darkphotonKN/fireplace/common/broker"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
@@ -14,14 +16,15 @@ import (
 type Repository interface {
 	Create(ctx context.Context, in CreateItemInput, sequenceNo int) (*Item, error)
 	Update(ctx context.Context, in UpdateItemInput) error
-	UpdateDates(ctx context.Context, id uuid.UUID, startDate, dueDate *time.Time) error
-	Delete(ctx context.Context, id uuid.UUID) error
+	UpdateDates(ctx context.Context, planID, id uuid.UUID, startDate, dueDate *time.Time) error
+	Delete(ctx context.Context, planID, id uuid.UUID) error
 	ListByPlanID(ctx context.Context, in ListItemsInput) ([]*Item, error)
 	ListSiblings(ctx context.Context, in SiblingSetInput) ([]*Item, error)
 	Reorder(ctx context.Context, ids []uuid.UUID) ([]*Item, error)
 	ListArchivedByPlanID(ctx context.Context, planID uuid.UUID, scope *string) ([]*Item, error)
 	ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Item, error)
+	GetInPlan(ctx context.Context, planID, id uuid.UUID) (*Item, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item, error)
 	HasChildren(ctx context.Context, id uuid.UUID) (bool, error)
 	CountItems(ctx context.Context) (int, error)
@@ -37,10 +40,12 @@ func NewService(repo Repository, publishCh commonbroker.Publisher) *service {
 	return &service{repo: repo, publishCh: publishCh}
 }
 
-func (s *service) GetByID(ctx context.Context, id uuid.UUID) (*Item, error) {
-	item, err := s.repo.GetByID(ctx, id)
+// GetInPlan returns an item only when it belongs to planID. An item in another
+// plan is ErrNotFound, indistinguishable from a missing one (FS-12ZMF R11).
+func (s *service) GetInPlan(ctx context.Context, planID, id uuid.UUID) (*Item, error) {
+	item, err := s.repo.GetInPlan(ctx, planID, id)
 	if err != nil {
-		return nil, fmt.Errorf("checklistitem: get by id: %w", err)
+		return nil, fmt.Errorf("checklistitem: get: %w", err)
 	}
 	return item, nil
 }
@@ -128,6 +133,20 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 		return nil, fmt.Errorf("%w: type must be 'task' or 'note'", commonconstants.ErrInvalidInput)
 	}
 
+	// The item must be in the addressed plan before any rule below is checked:
+	// a rule answered for another plan's row would tell the caller it exists.
+	current, err := s.repo.GetInPlan(ctx, in.PlanID, in.ID)
+	if err != nil {
+		return nil, fmt.Errorf("checklistitem: update: %w", err)
+	}
+
+	if in.SetIntention {
+		in.Intention, err = normalizeIntention(in.Intention)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// task→note transition: reject if it has children (notes can't be parents).
 	if in.Type != nil && *in.Type == TypeNote {
 		hasKids, err := s.repo.HasChildren(ctx, in.ID)
@@ -137,15 +156,8 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 		if hasKids {
 			return nil, fmt.Errorf("%w: cannot convert a parent with children into a note", commonconstants.ErrInvalidInput)
 		}
-	}
-
-	// task→note: force done=false to satisfy chk_note_not_done.
-	if in.Type != nil && *in.Type == TypeNote && in.Done == nil {
-		current, err := s.repo.GetByID(ctx, in.ID)
-		if err != nil {
-			return nil, fmt.Errorf("checklistitem: update: load current: %w", err)
-		}
-		if current.Done {
+		// force done=false to satisfy chk_note_not_done.
+		if in.Done == nil && current.Done {
 			f := false
 			in.Done = &f
 		}
@@ -154,10 +166,6 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 	// Re-parent (indent): validate target is in same plan, is top-level, and
 	// this row has no children of its own (would push past tier 2).
 	if in.SetParent && in.ParentID != nil {
-		current, err := s.repo.GetByID(ctx, in.ID)
-		if err != nil {
-			return nil, fmt.Errorf("checklistitem: update: load current: %w", err)
-		}
 		if err := s.validateParent(ctx, current.PlanID, *in.ParentID); err != nil {
 			return nil, err
 		}
@@ -174,7 +182,7 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 		return nil, fmt.Errorf("checklistitem: update: %w", err)
 	}
 
-	updated, err := s.repo.GetByID(ctx, in.ID)
+	updated, err := s.repo.GetInPlan(ctx, in.PlanID, in.ID)
 	if err != nil {
 		return nil, fmt.Errorf("checklistitem: update: reload: %w", err)
 	}
@@ -189,18 +197,31 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 	return updated, nil
 }
 
-func (s *service) UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, error) {
-	if !in.SetStart && !in.SetDue {
-		item, err := s.repo.GetByID(ctx, in.ID)
-		if err != nil {
-			return nil, fmt.Errorf("checklistitem: update dates: %w", err)
-		}
-		return item, nil
+// normalizeIntention trims an intention and turns an empty result into nil, so
+// whitespace clears the column rather than storing blanks. A trimmed value over
+// MaxIntentionChars characters is refused (FS-043WP R38).
+func normalizeIntention(v *string) (*string, error) {
+	if v == nil {
+		return nil, nil
 	}
+	trimmed := strings.TrimSpace(*v)
+	if trimmed == "" {
+		return nil, nil
+	}
+	if n := utf8.RuneCountInString(trimmed); n > MaxIntentionChars {
+		return nil, fmt.Errorf("%w: intention must be at most %d characters (got %d)",
+			commonconstants.ErrInvalidInput, MaxIntentionChars, n)
+	}
+	return &trimmed, nil
+}
 
-	current, err := s.repo.GetByID(ctx, in.ID)
+func (s *service) UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, error) {
+	current, err := s.repo.GetInPlan(ctx, in.PlanID, in.ID)
 	if err != nil {
-		return nil, fmt.Errorf("checklistitem: update dates: load current: %w", err)
+		return nil, fmt.Errorf("checklistitem: update dates: %w", err)
+	}
+	if !in.SetStart && !in.SetDue {
+		return current, nil
 	}
 
 	finalStart := current.StartDate
@@ -215,7 +236,7 @@ func (s *service) UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, 
 		return nil, fmt.Errorf("%w: start_date must be on or before due_date", commonconstants.ErrInvalidInput)
 	}
 
-	if err := s.repo.UpdateDates(ctx, in.ID, finalStart, finalDue); err != nil {
+	if err := s.repo.UpdateDates(ctx, in.PlanID, in.ID, finalStart, finalDue); err != nil {
 		return nil, fmt.Errorf("checklistitem: update dates: %w", err)
 	}
 	current.StartDate = finalStart
@@ -287,19 +308,19 @@ func (s *service) assertPermutation(ctx context.Context, siblings []*Item, ids [
 	return nil
 }
 
-func (s *service) Archive(ctx context.Context, id uuid.UUID, archived bool) (*Item, error) {
-	if err := s.repo.Update(ctx, UpdateItemInput{ID: id, Archived: &archived}); err != nil {
+func (s *service) Archive(ctx context.Context, planID, id uuid.UUID, archived bool) (*Item, error) {
+	if err := s.repo.Update(ctx, UpdateItemInput{ID: id, PlanID: planID, Archived: &archived}); err != nil {
 		return nil, fmt.Errorf("checklistitem: archive: %w", err)
 	}
-	item, err := s.repo.GetByID(ctx, id)
+	item, err := s.repo.GetInPlan(ctx, planID, id)
 	if err != nil {
 		return nil, fmt.Errorf("checklistitem: archive: reload: %w", err)
 	}
 	return item, nil
 }
 
-func (s *service) Delete(ctx context.Context, id uuid.UUID) error {
-	if err := s.repo.Delete(ctx, id); err != nil {
+func (s *service) Delete(ctx context.Context, planID, id uuid.UUID) error {
+	if err := s.repo.Delete(ctx, planID, id); err != nil {
 		return fmt.Errorf("checklistitem: delete: %w", err)
 	}
 	return nil

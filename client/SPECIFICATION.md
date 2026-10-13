@@ -26,6 +26,7 @@
 - [x] Plan creation form → FS-none
 - [ ] Guided and custom plan creation → FS-0006
 - [x] Plan progress across its milestones → FS-FSFEC
+- [x] Share a plan with other accounts → FS-12ZMF
 
 ## Checklists
 
@@ -36,6 +37,7 @@
 - [x] Card view of a plan's items → FS-none
 - [x] Milestones as blocks of progress → FS-FSFEC
 - [x] New-milestone composer → FS-FSFEC
+- [x] Milestone page → FS-043WP
 
 ## Project Overview
 

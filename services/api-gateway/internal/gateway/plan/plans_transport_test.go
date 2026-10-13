@@ -83,9 +83,29 @@ func TestPlanResp_CarriesEveryLegacyValue(t *testing.T) {
 		}
 	}
 
-	if len(now) != len(legacy) {
-		t.Errorf("field count changed: legacy %d, serialized %d — a retrofit adds nothing", len(legacy), len(now))
+	// The retrofit added nothing. Fields added since are declared features,
+	// each named here with the spec that added it.
+	added := map[string]string{"relation": "FS-12ZMF R23"}
+	for key := range now {
+		if _, inLegacy := legacy[key]; inLegacy {
+			continue
+		}
+		if _, wasRenamed := renamedTo(renamed, key); wasRenamed {
+			continue
+		}
+		if _, declared := added[key]; !declared {
+			t.Errorf("PlanResp publishes %q, which is neither legacy nor a declared addition", key)
+		}
 	}
+}
+
+func renamedTo(renamed map[string]string, to string) (string, bool) {
+	for from, t := range renamed {
+		if t == to {
+			return from, true
+		}
+	}
+	return "", false
 }
 
 func TestPlanResp_DateKeysAreCamelCase(t *testing.T) {

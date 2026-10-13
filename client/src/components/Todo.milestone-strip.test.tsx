@@ -168,4 +168,15 @@ describe('Todo milestone strip', () => {
     await screen.findByText('Back to settings');
     expect(document.querySelector('[data-milestone-strip]')).toBeNull();
   });
+
+  it("should link each milestone card to its page under this plan, and no list row (FS-043WP R5, R8)", async () => {
+    await renderTodo();
+    expect(
+      screen.getByRole('link', { name: 'Open item P0' })
+    ).toHaveAttribute('href', '/plan/plan-1/m/P0');
+    expect(screen.queryByRole('link', { name: 'Open item N1' })).toBeNull();
+
+    fireEvent.click(viewButton('Checklist'));
+    expect(screen.queryByRole('link', { name: /^Open / })).toBeNull();
+  });
 });
