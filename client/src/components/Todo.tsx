@@ -1897,13 +1897,16 @@ export default function Todo({
               page still hugs its content — a three-item plan shouldn't sit in
               a mostly empty box. flex-col with the rows growing keeps the bar
               at the bottom of the window when a page is short; when a page
-              overflows, the area scrolls and the bar pins as before. */}
+              overflows, the area scrolls and the bar pins as before.
+              A scroll box clips on every side, so -mx-1 px-1 widens it past
+              the content by the 2px a traced card's ring draws outside its
+              edge — without it the edge cards lose their outer side. */}
           <div
             className={cn(
               'flex flex-col space-y-4',
               totalPages > 1
-                ? 'h-[min(70vh,40rem)] overflow-y-auto'
-                : showAddBar && 'max-h-[70vh] overflow-y-auto'
+                ? '-mx-1 h-[min(70vh,40rem)] overflow-y-auto px-1'
+                : showAddBar && '-mx-1 max-h-[70vh] overflow-y-auto px-1'
             )}
           >
           <div className="flex-1">
