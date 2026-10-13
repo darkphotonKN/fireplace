@@ -34,6 +34,7 @@ The api-gateway is the **only HTTP surface** in the Fireplace platform — the e
 
 - [x] Edge authentication on every protected route → FS-none
 - [ ] Per-user authorization on plan-scoped resources → FS-0005
+- [x] Plan access for owners and members → FS-12ZMF
 
 <!--
 LEGACY BELOW: every section from here down predates the thin format and still carries
