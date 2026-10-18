@@ -38,7 +38,7 @@
 - [x] Milestones as blocks of progress → FS-FSFEC
 - [x] New-milestone composer → FS-FSFEC
 - [x] Milestone page → FS-043WP
-- [ ] Duplicate an item → FS-F6AEE
+- [x] Duplicate an item → FS-F6AEE
 
 ## Navigation
 

@@ -1,6 +1,6 @@
 # FS-F6AEE: Duplicate an item
 
-> Status: work-order · SPECIFICATION.md: client `## Checklists` "Duplicate an item"; plan-service `### Checklist Items` "Duplicate an item" → this FS · Related FS: FS-12ZMF (owner-or-member access, R7), FS-0008 (page jump for added items, R16/R17), FS-0009 (sibling-set order), FS-043WP (milestone page; its R17 menu list is widened here, see R14), FS-KSJFR (touched-today stamp, R12) · Related ADRs: docs/adr/0002-contract-planes-code-first-openapi.md, docs/adr/0004-error-representation-rfc9457.md, docs/adr/0005-request-validation-and-contract-design.md, docs/adr/0014-milestones-are-a-client-reading-of-items.md, docs/adr/0015-plan-access-is-a-relation.md
+> Status: shipped · SPECIFICATION.md: client `## Checklists` "Duplicate an item"; plan-service `### Checklist Items` "Duplicate an item" → this FS · Related FS: FS-12ZMF (owner-or-member access, R7), FS-0008 (page jump for added items, R16/R17), FS-0009 (sibling-set order), FS-043WP (milestone page; its R17 menu list is widened here, see R14), FS-KSJFR (touched-today stamp, R12) · Related ADRs: docs/adr/0002-contract-planes-code-first-openapi.md, docs/adr/0004-error-representation-rfc9457.md, docs/adr/0005-request-validation-and-contract-design.md, docs/adr/0014-milestones-are-a-client-reading-of-items.md, docs/adr/0015-plan-access-is-a-relation.md
 
 ## Summary
 
