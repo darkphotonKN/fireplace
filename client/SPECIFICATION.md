@@ -42,7 +42,7 @@
 ## Navigation
 
 - [x] Plans sidebar → FS-none
-- [ ] Docked sidebar that remembers open or hidden → FS-S6WVY
+- [x] Docked sidebar that remembers open or hidden → FS-S6WVY
 
 ## Project Overview
 

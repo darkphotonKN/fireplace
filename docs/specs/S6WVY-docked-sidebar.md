@@ -1,6 +1,6 @@
 # FS-S6WVY: Docked sidebar that remembers open or hidden
 
-> Status: work-order · SPECIFICATION.md: client `## Navigation` "Docked sidebar that remembers open or hidden" → this FS (retrofit; the existing sidebar is `Plans sidebar → FS-none`) · **Supersedes FS-KSJFR R45** ("the sidebar still starts collapsed on `/`") and the matching KSJFR acceptance line · Related FS: FS-KSJFR (R46 discovery toast, kept), FS-12ZMF (R26 shared mark in the sidebar, kept) · Related ADRs: none · Governing doc: `client/docs/design-guideline.md`
+> Status: shipped · SPECIFICATION.md: client `## Navigation` "Docked sidebar that remembers open or hidden" → this FS (retrofit; the existing sidebar is `Plans sidebar → FS-none`) · **Supersedes FS-KSJFR R45** ("the sidebar still starts collapsed on `/`") and the matching KSJFR acceptance line · Related FS: FS-KSJFR (R46 discovery toast, kept), FS-12ZMF (R26 shared mark in the sidebar, kept) · Related ADRs: none · Governing doc: `client/docs/design-guideline.md`
 
 ## Summary
 
