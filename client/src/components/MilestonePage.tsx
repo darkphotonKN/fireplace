@@ -20,7 +20,7 @@ import {
   updateChecklistItem,
 } from '@/services/api';
 import { ApiError } from '@/api/client';
-import type { ChecklistItem } from '@/api/checklists';
+import { duplicateChecklistItem, type ChecklistItem } from '@/api/checklists';
 import { Checkbox } from '@/components/ui/checkbox';
 import ItemDateChip from '@/components/ItemDateChip';
 import ItemActions, { type ItemActionsHandle } from '@/components/ItemActions';
@@ -28,6 +28,7 @@ import DeleteConfirm from '@/components/DeleteConfirm';
 import CompletionNudge, { useCompletionNudges } from '@/components/CompletionNudge';
 import ProgressMeter from '@/components/ProgressMeter';
 import { cn } from '@/lib/utils';
+import { insertDuplicate } from '@/lib/duplicate';
 import {
   findMilestone,
   nextStep,
@@ -89,6 +90,12 @@ interface MilestoneActions {
    */
   archive: (id: string) => Promise<boolean>;
   remove: (id: string) => Promise<boolean>;
+  /**
+   * Not optimistic either (FS-F6AEE R16): the copy needs the server's ids.
+   * The page stays on the source (R20); the copy goes into the loaded list
+   * right after it. Resolves true once in, false once the failure is shown.
+   */
+  duplicate: (id: string) => Promise<boolean>;
 }
 
 /**
@@ -243,6 +250,18 @@ function useMilestone(planId: string, milestoneId: string) {
         return false;
       }
     },
+    duplicate: async (id) => {
+      setError(null);
+      try {
+        const created = await duplicateChecklistItem(planId, id);
+        setItems((items) => insertDuplicate(items, id, created));
+        return true;
+      } catch (err) {
+        console.error('Error duplicating item:', err);
+        setError('Failed to duplicate item. Please try again.');
+        return false;
+      }
+    },
   };
 
   return {
@@ -335,7 +354,9 @@ function MilestoneView({
             />
           </h2>
           {/* The card's menu less what would make the page's subject
-              something else: no flip, no move, no indent (R17, G6). */}
+              something else: no flip, no move, no indent (R17, G6). A
+              duplicate stays, as the page stays on the source (FS-F6AEE
+              R14, R20). */}
           <span className="mt-1 shrink-0">
             <ItemActions
               ref={menuRef}
@@ -346,6 +367,7 @@ function MilestoneView({
               }}
               onDelete={() => setConfirmingDelete(true)}
               onSetDates={(start, due) => actions.setDates(milestone.id, start, due)}
+              onDuplicate={() => actions.duplicate(milestone.id)}
               triggerClassName="opacity-100"
             />
           </span>

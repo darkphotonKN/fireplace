@@ -55,6 +55,7 @@ read-model, HTTP REST surface, AI suggestions) are listed under **Owned elsewher
 - [ ] Daily-items-only-via-AI rule (not currently enforced)
 - [ ] User-defined item order → FS-0009
 - [ ] Initial items materialized from generated insights → FS-0006
+- [ ] Duplicate an item → FS-F6AEE
 
 ### Plan Calendar (data side)
 

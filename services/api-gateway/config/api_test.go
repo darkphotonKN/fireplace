@@ -355,3 +355,40 @@ func (f profileClientFunc) GetProfileProto(ctx context.Context, id uuid.UUID) (*
 func (f profileClientFunc) UpdateProfileProto(ctx context.Context, id uuid.UUID, _ authgw.UpdateProfileRequest) (*pb.User, error) {
 	return f(ctx, id)
 }
+
+// FS-F6AEE R11: the duplicate operation sits behind the same edge auth as every
+// serialized route, and a malformed path uuid is refused at the boundary with
+// the contract's VALIDATION_FAILED — neither reaches plan-service (the engine
+// carries no checklist client, so reaching it would panic).
+func TestMount_DuplicateChecklistRefusesAtTheEdge(t *testing.T) {
+	t.Setenv("JWT_SECRET", testSecret)
+	path := "/api/plans/" + uuid.NewString() + "/checklists/"
+
+	cases := []struct {
+		name       string
+		path       string
+		bearer     string
+		wantStatus int
+		wantCode   errcode.Code
+	}{
+		{"no token", path + uuid.NewString() + "/duplicate", "", http.StatusUnauthorized, errcode.Unauthenticated},
+		{"malformed item uuid", path + "not-a-uuid/duplicate", token(t), http.StatusUnprocessableEntity, errcode.ValidationFailed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := buildEngine(fakeProfileClient{user: sampleUser()})
+			rec := do(t, e, http.MethodPost, tc.path, tc.bearer)
+
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status: want %d, got %d: %s", tc.wantStatus, rec.Code, rec.Body.String())
+			}
+			var p problemBody
+			if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+				t.Fatalf("decode problem: %v — %s", err, rec.Body.String())
+			}
+			if p.Code != string(tc.wantCode) {
+				t.Errorf("code: want %s, got %q", tc.wantCode, p.Code)
+			}
+		})
+	}
+}

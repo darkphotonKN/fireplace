@@ -436,3 +436,66 @@ describe('ChecklistGrid the way into a milestone (FS-043WP R5–R7)', () => {
     expect(screen.queryByText(/why does this matter/i)).toBeNull();
   });
 });
+
+describe('ChecklistGrid duplicate (FS-F6AEE R14, R16)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const choose = (trigger: string) => {
+    fireEvent.click(screen.getByRole('button', { name: trigger }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Duplicate' }));
+  };
+
+  it.each([
+    ['a milestone card', 'Actions for Learn Go', 'p1'],
+    ['a note card', 'Actions for Reading list', 'p3'],
+    ['a step in a milestone card', 'Actions for channels', 'c2'],
+    ['a step in a note card', 'Actions for DDIA', 'c4'],
+  ])('should hand %s to the caller to duplicate', (_why, trigger, id) => {
+    const onDuplicate = vi.fn();
+    renderGrid({ onDuplicate });
+    choose(trigger);
+    expect(onDuplicate).toHaveBeenCalledWith(id);
+  });
+
+  it('should offer no Duplicate when the caller hands none over', () => {
+    renderGrid();
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
+    expect(screen.queryByRole('menuitem', { name: 'Duplicate' })).toBeNull();
+  });
+
+  it('should never offer Duplicate on an archived item (R15)', () => {
+    renderGrid({
+      onDuplicate: vi.fn(),
+      groups: [
+        {
+          item: mk('p1', 'Learn Go', { archived: true }),
+          children: [mk('c1', 'goroutines', { parentId: 'p1', archived: true })],
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
+    expect(screen.queryByRole('menuitem', { name: 'Duplicate' })).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for goroutines' }));
+    expect(screen.queryByRole('menuitem', { name: 'Duplicate' })).toBeNull();
+  });
+
+  it('should leave a copy card untraced: tracing follows only the composer', () => {
+    const { rerender } = renderGrid({ tracedId: 'p1', onDuplicate: vi.fn() });
+    const copy = {
+      item: mk('d1', 'Learn Go'),
+      children: [mk('dc1', 'goroutines', { parentId: 'd1' })],
+    };
+    rerender(
+      <ChecklistGrid
+        {...handlers()}
+        groups={[GROUPS[0], copy, ...GROUPS.slice(1)]}
+        collapsedIds={new Set()}
+        tracedId="p1"
+        onDuplicate={vi.fn()}
+      />
+    );
+    expect(card('p1').hasAttribute('data-traced')).toBe(true);
+    expect(card('d1').hasAttribute('data-traced')).toBe(false);
+  });
+});

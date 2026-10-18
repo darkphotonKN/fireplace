@@ -227,6 +227,21 @@ describe('ItemActions', () => {
     ).toEqual(['Set dates', 'Rename', 'Archive', 'Delete']);
   });
 
+  it('should offer Duplicate only when it is handed one, after Rename (FS-F6AEE R14)', () => {
+    open();
+    expect(screen.queryByRole('menuitem', { name: 'Duplicate' })).toBeNull();
+    cleanup();
+
+    const onDuplicate = vi.fn();
+    open({ onDuplicate });
+    const labels = screen.getAllByRole('menuitem').map((r) => r.textContent);
+    expect(labels.indexOf('Duplicate')).toBe(labels.indexOf('Rename') + 1);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Duplicate' }));
+    expect(onDuplicate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   it('should open its date picker when asked from outside the menu (FS-043WP R19)', () => {
     const h = handlers();
     const ref = createRef<ItemActionsHandle>();

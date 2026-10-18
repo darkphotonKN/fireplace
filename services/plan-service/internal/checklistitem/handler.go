@@ -24,6 +24,7 @@ type Service interface {
 	ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error)
 	Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 	Reorder(ctx context.Context, in ReorderInput) ([]*Item, error)
+	Duplicate(ctx context.Context, planID, id uuid.UUID) ([]*Item, error)
 	UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, error)
 	Archive(ctx context.Context, planID, id uuid.UUID, archived bool) (*Item, error)
 	Delete(ctx context.Context, planID, id uuid.UUID) error
@@ -250,6 +251,22 @@ func (h *Handler) ReorderItems(ctx context.Context, req *pb.ReorderItemsRequest)
 		ParentID: parentID,
 		IDs:      ids,
 	})
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	return itemListToProto(items), nil
+}
+
+// DuplicateItem returns the created items: the copy first, then its copied
+// children in order (FS-F6AEE R7).
+func (h *Handler) DuplicateItem(ctx context.Context, req *pb.DuplicateItemRequest) (*pb.ListItemsResponse, error) {
+	const op = "checklistitem: duplicate"
+
+	id, planID, err := itemRef(req.Id, req.PlanId)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	items, err := h.service.Duplicate(ctx, planID, id)
 	if err != nil {
 		return nil, commongrpc.Fail(ctx, op, err)
 	}

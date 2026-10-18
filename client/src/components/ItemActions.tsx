@@ -18,6 +18,7 @@ import {
   ArrowUp,
   CalendarDays,
   CheckSquare,
+  Copy,
   FileText,
   IndentDecrease,
   IndentIncrease,
@@ -74,6 +75,11 @@ export interface ItemActionsProps {
   onMoveDown?: () => void;
   /** A milestone's page (FS-043WP R6); offered only where it is handed over. */
   onOpen?: () => void;
+  /**
+   * A copy placed right after the item (FS-F6AEE R14); offered only where it
+   * is handed over, and never for an archived item (R15).
+   */
+  onDuplicate?: () => void;
   /** Extra classes for the trigger, e.g. when it should stay visible. */
   triggerClassName?: string;
   ref?: Ref<ItemActionsHandle>;
@@ -105,6 +111,7 @@ export default function ItemActions({
   onMoveUp,
   onMoveDown,
   onOpen,
+  onDuplicate,
   triggerClassName,
   ref,
 }: ItemActionsProps) {
@@ -238,11 +245,13 @@ export default function ItemActions({
           // state updater, which has to stay free of side effects.
           if (!open) {
             // Four rows are always there (dates, rename, archive, delete);
-            // the rest are offered only where they apply.
+            // the rest, Duplicate among them, are offered only where they
+            // are handed over.
             const rows =
               4 +
               (onToggleType ? 1 : 0) +
               (onOpen ? 1 : 0) +
+              (onDuplicate ? 1 : 0) +
               (onIndent || onOutdent ? 1 : 0) +
               (onMoveUp ? 1 : 0) +
               (onMoveDown ? 1 : 0);
@@ -343,6 +352,17 @@ export default function ItemActions({
                   <Pencil aria-hidden strokeWidth={1.75} className="h-4 w-4" />
                   Rename
                 </button>
+                {onDuplicate && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={rowClass}
+                    onClick={run(onDuplicate)}
+                  >
+                    <Copy aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+                    Duplicate
+                  </button>
+                )}
                 {onToggleType && (
                   <button
                     type="button"

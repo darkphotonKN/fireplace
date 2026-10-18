@@ -474,6 +474,23 @@ func (c *Client) ReorderChecklists(ctx context.Context, planID, userID uuid.UUID
 	return checklistSliceFromProto(resp.Items), nil
 }
 
+// DuplicateChecklist asks plan-service to copy one item (and a top-level
+// item's live children) in a single transaction. The created items come back
+// as the copy first, then its copied children in order (FS-F6AEE R7).
+func (c *Client) DuplicateChecklist(ctx context.Context, planID, id, userID uuid.UUID) ([]*ChecklistResp, error) {
+	items, err := c.checklistClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := items.DuplicateItem(ctx, &pb.DuplicateItemRequest{
+		Id: id.String(), PlanId: planID.String(), UserId: userID.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return checklistSliceFromProto(resp.Items), nil
+}
+
 func (c *Client) UpdateChecklistDates(ctx context.Context, planID, id, userID uuid.UUID, req UpdateDatesReq) (*ChecklistResp, error) {
 	items, err := c.checklistClient(ctx)
 	if err != nil {

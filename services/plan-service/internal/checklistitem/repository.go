@@ -14,6 +14,11 @@ import (
 
 type repository struct {
 	db *sqlx.DB
+
+	// afterCopyInsert is a test seam: when set, Duplicate calls it right after
+	// the copy is inserted and abandons the transaction on its error, so a test
+	// can prove a failure mid-duplicate leaves nothing behind (FS-F6AEE R6).
+	afterCopyInsert func() error
 }
 
 func NewRepository(db *sqlx.DB) *repository {
@@ -129,6 +134,12 @@ func (r *repository) ListArchivedByPlanID(ctx context.Context, planID uuid.UUID,
 // can drag is the set it can see (FS-0009 §Out of Scope: the archived view is
 // not reorderable).
 func (r *repository) ListSiblings(ctx context.Context, in SiblingSetInput) ([]*Item, error) {
+	return selectSiblings(ctx, r.db, in)
+}
+
+// selectSiblings is ListSiblings over any querier, so a transaction reads a set
+// in exactly the stored order a caller outside it would see.
+func selectSiblings(ctx context.Context, q sqlx.QueryerContext, in SiblingSetInput) ([]*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
 	       intention, archived, created_at, updated_at, plan_id
@@ -140,7 +151,7 @@ func (r *repository) ListSiblings(ctx context.Context, in SiblingSetInput) ([]*I
 	ORDER BY sequence ASC` + tieBreak
 
 	var items []*Item
-	if err := r.db.SelectContext(ctx, &items, query, in.PlanID, in.Scope, in.ParentID); err != nil {
+	if err := sqlx.SelectContext(ctx, q, &items, query, in.PlanID, in.Scope, in.ParentID); err != nil {
 		return nil, wrapDBErr("list siblings for plan "+in.PlanID.String(), err)
 	}
 	return items, nil
@@ -162,20 +173,8 @@ func (r *repository) Reorder(ctx context.Context, ids []uuid.UUID) ([]*Item, err
 
 	var items []*Item
 	err := commonhelpers.ExecTx(ctx, r.db, func(tx *sqlx.Tx) error {
-		res, err := tx.ExecContext(ctx, `
-		WITH ordered AS (
-			SELECT id, ord FROM unnest($1::uuid[]) WITH ORDINALITY AS t(id, ord)
-		)
-		UPDATE checklist_items ci
-		SET sequence = ordered.ord
-		FROM ordered
-		WHERE ci.id = ordered.id`, pq.Array(idStrings))
-		if err != nil {
-			return wrapDBErr("reorder: write sequences", err)
-		}
-		if affected, err := res.RowsAffected(); err == nil && affected != int64(len(ids)) {
-			return fmt.Errorf("checklistitem repo: reorder: wrote %d of %d items: %w",
-				affected, len(ids), commonconstants.ErrNotFound)
+		if err := writeDenseSequences(ctx, tx, "reorder", ids); err != nil {
+			return err
 		}
 
 		if err := tx.SelectContext(ctx, &items, `
@@ -192,6 +191,142 @@ func (r *repository) Reorder(ctx context.Context, ids []uuid.UUID) ([]*Item, err
 		return nil, err
 	}
 	return items, nil
+}
+
+// writeDenseSequences stores positions 1..N over ids, in the order given, as
+// one statement: unnest(...) WITH ORDINALITY turns the list into (id, position)
+// pairs the UPDATE joins against. A row count short of the ids means one
+// vanished since it was read, and the caller's transaction is abandoned.
+func writeDenseSequences(ctx context.Context, tx *sqlx.Tx, op string, ids []uuid.UUID) error {
+	idStrings := make([]string, 0, len(ids))
+	for _, id := range ids {
+		idStrings = append(idStrings, id.String())
+	}
+	res, err := tx.ExecContext(ctx, `
+	WITH ordered AS (
+		SELECT id, ord FROM unnest($1::uuid[]) WITH ORDINALITY AS t(id, ord)
+	)
+	UPDATE checklist_items ci
+	SET sequence = ordered.ord
+	FROM ordered
+	WHERE ci.id = ordered.id`, pq.Array(idStrings))
+	if err != nil {
+		return wrapDBErr(op+": write sequences", err)
+	}
+	if affected, err := res.RowsAffected(); err == nil && affected != int64(len(ids)) {
+		return fmt.Errorf("checklistitem repo: %s: wrote %d of %d items: %w",
+			op, affected, len(ids), commonconstants.ErrNotFound)
+	}
+	return nil
+}
+
+// Duplicate copies one live item, and a top-level item's live children, and
+// places the copy directly after the source — all in ONE transaction, so a
+// half-copied item never exists (FS-F6AEE R2–R7). It returns the copy first,
+// then its copied children in order.
+//
+// The source row is re-read FOR UPDATE: the service has already refused a
+// missing or archived source, but the row can change before the transaction
+// starts, and the lock makes two duplicates of one source queue up, so the
+// later copy lands between the source and the earlier one.
+//
+// Copies carry description, intention, type, scope, parent and dates. They are
+// never done and never archived, whatever the source's state.
+func (r *repository) Duplicate(ctx context.Context, planID, id uuid.UUID) ([]*Item, error) {
+	var created []*Item
+	err := commonhelpers.ExecTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		var source Item
+		if err := tx.GetContext(ctx, &source, `
+		SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
+		       intention, archived, created_at, updated_at, plan_id
+		FROM checklist_items WHERE id = $1 AND plan_id = $2
+		FOR UPDATE`, id, planID); err != nil {
+			return wrapDBErr("duplicate: lock source "+id.String(), err)
+		}
+		if source.Archived {
+			return fmt.Errorf("%w: an archived item cannot be duplicated", commonconstants.ErrInvalidInput)
+		}
+
+		// The copy's sequence is a placeholder; the set is rewritten below.
+		var copyID uuid.UUID
+		if err := tx.GetContext(ctx, &copyID, `
+		INSERT INTO checklist_items
+			(plan_id, description, intention, done, sequence, scope, type, parent_id, start_date, due_date)
+		SELECT plan_id, description, intention, false, sequence, scope, type, parent_id, start_date, due_date
+		FROM checklist_items WHERE id = $1
+		RETURNING id`, source.ID); err != nil {
+			return wrapDBErr("duplicate: insert copy", err)
+		}
+		if r.afterCopyInsert != nil {
+			if err := r.afterCopyInsert(); err != nil {
+				return err
+			}
+		}
+
+		// Two tiers: only a top-level source can have children to bring along.
+		// Their positions are 1..N in the source's child order.
+		if source.ParentID == nil {
+			if _, err := tx.ExecContext(ctx, `
+			INSERT INTO checklist_items
+				(plan_id, description, intention, done, sequence, scope, type, parent_id, start_date, due_date)
+			SELECT plan_id, description, intention, false,
+			       row_number() OVER (ORDER BY sequence ASC`+tieBreak+`),
+			       scope, type, $2, start_date, due_date
+			FROM checklist_items
+			WHERE parent_id = $1 AND archived = false`, source.ID, copyID); err != nil {
+				return wrapDBErr("duplicate: insert children", err)
+			}
+		}
+
+		siblings, err := selectSiblings(ctx, tx,
+			SiblingSetInput{PlanID: source.PlanID, Scope: source.Scope, ParentID: source.ParentID})
+		if err != nil {
+			return err
+		}
+		order, err := placeAfter(siblings, source.ID, copyID)
+		if err != nil {
+			return err
+		}
+		if err := writeDenseSequences(ctx, tx, "duplicate", order); err != nil {
+			return err
+		}
+
+		if err := tx.SelectContext(ctx, &created, `
+		SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
+		       intention, archived, created_at, updated_at, plan_id
+		FROM checklist_items
+		WHERE id = $1 OR parent_id = $1
+		ORDER BY (id = $1) DESC, sequence ASC`+tieBreak, copyID); err != nil {
+			return wrapDBErr("duplicate: read back", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+// placeAfter returns the set's ids in stored order with copyID moved to sit
+// directly after sourceID. Every other member keeps its relative order.
+func placeAfter(siblings []*Item, sourceID, copyID uuid.UUID) ([]uuid.UUID, error) {
+	order := make([]uuid.UUID, 0, len(siblings))
+	placed := false
+	for _, sib := range siblings {
+		if sib.ID == copyID {
+			continue
+		}
+		order = append(order, sib.ID)
+		if sib.ID == sourceID {
+			order = append(order, copyID)
+			placed = true
+		}
+	}
+	if !placed {
+		return nil, fmt.Errorf("checklistitem repo: duplicate: source %s left its sibling set: %w",
+			sourceID, commonconstants.ErrNotFound)
+	}
+	return order, nil
 }
 
 func (r *repository) HasChildren(ctx context.Context, id uuid.UUID) (bool, error) {

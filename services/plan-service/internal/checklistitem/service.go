@@ -21,6 +21,7 @@ type Repository interface {
 	ListByPlanID(ctx context.Context, in ListItemsInput) ([]*Item, error)
 	ListSiblings(ctx context.Context, in SiblingSetInput) ([]*Item, error)
 	Reorder(ctx context.Context, ids []uuid.UUID) ([]*Item, error)
+	Duplicate(ctx context.Context, planID, id uuid.UUID) ([]*Item, error)
 	ListArchivedByPlanID(ctx context.Context, planID uuid.UUID, scope *string) ([]*Item, error)
 	ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Item, error)
@@ -273,6 +274,26 @@ func (s *service) Reorder(ctx context.Context, in ReorderInput) ([]*Item, error)
 	items, err := s.repo.Reorder(ctx, in.IDs)
 	if err != nil {
 		return nil, fmt.Errorf("checklistitem: reorder: %w", err)
+	}
+	return items, nil
+}
+
+// Duplicate copies one live item, with a top-level item's live children, and
+// places the copy directly after it (FS-F6AEE). The source must be in the
+// addressed plan (else NotFound, like a missing item) and not archived (else
+// InvalidInput: duplicating something archived would really be a restore).
+// Nothing is published: the copy is never done, so no completion is owed (R9).
+func (s *service) Duplicate(ctx context.Context, planID, id uuid.UUID) ([]*Item, error) {
+	source, err := s.repo.GetInPlan(ctx, planID, id)
+	if err != nil {
+		return nil, fmt.Errorf("checklistitem: duplicate: %w", err)
+	}
+	if source.Archived {
+		return nil, fmt.Errorf("%w: an archived item cannot be duplicated", commonconstants.ErrInvalidInput)
+	}
+	items, err := s.repo.Duplicate(ctx, planID, id)
+	if err != nil {
+		return nil, fmt.Errorf("checklistitem: duplicate: %w", err)
 	}
 	return items, nil
 }

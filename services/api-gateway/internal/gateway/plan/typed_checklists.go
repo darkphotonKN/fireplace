@@ -30,6 +30,7 @@ type ChecklistsClient interface {
 	ListUpcomingChecklists(ctx context.Context, planID, userID uuid.UUID) ([]*ChecklistResp, error)
 	UpdateChecklist(ctx context.Context, planID, id, userID uuid.UUID, req UpdateChecklistReq) (*ChecklistResp, error)
 	ReorderChecklists(ctx context.Context, planID, userID uuid.UUID, req ReorderChecklistReq) ([]*ChecklistResp, error)
+	DuplicateChecklist(ctx context.Context, planID, id, userID uuid.UUID) ([]*ChecklistResp, error)
 	UpdateChecklistDates(ctx context.Context, planID, id, userID uuid.UUID, req UpdateDatesReq) (*ChecklistResp, error)
 	ArchiveChecklist(ctx context.Context, planID, id, userID uuid.UUID, archived bool) (*ChecklistResp, error)
 	DeleteChecklist(ctx context.Context, planID, id, userID uuid.UUID) error
@@ -274,6 +275,31 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient, access *Acces
 			return nil, apierr.ProblemFor("update checklist item", err)
 		}
 		return &ChecklistOutput{Body: *item}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "duplicateChecklist", Method: http.MethodPost,
+		Path:          "/api/plans/{id}/checklists/{checklist_id}/duplicate",
+		DefaultStatus: http.StatusCreated,
+		Middlewares:   mw, Security: secured,
+		Summary: "Duplicate a checklist item",
+		Description: "Copies a live item with its description, intention, type, scope, parent " +
+			"and dates; the copy is never done. A top-level item brings a copy of each of " +
+			"its non-archived children, in their order. The copy is placed directly after " +
+			"the source in its sibling set, and everything is written in one transaction. " +
+			"Returns the created items: the copy first, then its copied children. An " +
+			"archived source is refused with 400.",
+		Errors: writeErrs,
+	}, func(ctx context.Context, in *ChecklistItemInput) (*ChecklistListOutput, error) {
+		userID, err := authorize(ctx, "duplicate checklist item", in.PlanID)
+		if err != nil {
+			return nil, err
+		}
+		items, err := c.DuplicateChecklist(ctx, in.PlanID, in.ChecklistID, userID)
+		if err != nil {
+			return nil, apierr.ProblemFor("duplicate checklist item", err)
+		}
+		return &ChecklistListOutput{Body: derefChecklists(items)}, nil
 	})
 
 	huma.Register(api, huma.Operation{

@@ -2,9 +2,11 @@ package checklistitem
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	pb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
+	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -87,5 +89,81 @@ func TestReorderItems_MalformedIdIsInvalidArgument(t *testing.T) {
 	}
 	if svc.got.IDs != nil {
 		t.Error("a malformed id reached the domain")
+	}
+}
+
+// duplicateService records the item the transport addressed, so the tests
+// assert what reached the domain, not only the status.
+type duplicateService struct {
+	Service
+
+	gotPlan, gotID uuid.UUID
+	called         bool
+	out            []*Item
+	err            error
+}
+
+func (f *duplicateService) Duplicate(ctx context.Context, planID, id uuid.UUID) ([]*Item, error) {
+	f.called, f.gotPlan, f.gotID = true, planID, id
+	return f.out, f.err
+}
+
+func TestDuplicateItem_AddressesTheItemInItsPlanAndReturnsTheCopiesInOrder(t *testing.T) {
+	planID, source := uuid.New(), uuid.New()
+	copyID, childID := uuid.New(), uuid.New()
+	intention := "why"
+	svc := &duplicateService{out: []*Item{
+		{ID: copyID, PlanID: planID, Sequence: 3, Type: TypeTask, Scope: ScopeLongterm, Intention: &intention},
+		{ID: childID, PlanID: planID, Sequence: 1, Type: TypeTask, Scope: ScopeLongterm, ParentID: &copyID},
+	}}
+
+	resp, err := NewHandler(svc).DuplicateItem(context.Background(), &pb.DuplicateItemRequest{
+		Id: source.String(), PlanId: planID.String(), UserId: uuid.New().String(),
+	})
+	if err != nil {
+		t.Fatalf("DuplicateItem: %v", err)
+	}
+
+	if svc.gotPlan != planID || svc.gotID != source {
+		t.Errorf("service received (%s, %s), want (%s, %s)", svc.gotPlan, svc.gotID, planID, source)
+	}
+	if len(resp.Items) != 2 || resp.Items[0].Id != copyID.String() || resp.Items[1].Id != childID.String() {
+		t.Fatalf("response = %v, want [copy child]", resp.Items)
+	}
+	if resp.Items[0].Intention == nil || *resp.Items[0].Intention != intention {
+		t.Errorf("copy intention = %v, want %q", resp.Items[0].Intention, intention)
+	}
+	if resp.Items[1].ParentId == nil || *resp.Items[1].ParentId != copyID.String() {
+		t.Errorf("child parent = %v, want %s", resp.Items[1].ParentId, copyID)
+	}
+}
+
+func TestDuplicateItem_ErrorsMapToTheirCodes(t *testing.T) {
+	cases := []struct {
+		name string
+		req  *pb.DuplicateItemRequest
+		err  error
+		want codes.Code
+	}{
+		{"malformed id", &pb.DuplicateItemRequest{Id: "nope", PlanId: uuid.New().String()}, nil, codes.InvalidArgument},
+		{"no plan id", &pb.DuplicateItemRequest{Id: uuid.New().String()}, nil, codes.InvalidArgument},
+		{"archived source", &pb.DuplicateItemRequest{Id: uuid.New().String(), PlanId: uuid.New().String()},
+			fmt.Errorf("%w: archived", commonconstants.ErrInvalidInput), codes.InvalidArgument},
+		{"missing or foreign source", &pb.DuplicateItemRequest{Id: uuid.New().String(), PlanId: uuid.New().String()},
+			fmt.Errorf("checklistitem: duplicate: %w", commonconstants.ErrNotFound), codes.NotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &duplicateService{err: tc.err}
+
+			_, err := NewHandler(svc).DuplicateItem(context.Background(), tc.req)
+
+			if got := status.Code(err); got != tc.want {
+				t.Fatalf("code = %s, want %s (err: %v)", got, tc.want, err)
+			}
+			if tc.err == nil && svc.called {
+				t.Error("an unparseable request reached the domain")
+			}
+		})
 	}
 }

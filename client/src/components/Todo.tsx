@@ -41,6 +41,8 @@ import {
 import SortableItem from '@/components/SortableItem';
 import { getChecklistSuggestion, getDailyInsights } from '@/api/insights';
 import { getPlan, toggleDailyReset, type PlanMember } from '@/api/plans';
+import { duplicateChecklistItem } from '@/api/checklists';
+import { insertDuplicate } from '@/lib/duplicate';
 import PlanSharing from '@/components/PlanSharing';
 import { useParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
@@ -1421,6 +1423,24 @@ export default function Todo({
     }
   };
 
+  // Duplicate (FS-F6AEE R16–R18). Nothing shows until the server answers;
+  // then the copy and its steps go in right after the source, and the view
+  // follows the copy to its page and fades it in, as an added item does
+  // (FS-0008 R16, R17). A failure inserts nothing. Never handed to an
+  // archived item (R15).
+  const duplicateTodo = async (id: string) => {
+    try {
+      const created = await duplicateChecklistItem(planId, id);
+      if (!created.length) return;
+      setTodos((prev) => insertDuplicate(prev, id, created));
+      setPendingJumpId(created[0].id);
+      markArriving(created[0].id);
+    } catch (err) {
+      console.error('Error duplicating item:', err);
+      setError('Failed to duplicate item. Please try again.');
+    }
+  };
+
   // Handle Tab / Shift+Tab on a focused row or edit input.
   const handleRowKeyDown = (e: React.KeyboardEvent, id: string) => {
     if (e.key !== 'Tab') return;
@@ -1968,6 +1988,7 @@ export default function Todo({
                 arriving={newTodoAnimations}
                 milestoneHref={(id) => `/plan/${planId}/m/${id}`}
                 onOpenMilestone={(id) => router.push(`/plan/${planId}/m/${id}`)}
+                onDuplicate={duplicateTodo}
               />
             </div>
           ) : (
@@ -2195,6 +2216,11 @@ export default function Todo({
                                     }
                                     onIndent={() => indentTodo(todo.id)}
                                     onOutdent={() => outdentTodo(todo.id)}
+                                    onDuplicate={
+                                      todo.archived
+                                        ? undefined
+                                        : () => duplicateTodo(todo.id)
+                                    }
                                     {...moveProps(todo.id)}
                                   />
                                 )}

@@ -29,6 +29,7 @@ const (
 	ChecklistService_ListItemsInDateWindow_FullMethodName = "/plan.ChecklistService/ListItemsInDateWindow"
 	ChecklistService_UpdateItem_FullMethodName            = "/plan.ChecklistService/UpdateItem"
 	ChecklistService_ReorderItems_FullMethodName          = "/plan.ChecklistService/ReorderItems"
+	ChecklistService_DuplicateItem_FullMethodName         = "/plan.ChecklistService/DuplicateItem"
 	ChecklistService_UpdateItemDates_FullMethodName       = "/plan.ChecklistService/UpdateItemDates"
 	ChecklistService_ArchiveItem_FullMethodName           = "/plan.ChecklistService/ArchiveItem"
 	ChecklistService_DeleteItem_FullMethodName            = "/plan.ChecklistService/DeleteItem"
@@ -58,6 +59,13 @@ type ChecklistServiceClient interface {
 	// ids must be exactly a permutation of that set; the reordered siblings come
 	// back in their new order (FS-0009 R2).
 	ReorderItems(ctx context.Context, in *ReorderItemsRequest, opts ...grpc.CallOption) (*ListItemsResponse, error)
+	// DuplicateItem copies one live item — and, for a top-level item, each of
+	// its live children — and places the copy directly after the source in its
+	// sibling set, all in a single transaction. Copies are never done. The
+	// created items come back as the copy first, then its copied children in
+	// order. An archived source is InvalidArgument; a missing source, or one in
+	// another plan than plan_id, is NotFound (FS-F6AEE).
+	DuplicateItem(ctx context.Context, in *DuplicateItemRequest, opts ...grpc.CallOption) (*ListItemsResponse, error)
 	UpdateItemDates(ctx context.Context, in *UpdateItemDatesRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
 	ArchiveItem(ctx context.Context, in *ArchiveItemRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
 	DeleteItem(ctx context.Context, in *DeleteItemRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -164,6 +172,16 @@ func (c *checklistServiceClient) ReorderItems(ctx context.Context, in *ReorderIt
 	return out, nil
 }
 
+func (c *checklistServiceClient) DuplicateItem(ctx context.Context, in *DuplicateItemRequest, opts ...grpc.CallOption) (*ListItemsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListItemsResponse)
+	err := c.cc.Invoke(ctx, ChecklistService_DuplicateItem_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *checklistServiceClient) UpdateItemDates(ctx context.Context, in *UpdateItemDatesRequest, opts ...grpc.CallOption) (*ChecklistItem, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ChecklistItem)
@@ -227,6 +245,13 @@ type ChecklistServiceServer interface {
 	// ids must be exactly a permutation of that set; the reordered siblings come
 	// back in their new order (FS-0009 R2).
 	ReorderItems(context.Context, *ReorderItemsRequest) (*ListItemsResponse, error)
+	// DuplicateItem copies one live item — and, for a top-level item, each of
+	// its live children — and places the copy directly after the source in its
+	// sibling set, all in a single transaction. Copies are never done. The
+	// created items come back as the copy first, then its copied children in
+	// order. An archived source is InvalidArgument; a missing source, or one in
+	// another plan than plan_id, is NotFound (FS-F6AEE).
+	DuplicateItem(context.Context, *DuplicateItemRequest) (*ListItemsResponse, error)
 	UpdateItemDates(context.Context, *UpdateItemDatesRequest) (*ChecklistItem, error)
 	ArchiveItem(context.Context, *ArchiveItemRequest) (*ChecklistItem, error)
 	DeleteItem(context.Context, *DeleteItemRequest) (*emptypb.Empty, error)
@@ -269,6 +294,9 @@ func (UnimplementedChecklistServiceServer) UpdateItem(context.Context, *UpdateIt
 }
 func (UnimplementedChecklistServiceServer) ReorderItems(context.Context, *ReorderItemsRequest) (*ListItemsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReorderItems not implemented")
+}
+func (UnimplementedChecklistServiceServer) DuplicateItem(context.Context, *DuplicateItemRequest) (*ListItemsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DuplicateItem not implemented")
 }
 func (UnimplementedChecklistServiceServer) UpdateItemDates(context.Context, *UpdateItemDatesRequest) (*ChecklistItem, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateItemDates not implemented")
@@ -465,6 +493,24 @@ func _ChecklistService_ReorderItems_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChecklistService_DuplicateItem_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DuplicateItemRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChecklistServiceServer).DuplicateItem(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChecklistService_DuplicateItem_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChecklistServiceServer).DuplicateItem(ctx, req.(*DuplicateItemRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ChecklistService_UpdateItemDates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateItemDatesRequest)
 	if err := dec(in); err != nil {
@@ -579,6 +625,10 @@ var ChecklistService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReorderItems",
 			Handler:    _ChecklistService_ReorderItems_Handler,
+		},
+		{
+			MethodName: "DuplicateItem",
+			Handler:    _ChecklistService_DuplicateItem_Handler,
 		},
 		{
 			MethodName: "UpdateItemDates",

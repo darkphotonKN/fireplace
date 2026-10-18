@@ -2172,6 +2172,81 @@ paths:
       security:
         - bearerAuth: []
       summary: Set or clear a checklist item's dates
+  /api/plans/{id}/checklists/{checklist_id}/duplicate:
+    post:
+      description: "Copies a live item with its description, intention, type, scope, parent and dates; the copy is never done. A top-level item brings a copy of each of its non-archived children, in their order. The copy is placed directly after the source in its sibling set, and everything is written in one transaction. Returns the created items: the copy first, then its copied children. An archived source is refused with 400."
+      operationId: duplicateChecklist
+      parameters:
+        - description: Plan id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Plan id
+            type: string
+        - description: Checklist item id
+          in: path
+          name: checklist_id
+          required: true
+          schema:
+            description: Checklist item id
+            type: string
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ChecklistResp"
+                type:
+                  - array
+                  - "null"
+          description: Created
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Duplicate a checklist item
   /api/plans/{id}/members:
     get:
       description: The plan's owner first, then its members in the order they were added. Open to the owner and to members. Answers 404 when the caller has no relation to the plan, exactly as when no such plan exists.

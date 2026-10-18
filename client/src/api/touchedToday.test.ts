@@ -40,6 +40,7 @@ import {
   updateChecklistItem,
   updateChecklistDates,
   reorderChecklists,
+  duplicateChecklistItem,
   archiveChecklistItem,
   deleteChecklistItem,
   listChecklists,
@@ -93,6 +94,7 @@ const mutations: [string, () => Promise<unknown>][] = [
     'reorderChecklists',
     () => reorderChecklists('plan-1', { ids: ['item-1'], parentId: null, scope: 'daily' }),
   ],
+  ['duplicateChecklistItem', () => duplicateChecklistItem('plan-1', 'item-1')],
   ['archiveChecklistItem', () => archiveChecklistItem('plan-1', 'item-1', true)],
   ['deleteChecklistItem', () => deleteChecklistItem('plan-1', 'item-1')],
 ];

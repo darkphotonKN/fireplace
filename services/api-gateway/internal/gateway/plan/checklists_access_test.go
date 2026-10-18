@@ -59,6 +59,11 @@ func (r *recordingChecklists) ReorderChecklists(ctx context.Context, planID, use
 	return nil, nil
 }
 
+func (r *recordingChecklists) DuplicateChecklist(ctx context.Context, planID, id, userID uuid.UUID) ([]*ChecklistResp, error) {
+	r.calls = append(r.calls, "duplicate")
+	return []*ChecklistResp{r.item(planID, uuid.New())}, nil
+}
+
 func (r *recordingChecklists) UpdateChecklistDates(ctx context.Context, planID, id, userID uuid.UUID, req UpdateDatesReq) (*ChecklistResp, error) {
 	r.calls = append(r.calls, "dates")
 	return r.item(planID, id), nil
@@ -121,6 +126,9 @@ func checklistCalls() []checklistCall {
 		}},
 		{"update", http.StatusOK, func(api humatest.TestAPI, u string) *httptest.ResponseRecorder {
 			return api.Patch(u+item, map[string]any{"done": true})
+		}},
+		{"duplicate", http.StatusCreated, func(api humatest.TestAPI, u string) *httptest.ResponseRecorder {
+			return api.Post(u + item + "/duplicate")
 		}},
 		{"dates", http.StatusOK, func(api humatest.TestAPI, u string) *httptest.ResponseRecorder {
 			return api.Patch(u+item+"/dates", map[string]any{"startDate": "2026-10-20"})

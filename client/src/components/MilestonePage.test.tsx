@@ -26,6 +26,11 @@ vi.mock('@/services/api', () => ({
   updateChecklistDates: (...a: unknown[]) => updateChecklistDates(...a),
 }));
 
+const duplicateChecklistItem = vi.fn();
+vi.mock('@/api/checklists', () => ({
+  duplicateChecklistItem: (...a: unknown[]) => duplicateChecklistItem(...a),
+}));
+
 const push = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
@@ -550,13 +555,71 @@ describe('MilestonePage title, dates, close and menu', () => {
   const openMenu = () =>
     fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
 
-  it('should offer exactly Rename, Dates, Archive and Delete in its menu (R17, G6)', async () => {
+  it('should offer exactly Rename, Dates, Duplicate, Archive and Delete in its menu (R17, G6; FS-F6AEE R14)', async () => {
     renderPage();
     await ready();
     openMenu();
     expect(
       screen.getAllByRole('menuitem').map((r) => r.textContent)
-    ).toEqual(['Set dates', 'Rename', 'Archive', 'Delete']);
+    ).toEqual(['Set dates', 'Rename', 'Duplicate', 'Archive', 'Delete']);
+  });
+
+  describe('duplicate (FS-F6AEE R14, R16, R17, R20)', () => {
+    /** The page's step rows, top to bottom, by their text. */
+    const steps = () =>
+      within(screen.getByRole('list', { name: 'Steps' }))
+        .getAllByRole('listitem')
+        .map((li) => li.textContent);
+    const STEPS = ['goroutines', 'a thought', 'channels'];
+
+    beforeEach(() => duplicateChecklistItem.mockReset());
+
+    it('should duplicate the milestone and stay on it, its steps untouched', async () => {
+      duplicateChecklistItem.mockResolvedValue([
+        mk('d1', 'Learn Go'),
+        mk('d2', 'goroutines', { parentId: 'd1' }),
+        mk('d3', 'channels', { parentId: 'd1' }),
+      ]);
+      renderPage();
+      await ready();
+      openMenu();
+      await act(async () =>
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Duplicate' }))
+      );
+
+      expect(duplicateChecklistItem).toHaveBeenCalledWith('plan-1', 'm1');
+      expect(push).not.toHaveBeenCalled();
+      expect(screen.getAllByRole('heading', { name: 'Learn Go' })).toHaveLength(1);
+      // The copy's steps belong to the copy: this milestone's are as they were.
+      expect(steps()).toEqual(STEPS);
+      expect(screen.queryByText(/failed to duplicate/i)).toBeNull();
+    });
+
+    it("should stay on the page with the page's error when it fails, inserting nothing", async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      duplicateChecklistItem.mockRejectedValue(new Error('nope'));
+      renderPage();
+      await ready();
+      openMenu();
+      await act(async () =>
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Duplicate' }))
+      );
+
+      expect(
+        screen.getByText('Failed to duplicate item. Please try again.')
+      ).toBeInTheDocument();
+      expect(push).not.toHaveBeenCalled();
+      expect(screen.getByRole('heading', { name: 'Learn Go' })).toBeInTheDocument();
+      expect(steps()).toEqual(STEPS);
+    });
+
+    it('should add no menu to the steps on the page', async () => {
+      renderPage();
+      await ready();
+      expect(
+        screen.queryByRole('button', { name: /^Actions for (goroutines|channels|a thought)$/ })
+      ).toBeNull();
+    });
   });
 
   it('should confirm a delete, then leave for the plan (R18, C11)', async () => {

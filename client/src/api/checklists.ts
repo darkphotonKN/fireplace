@@ -175,6 +175,27 @@ export const reorderChecklists = async (
   return data ?? [];
 };
 
+/**
+ * Duplicates one live item (FS-F6AEE). The copy keeps the source's text,
+ * intention, type, scope, parent and dates, is never done, and lands directly
+ * after the source; a top-level item brings copies of its live children. The
+ * server writes it all in one transaction and returns the created items: the
+ * copy first, then its copied children in order (a list of one for a step, a
+ * note or an item with no live children). An archived source answers 400.
+ */
+export const duplicateChecklistItem = async (
+  planId: string,
+  checklistId: string,
+): Promise<ChecklistItem[]> => {
+  const { data, error, response } = await api.POST(
+    "/api/plans/{id}/checklists/{checklist_id}/duplicate",
+    { params: { path: { id: planId, checklist_id: checklistId } } },
+  );
+  if (error) throw apiErrorFrom(error, response.status);
+  markTouchedToday();
+  return data ?? [];
+};
+
 /** A SETTER, not a toggle — pass false to unarchive. */
 export const archiveChecklistItem = async (
   planId: string,

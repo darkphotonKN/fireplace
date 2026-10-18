@@ -25,6 +25,13 @@ service ChecklistService {
   // ids must be exactly a permutation of that set; the reordered siblings come
   // back in their new order (FS-0009 R2).
   rpc ReorderItems(ReorderItemsRequest) returns (ListItemsResponse);
+  // DuplicateItem copies one live item — and, for a top-level item, each of
+  // its live children — and places the copy directly after the source in its
+  // sibling set, all in a single transaction. Copies are never done. The
+  // created items come back as the copy first, then its copied children in
+  // order. An archived source is InvalidArgument; a missing source, or one in
+  // another plan than plan_id, is NotFound (FS-F6AEE).
+  rpc DuplicateItem(DuplicateItemRequest) returns (ListItemsResponse);
   rpc UpdateItemDates(UpdateItemDatesRequest) returns (ChecklistItem);
   rpc ArchiveItem(ArchiveItemRequest) returns (ChecklistItem);
   rpc DeleteItem(DeleteItemRequest) returns (google.protobuf.Empty);
@@ -136,6 +143,14 @@ message ReorderItemsRequest {
   string scope = 3;
   optional string parent_id = 4;
   repeated string ids = 5;
+}
+
+message DuplicateItemRequest {
+  string id = 1;
+  string user_id = 2;
+  // plan_id is the plan the caller addressed. The item must belong to it, or
+  // the request answers NotFound exactly like a missing item. Required.
+  string plan_id = 3;
 }
 
 message UpdateItemDatesRequest {

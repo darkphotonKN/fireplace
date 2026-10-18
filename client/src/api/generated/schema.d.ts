@@ -348,6 +348,26 @@ export interface paths {
         patch: operations["updateChecklistDates"];
         trace?: never;
     };
+    "/api/plans/{id}/checklists/{checklist_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate a checklist item
+         * @description Copies a live item with its description, intention, type, scope, parent and dates; the copy is never done. A top-level item brings a copy of each of its non-archived children, in their order. The copy is placed directly after the source in its sibling set, and everything is written in one transaction. Returns the created items: the copy first, then its copied children. An archived source is refused with 400.
+         */
+        post: operations["duplicateChecklist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/plans/{id}/members": {
         parameters: {
             query?: never;
@@ -2633,6 +2653,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChecklistResp"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    duplicateChecklist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+                /** @description Checklist item id */
+                checklist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistResp"][] | null;
                 };
             };
             /** @description Bad Request */

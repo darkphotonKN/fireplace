@@ -26,8 +26,9 @@ import type { ChecklistItem } from '@/services/api';
  * The milestone reading of a plan, behind the header's view toggle. It shares
  * the list's collapse state, its type filter and its paging — only the drawing
  * differs. Cards and steps carry the list row's actions panel — rename,
- * dates, the note/task flip, archive, remove, move — less indent, which has
- * nowhere to go between cards; a step can be outdented out of its card.
+ * dates, duplicate, the note/task flip, archive, remove, move — less indent,
+ * which has nowhere to go between cards; a step can be outdented out of its
+ * card.
  */
 
 export interface ChecklistGridProps {
@@ -86,6 +87,12 @@ export interface ChecklistGridProps {
    * the caller, as the URLs do; without it the menu offers no Open.
    */
   onOpenMilestone?: (id: string) => void;
+  /**
+   * The menu's Duplicate, on cards and steps alike (FS-F6AEE R14). The caller
+   * owns the list the copy goes into, so the grid only says which item; without
+   * it, and on any archived item (R15), the menu offers no Duplicate.
+   */
+  onDuplicate?: (id: string) => unknown;
 }
 
 const isNote = (item: ChecklistItem) => (item.type ?? 'task') === 'note';
@@ -114,6 +121,7 @@ export default function ChecklistGrid({
   arriving = {},
   milestoneHref,
   onOpenMilestone,
+  onDuplicate,
 }: ChecklistGridProps) {
   // Rename and add live here rather than in the list's shared edit state: the
   // two views are never on screen together, and a card's input has nothing to
@@ -163,6 +171,9 @@ export default function ChecklistGrid({
       setIsAdding(false);
     }
   };
+
+  const duplicateFor = (item: ChecklistItem) =>
+    onDuplicate && !item.archived ? () => onDuplicate(item.id) : undefined;
 
   const renderText = (item: ChecklistItem, className: string) =>
     editingId === item.id ? (
@@ -317,6 +328,7 @@ export default function ChecklistGrid({
                     setEditText(item.description);
                   }}
                   onToggleType={() => onToggleType(item.id)}
+                  onDuplicate={duplicateFor(item)}
                   onArchive={() => onArchive(item.id)}
                   onDelete={() => onDelete(item.id)}
                   onSetDates={(start, due) => onSetDates(item.id, start, due)}
@@ -438,6 +450,7 @@ export default function ChecklistGrid({
                           setEditText(child.description);
                         }}
                         onToggleType={() => onToggleType(child.id)}
+                        onDuplicate={duplicateFor(child)}
                         onArchive={() => onArchive(child.id)}
                         onDelete={() => onDelete(child.id)}
                         onSetDates={(start, due) =>
