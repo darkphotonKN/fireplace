@@ -73,6 +73,100 @@
   }
 }
 
+/*
+ * Docked sidebar geometry (FS-S6WVY R5, R6, R14-R24, R33).
+ *
+ * Driven by `<html data-sidebar="open|hidden">`, which the head script sets
+ * from the remembered choice before first paint, so the layout is right on the
+ * first frame and React hydrates without touching it. Anything but `hidden`
+ * (including a missing attribute) is the open layout.
+ *
+ * One custom property is the docked width: the sidebar column (`.fp-sidebar-dock`)
+ * takes it as its width and main (`.fp-sidebar-offset`) as its left margin, so
+ * the two always agree and move together. Open is the full panel; hidden is a
+ * rail that keeps only the toggle. The top bar spans the viewport and takes no
+ * part in this, so the logo and title never move (R14).
+ *
+ * The panel is always the full open width, laid over the column; docked open
+ * the two coincide. Hidden, the panel fades out and is then dropped from paint
+ * and hit-testing (`visibility`), leaving the rail. A peek (`data-peek` on the
+ * column) shows it over the page, so content never reflows for a peek (R21,
+ * R24): only the toggle changes the docked width. Nothing clips the panel, so
+ * pinning during a peek goes straight from overlay to docked, and closing a
+ * peek fades the whole overlay before it goes.
+ *
+ * Motion is gated on `data-sidebar-ready`, set after the first frame, so a
+ * load that is hidden by preference doesn't animate closed (R6).
+ */
+:root {
+  --fp-sidebar-open-width: 16rem;
+  --fp-sidebar-rail-width: 3rem;
+  --fp-sidebar-width: var(--fp-sidebar-open-width);
+  --fp-sidebar-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-sidebar='hidden'] {
+  --fp-sidebar-width: var(--fp-sidebar-rail-width);
+}
+
+.fp-sidebar-offset {
+  margin-left: var(--fp-sidebar-width);
+}
+
+.fp-sidebar-dock {
+  width: var(--fp-sidebar-width);
+}
+
+.fp-sidebar-panel {
+  width: var(--fp-sidebar-open-width);
+}
+
+html[data-sidebar='hidden'] .fp-sidebar-dock:not([data-peek='true']) .fp-sidebar-panel {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* The toggle's icon follows the painted state, so it is right before hydration. */
+html[data-sidebar='hidden'] .fp-sidebar-when-open,
+html:not([data-sidebar='hidden']) .fp-sidebar-when-hidden {
+  display: none;
+}
+
+html[data-sidebar-ready] .fp-sidebar-offset {
+  transition: margin-left 300ms var(--fp-sidebar-ease);
+}
+
+html[data-sidebar-ready] .fp-sidebar-dock {
+  transition: width 300ms var(--fp-sidebar-ease);
+}
+
+/*
+ * Shown: visible at once, then fade in. Hidden: fade out, then drop visibility.
+ * The peek's shadow eases off as a pin docks it, rather than snapping.
+ */
+html[data-sidebar-ready] .fp-sidebar-panel {
+  transition:
+    opacity 200ms var(--fp-sidebar-ease),
+    box-shadow 300ms var(--fp-sidebar-ease),
+    visibility 0s linear 0s;
+}
+
+html[data-sidebar-ready][data-sidebar='hidden']
+  .fp-sidebar-dock:not([data-peek='true'])
+  .fp-sidebar-panel {
+  transition:
+    opacity 200ms var(--fp-sidebar-ease),
+    box-shadow 300ms var(--fp-sidebar-ease),
+    visibility 0s linear 200ms;
+}
+
+/* The global backstop zeroes durations but not delays; drop this one too (R33). */
+@media (prefers-reduced-motion: reduce) {
+  html .fp-sidebar-panel {
+    transition-delay: 0s !important;
+  }
+}
+
 /* apply background color based on light/dark mode */
 .bg-layout {
   background-color: rgb(242, 240, 227); /* light mode background */

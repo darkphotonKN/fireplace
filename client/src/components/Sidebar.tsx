@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { listPlans } from '@/api/plans';
 import { useSidebar } from './LayoutWrapper';
-import { useTheme } from '@/context/ThemeContext';
 import SharedMark from './SharedMark';
+import { cn } from '@/lib/utils';
 
 interface Plan {
   id: string;
@@ -17,22 +18,83 @@ interface Plan {
   relation?: 'owner' | 'member';
 }
 
-interface ApiResponse {
-  statusCode: number;
-  message: string;
-  result: Plan[];
+type PlanFilter = 'learning' | 'project';
+
+const PANEL_ID = 'plans-panel';
+
+/** Hover intent: a cursor crossing the rail doesn't flash the panel (FS-S6WVY R22). */
+const PEEK_DELAY_MS = 150;
+
+/**
+ * Stamp when the panel was last seen open, for the discovery tip's 24h reminder
+ * (R9). Not the remembered state; blocked storage just skips it (R8).
+ */
+function stampLastOpen() {
+  try {
+    localStorage.setItem('lastSidebarOpen', new Date().toISOString());
+  } catch {
+    // Blocked: the reminder may come a little early, which is harmless.
+  }
 }
 
-type PlanFilter = 'learning' | 'project';
+/** The coral focus ring every sidebar control shares (FS-S6WVY R30). */
+const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
+const FILTERS: { value: PlanFilter; label: string }[] = [
+  { value: 'project', label: 'Projects' },
+  { value: 'learning', label: 'Learning' },
+];
 
 export default function Sidebar() {
   const pathname = usePathname();
   const planId = pathname?.split('/plan/')?.[1] || '';
   const { isCollapsed, setIsCollapsed } = useSidebar();
 
-  const { theme } = useTheme();
-  const isDarkMode = theme === 'dark';
-  const [isHovered, setIsHovered] = useState(false);
+  // The peek: the hidden panel shown over the page while the pointer rests on
+  // the rail. Local to the sidebar and never remembered (R21-R24). It records
+  // the route it opened on, so navigating closes it, as does the panel opening
+  // (here or in another tab), without an effect.
+  const [peekedAt, setPeekedAt] = useState<string | null>(null);
+  if (peekedAt !== null && (!isCollapsed || peekedAt !== pathname)) setPeekedAt(null);
+  const isPeeking = isCollapsed && peekedAt === pathname;
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const closePeek = () => {
+    clearTimeout(peekTimer.current);
+    setPeekedAt(null);
+  };
+
+  const startPeek = () => {
+    if (!isCollapsed) return;
+    clearTimeout(peekTimer.current);
+    peekTimer.current = setTimeout(() => {
+      setPeekedAt(pathname);
+      stampLastOpen();
+    }, PEEK_DELAY_MS);
+  };
+
+  useEffect(() => () => clearTimeout(peekTimer.current), []);
+
+  // When the panel goes out of reach (a peek closes, or it's hidden from
+  // another tab) with focus inside, hand focus to the toggle rather than let
+  // it drop to the page as the panel turns inert (R20, R22). A layout effect,
+  // so it runs before the browser's own inert focus fix-up.
+  const isPanelReachable = !isCollapsed || isPeeking;
+  const panelRef = useRef<HTMLElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (isPanelReachable) return;
+    if (panelRef.current?.contains(document.activeElement)) toggleRef.current?.focus();
+  }, [isPanelReachable]);
+
+  useEffect(() => {
+    if (!isPeeking) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPeekedAt(null);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isPeeking]);
 
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,144 +130,119 @@ export default function Sidebar() {
       relation: plan.relation,
     }));
 
-  return (
-    <div
-      className="fixed left-0 top-16 h-[calc(100vh-4rem)] z-20"
-      onMouseEnter={() => {
-        if (isCollapsed) {
-          setIsHovered(true);
-          localStorage.setItem('lastSidebarOpen', new Date().toISOString());
-        }
-      }}
-      onMouseLeave={() => isCollapsed ? setIsHovered(false) : null}
-    >
-      {/* Collapsed edge indicator — subtle tab on the left */}
-      {isCollapsed && !isHovered && (
-        <div
-          className="absolute left-0 top-1/2 -translate-y-1/2 w-5 h-16 flex items-center justify-center cursor-pointer rounded-r-md transition-all duration-300 opacity-40 hover:opacity-80"
-          style={{
-            backgroundColor: isDarkMode ? '#2a2a2a' : '#ddd8c8',
-          }}
-          onClick={() => {
-            setIsCollapsed(false);
-            localStorage.setItem('lastSidebarOpen', new Date().toISOString());
-          }}
-          title="Open plans panel"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-foreground/60">
-            <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-          </svg>
-        </div>
-      )}
+  const toggle = () => {
+    const next = !isCollapsed;
+    setIsCollapsed(next);
+    closePeek();
+    if (!next) {
+      stampLastOpen();
+    }
+  };
 
-      {/* Hover trigger area when collapsed */}
-      {isCollapsed && <div className="absolute left-0 top-0 h-full w-[50px]" />}
+  const toggleLabel = isCollapsed ? 'Show plans panel' : 'Hide plans panel';
+
+  return (
+    // The dock: beneath the top bar, on the page's own surface. Its width (16rem
+    // open, a 3rem rail hidden) comes from `<html data-sidebar>` in globals.css,
+    // as does main's matching offset, so the first frame is already right and
+    // the two animate together (FS-S6WVY R5, R15–R19).
+    <div
+      data-peek={isPeeking}
+      className="fp-sidebar-dock fixed bottom-0 left-0 top-16 z-20 border-r border-border bg-layout"
+      onMouseEnter={startPeek}
+      onMouseLeave={closePeek}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) closePeek();
+      }}
+    >
+      {/* The one toggle, at the top of the column in both states (R16). Both
+          icons render and CSS shows the one for the painted state, so a hidden
+          load has the right icon before React knows the state. */}
+      <button
+        ref={toggleRef}
+        type="button"
+        onClick={toggle}
+        aria-label={toggleLabel}
+        title={toggleLabel}
+        aria-expanded={!isCollapsed}
+        aria-controls={PANEL_ID}
+        className={cn(
+          'absolute left-2 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+          FOCUS_RING,
+        )}
+      >
+        <PanelLeftClose aria-hidden className="fp-sidebar-when-open h-4 w-4" />
+        <PanelLeftOpen aria-hidden className="fp-sidebar-when-hidden h-4 w-4" />
+      </button>
 
       <aside
-        className={`h-full pt-4 px-4 overflow-y-auto transition-all duration-300 relative flex flex-col ${
-          isCollapsed
-            ? (isHovered ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0')
-            : 'translate-x-0 opacity-100'
-        }`}
-        style={{
-          backgroundColor: isDarkMode ? '#171717' : 'rgb(232, 230, 217)',
-          width: '16rem',
-        }}
+        id={PANEL_ID}
+        aria-label="Plans panel"
+        ref={panelRef}
+        inert={!isPanelReachable}
+        className={cn(
+          'fp-sidebar-panel absolute inset-y-0 left-0 flex flex-col border-r border-border bg-layout',
+          isPeeking && 'shadow-lg',
+        )}
       >
-        {/* Header: toggle + collapse button */}
-        <div className="flex items-center gap-2 mt-1 mb-4">
-          <div className="flex flex-1 rounded-md overflow-hidden border border-foreground/10">
-          <button
-            onClick={() => setActiveFilter('project')}
-            className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
-              activeFilter === 'project'
-                ? 'bg-[rgb(247,111,83)] text-white'
-                : 'text-foreground/50 hover:text-foreground/80 hover:bg-foreground/5'
-            }`}
-          >
-            Projects
-          </button>
-          <button
-            onClick={() => setActiveFilter('learning')}
-            className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
-              activeFilter === 'learning'
-                ? 'bg-[rgb(247,111,83)] text-white'
-                : 'text-foreground/50 hover:text-foreground/80 hover:bg-foreground/5'
-            }`}
-          >
-            Learning
-          </button>
+        {/* Header: the filter, beside the toggle's spot. */}
+        <div className="shrink-0 pb-3 pl-12 pr-3 pt-3">
+          <div className="flex rounded-md bg-muted p-0.5">
+            {FILTERS.map(({ value, label }) => {
+              const isActive = activeFilter === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => setActiveFilter(value)}
+                  className={cn(
+                    'h-7 flex-1 rounded-sm text-xs font-medium transition-colors',
+                    FOCUS_RING,
+                    isActive
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
-          <button
-            onClick={() => {
-              const next = !isCollapsed;
-              setIsCollapsed(next);
-              if (!next) {
-                localStorage.setItem('lastSidebarOpen', new Date().toISOString());
-              }
-            }}
-            className="shrink-0 p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-            title={isCollapsed ? 'Pin sidebar' : 'Hide sidebar'}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className={`w-4 h-4 transition-transform text-foreground/50 ${isCollapsed ? 'rotate-180' : ''}`}
-            >
-              <path
-                fillRule="evenodd"
-                d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
         </div>
 
-        {/* Plan list */}
-        <nav className="flex-1 overflow-y-auto">
-          <ul className="space-y-1">
+        {/* Plan list: scrolls inside the panel; New plan stays pinned below. */}
+        <nav aria-label="Plans" className="min-h-0 flex-1 overflow-y-auto px-3">
+          <ul className="space-y-0.5">
             {isLoading ? (
-              <li className="text-base opacity-50 px-3 py-2">Loading...</li>
+              <li className="px-3 py-2 text-sm text-muted-foreground">Loading…</li>
             ) : error ? (
-              <li className="text-base opacity-50 px-3 py-2">{error}</li>
+              <li className="px-3 py-2 text-sm text-muted-foreground">{error}</li>
             ) : filteredPlans.length === 0 ? (
-              <li className="text-base text-foreground/40 px-3 py-2">
+              <li className="px-3 py-2 text-sm text-muted-foreground">
                 No {activeFilter === 'project' ? 'projects' : 'learning plans'} yet
               </li>
             ) : (
               filteredPlans.map((item) => (
-                <li key={item.href} className="group">
+                <li key={item.href}>
                   <Link
                     href={item.href}
-                    className={`relative flex px-3 py-2 text-base rounded-md transition-all duration-300 cursor-pointer ${
-                      item.isActive ? 'font-medium' : ''
-                    }`}
-                    style={{
-                      backgroundColor: item.isActive ? 'rgba(247, 111, 83, 0.1)' : 'transparent',
-                      color: item.isActive ? 'rgb(247, 111, 83)' : 'inherit',
-                    }}
+                    aria-current={item.isActive ? 'page' : undefined}
+                    className={cn(
+                      'relative flex items-center rounded-md px-3 py-2 text-sm transition-colors hover:bg-muted focus-visible:ring-inset',
+                      FOCUS_RING,
+                      item.isActive ? 'font-medium text-primary' : 'text-foreground',
+                    )}
                   >
-                    {/* Hover gradient effect */}
-                    <span className={`absolute inset-0 rounded-md transition-all duration-300 opacity-0 group-hover:opacity-100 ${
-                      !item.isActive ? 'bg-gradient-to-r from-transparent via-amber-900/10 to-transparent' : ''
-                    }`} />
-
-                    {/* Warm glow effect on hover */}
-                    <span className={`absolute -inset-1 rounded-lg blur-md transition-all duration-500 opacity-0 group-hover:opacity-30 ${
-                      !item.isActive ? 'bg-gradient-to-r from-amber-600/20 via-orange-600/20 to-amber-600/20' : ''
-                    }`} />
-
-                    {/* Left border indicator */}
-                    <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-0 bg-amber-500 transition-all duration-300 ${
-                      item.isActive ? 'h-full' : 'group-hover:h-3/4'
-                    }`} />
-
-                    {/* Text content */}
-                    <span className="relative z-10 transition-all duration-300 group-hover:translate-x-1">
-                      {item.name}
-                      <SharedMark plan={item} className="ml-2" />
-                    </span>
+                    {/* The view's one coral moment (R27). */}
+                    {item.isActive && (
+                      <span
+                        aria-hidden
+                        className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary"
+                      />
+                    )}
+                    <span className="min-w-0 truncate">{item.name}</span>
+                    <SharedMark plan={item} className="ml-2" />
                   </Link>
                 </li>
               ))
@@ -213,21 +250,16 @@ export default function Sidebar() {
           </ul>
         </nav>
 
-        {/* Create New Plan button — pinned to bottom */}
-        <div className="pt-4 pb-4">
+        <div className="shrink-0 p-3">
           <Link
             href="/create-plan"
-            className="relative block w-full py-2 px-4 rounded-md text-base font-medium text-center transition-all duration-300 hover:shadow-lg hover:shadow-amber-900/20 group overflow-hidden"
-            style={{
-              border: '1px solid rgb(247, 111, 83)',
-              color: 'rgb(247, 111, 83)',
-              backgroundColor: isDarkMode
-                ? 'rgba(247, 111, 83, 0.05)'
-                : 'rgba(247, 111, 83, 0.02)',
-            }}
+            className={cn(
+              'flex w-full items-center justify-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted',
+              FOCUS_RING,
+            )}
           >
-            <span className="absolute inset-0 bg-gradient-to-r from-amber-600/10 via-orange-600/10 to-amber-600/10 translate-x-full group-hover:translate-x-0 transition-transform duration-500" />
-            <span className="relative z-10">+ New Plan</span>
+            <Plus aria-hidden className="h-4 w-4" />
+            New plan
           </Link>
         </div>
       </aside>

@@ -3,6 +3,7 @@ import { Lora } from 'next/font/google';
 import './globals.css';
 import LayoutWrapper from '@/components/LayoutWrapper';
 import LayoutContent from '@/components/LayoutContent';
+import { SIDEBAR_HEAD_SCRIPT } from '@/lib/sidebarState';
 
 // Lora is a variable font, so there's no weight list: body text at 400 and
 // headings at 700 all come from the one file.
@@ -41,6 +42,8 @@ export default function RootLayout({
             `,
           }}
         />
+        {/* Paint the remembered sidebar state before first paint (FS-S6WVY R5). */}
+        <script dangerouslySetInnerHTML={{ __html: SIDEBAR_HEAD_SCRIPT }} />
       </head>
       <body className={lora.className}>
         <LayoutWrapper>

@@ -39,6 +39,11 @@
 - [x] New-milestone composer → FS-FSFEC
 - [x] Milestone page → FS-043WP
 
+## Navigation
+
+- [x] Plans sidebar → FS-none
+- [ ] Docked sidebar that remembers open or hidden → FS-S6WVY
+
 ## Project Overview
 
 **Name**: Flow Client

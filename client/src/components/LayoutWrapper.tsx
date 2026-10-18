@@ -5,12 +5,20 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useState,
+  useMemo,
+  useSyncExternalStore,
   ReactNode,
 } from 'react';
 import { AuthProvider } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import Toaster from '@/components/ui/Toaster';
+import {
+  chooseSidebarState,
+  getServerSidebarState,
+  getSidebarState,
+  markSidebarReady,
+  subscribeSidebarState,
+} from '@/lib/sidebarState';
 
 interface SidebarContextType {
   isCollapsed: boolean;
@@ -28,38 +36,38 @@ interface LayoutWrapperProps {
   children: ReactNode;
 }
 
-// Whether the sidebar is pinned open or hidden, remembered on this device.
-// Only the pin/hide toggle writes it — hovering a collapsed sidebar open is
-// local to the sidebar and deliberately not remembered.
-const SIDEBAR_KEY = 'sidebarCollapsed';
-
 export default function LayoutWrapper({ children }: LayoutWrapperProps) {
-  const [isCollapsed, setCollapsed] = useState(true);
+  // Whether the sidebar is pinned open or hidden, remembered on this device
+  // (FS-S6WVY R1-R8). The server snapshot is open; the head script has
+  // already painted the real state, so hydration matches and nothing flashes.
+  const state = useSyncExternalStore(
+    subscribeSidebarState,
+    getSidebarState,
+    getServerSidebarState,
+  );
 
-  // Read on mount rather than in the initializer: there is no storage during
-  // the server render. Nothing stored keeps the collapsed default.
+  // Let the sidebar animate only once the first frame is up, so a load that
+  // is hidden by preference doesn't slide closed (R6).
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(SIDEBAR_KEY);
-      if (saved !== null) setCollapsed(saved === 'true');
-    } catch {
-      // Storage blocked; the sidebar still works, it just won't be remembered.
-    }
+    const frame = requestAnimationFrame(markSidebarReady);
+    return () => cancelAnimationFrame(frame);
   }, []);
 
+  // Only the pin/hide toggle calls this: it is the one writer of the choice.
+  // Hovering a hidden sidebar open is local to Sidebar and never remembered.
   const setIsCollapsed = useCallback((collapsed: boolean) => {
-    setCollapsed(collapsed);
-    try {
-      window.localStorage.setItem(SIDEBAR_KEY, String(collapsed));
-    } catch {
-      // As above: not remembered this time.
-    }
+    chooseSidebarState(collapsed ? 'hidden' : 'open');
   }, []);
+
+  const sidebar = useMemo(
+    () => ({ isCollapsed: state === 'hidden', setIsCollapsed }),
+    [state, setIsCollapsed],
+  );
 
   return (
     <ThemeProvider>
       <AuthProvider>
-        <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed }}>
+        <SidebarContext.Provider value={sidebar}>
           <div className="min-h-screen bg-layout">
             {children}
             <Toaster />
