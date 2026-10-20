@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Input } from '@/components/ui/input';
@@ -43,7 +43,7 @@ function validateSignUp(
   return errors;
 }
 
-export default function AuthPage() {
+function AuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, isLoading, signIn, signUp } = useAuth();
@@ -269,5 +269,15 @@ export default function AuthPage() {
         </Tabs>
       </div>
     </div>
+  );
+}
+
+// useSearchParams() needs a Suspense boundary for `next build` to prerender
+// this route; the boundary renders nothing extra.
+export default function AuthPage() {
+  return (
+    <Suspense>
+      <AuthPageContent />
+    </Suspense>
   );
 }

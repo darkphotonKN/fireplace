@@ -50,23 +50,11 @@ import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import {
   collapsedCount,
@@ -105,12 +93,6 @@ import {
   LayoutGrid,
   List,
 } from 'lucide-react';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
 
 interface Plan {
   id: string;
@@ -1831,14 +1813,14 @@ export default function Todo({
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleMoveItem(todo.id, 'up')}
+                      onClick={() => handleMoveItem(todo.id, 'up' as ScopeEnum)}
                       className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
                       disabled={index === 0}
                     >
                       <ChevronUp className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => handleMoveItem(todo.id, 'down')}
+                      onClick={() => handleMoveItem(todo.id, 'down' as ScopeEnum)}
                       className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
                       disabled={index === archivedTodos.length - 1}
                     >
