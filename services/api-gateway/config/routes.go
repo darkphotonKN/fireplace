@@ -38,14 +38,7 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 		c.Next()
 	})
 
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     corsAllowedOrigins(),
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
-		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
+	router.Use(cors.New(corsConfig()))
 
 	api := router.Group("/api")
 
@@ -165,10 +158,28 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 // devOrigins are the local Next.js dev servers (main checkout + worktrees).
 var devOrigins = []string{"http://localhost:3010", "http://localhost:3011", "http://localhost:3012"}
 
+// corsConfig is the gateway's CORS policy. Wildcards are on so production can
+// allow every Vercel deployment URL of the client with one entry:
+// https://fireplace-*-kranti-nebhwanis-projects.vercel.app. Each URL embeds a
+// per-deploy hash, so an exact origin breaks on every frontend deploy. One "*"
+// per origin, matched as prefix + suffix, and the team-slug suffix means only
+// this Vercel team's deployments can match.
+func corsConfig() cors.Config {
+	return cors.Config{
+		AllowOrigins:     corsAllowedOrigins(),
+		AllowWildcard:    true,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}
+}
+
 // corsAllowedOrigins reads CORS_ALLOWED_ORIGINS as a comma-separated list of
 // origins (scheme://host, no trailing slash). Unset or empty falls back to the
 // local dev servers, so local development needs no configuration; production
-// sets it to the deployed frontend's origin (docker-compose.prod.yml).
+// sets it to the deployed frontend's origin or a wildcard pattern for it (docker-compose.prod.yml).
 func corsAllowedOrigins() []string {
 	var origins []string
 	for _, o := range strings.Split(os.Getenv("CORS_ALLOWED_ORIGINS"), ",") {
