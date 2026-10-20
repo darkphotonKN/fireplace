@@ -2455,17 +2455,22 @@ export default function Todo({
                         />
                       </svg>
                     </button>
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                      <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-3 shadow-lg">
-                        <p className="text-base text-white mb-1">
+                    {/* Opens upward over the last daily rows. z-50 clears the
+                        rows' z-10 hover menus, the pinned add bar (z-20) and a
+                        dragged row (z-30), all of which otherwise paint over a
+                        z-auto tooltip. Opaque popover tokens so nothing beneath
+                        reads through it in either theme. */}
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                      <div className="bg-popover text-popover-foreground border border-border rounded-lg p-3 shadow-lg">
+                        <p className="text-base mb-1">
                           Focus on what matters most to you
                         </p>
-                        <p className="text-sm text-gray-400">
+                        <p className="text-sm text-muted-foreground">
                           Daily suggestions are driven by your long-term goals
                           and priorities
                         </p>
                       </div>
-                      <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-white/5 border-r border-b border-white/10 transform rotate-45"></div>
+                      <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-popover border-r border-b border-border rotate-45"></div>
                     </div>
                   </div>
                 </div>

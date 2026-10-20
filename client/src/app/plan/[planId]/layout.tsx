@@ -94,8 +94,11 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
   return (
     <main className="min-h-screen p-8">
       <div className="relative max-w-7xl mx-auto space-y-8">
-        {/* Title Section */}
-        <div className="backdrop-blur-sm rounded-2xl p-8 shadow-lg bg-white/5 dark:bg-gray-900/10">
+        {/* Title Section. `relative z-10` lifts this card's stacking context
+            (backdrop-blur creates one) above the later-in-DOM Daily card, which
+            is its own stacking context too; without it the focus tooltip that
+            opens downward is painted under Daily whatever its own z-index. */}
+        <div className="relative z-10 backdrop-blur-sm rounded-2xl p-8 shadow-lg bg-white/5 dark:bg-gray-900/10">
           <h1 className="text-4xl font-bold mb-2">
             {isLoading ? "Loading..." : plan?.name || "Plan Details"}
           </h1>
@@ -109,7 +112,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
             <div className="relative group">
               <button
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                aria-label="Information about daily suggestions"
+                aria-label="Information about plan focus"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -124,7 +127,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
                   />
                 </svg>
               </button>
-              <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-[9999]">
+              <div className="absolute right-0 top-full mt-2 w-64 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-[9999]">
                 <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 shadow-xl">
                   <p className="text-xs text-white mb-1">{plan?.focus}</p>
                   <p className="text-xs text-gray-400">
@@ -132,7 +135,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
                     insights and suggestions provided for your plan.
                   </p>
                 </div>
-                <div className="absolute left-1/2 -translate-x-1/2 -top-1 w-2 h-2 bg-gray-900 border-l border-t border-gray-700 transform -rotate-45"></div>
+                <div className="absolute right-1 -top-1 w-2 h-2 bg-gray-900 border-l border-t border-gray-700 transform -rotate-45"></div>
               </div>
             </div>
           </div>
