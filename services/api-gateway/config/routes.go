@@ -3,6 +3,7 @@ package config
 import (
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	commonbroker "github.com/darkphotonKN/fireplace/common/broker"
@@ -37,9 +38,8 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 		c.Next()
 	})
 
-	// TODO: CORS for development, remove in PROD
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3010", "http://localhost:3011", "http://localhost:3012"},
+		AllowOrigins:     corsAllowedOrigins(),
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
@@ -160,6 +160,26 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 	jobManager.StartAll()
 
 	return router
+}
+
+// devOrigins are the local Next.js dev servers (main checkout + worktrees).
+var devOrigins = []string{"http://localhost:3010", "http://localhost:3011", "http://localhost:3012"}
+
+// corsAllowedOrigins reads CORS_ALLOWED_ORIGINS as a comma-separated list of
+// origins (scheme://host, no trailing slash). Unset or empty falls back to the
+// local dev servers, so local development needs no configuration; production
+// sets it to the deployed frontend's origin (docker-compose.prod.yml).
+func corsAllowedOrigins() []string {
+	var origins []string
+	for _, o := range strings.Split(os.Getenv("CORS_ALLOWED_ORIGINS"), ",") {
+		if o = strings.TrimRight(strings.TrimSpace(o), "/"); o != "" {
+			origins = append(origins, o)
+		}
+	}
+	if len(origins) == 0 {
+		return devOrigins
+	}
+	return origins
 }
 
 // parseDurationOr returns the parsed env var or fallback on error/empty.

@@ -1,6 +1,33 @@
 # Deploying Fireplace
 
-Single VPS, compose stack, Caddy terminating TLS (ADR-0012).
+The backend runs on the shared DigitalOcean droplet (`206.189.40.30`, also home to tomato-timer
+and After Dark), behind that droplet's edge Caddy (ADR-0012 as amended by ADR-0017). The
+frontend runs on Vercel.
+
+- **API:** `https://fireplace.206-189-40-30.sslip.io`
+- **Stack on the droplet:** `/opt/fireplace`
+- **Images:** `ghcr.io/darkphotonkn/fireplace-{api-gateway,plan-service,insights-service}`
+
+## Shape
+
+```
+push to main (backend paths)
+  └─ GitHub Actions  .github/workflows/deploy.yml
+       ├─ build   3 images ─push─▶ GHCR (:latest, :<sha>)
+       └─ deploy  ssh droplet: sync compose files, pull :<sha>, up -d, verify HTTPS
+
+  browser ──▶ Vercel (client/)
+     │
+     └──443──▶ edge Caddy (tomato-timer stack, holds 80/443 for every app)
+                  │  tomato-timer_default network
+                  ▼
+               api-gateway:8080 ─┬─gRPC──▶ plan-service:7103
+                                 ├─gRPC──▶ insights-service:7106
+                                 └─SQL───▶ postgres:5432 (three databases)
+                                 (+ RabbitMQ, Redis — fireplace-network only)
+```
+
+Only the gateway is on the edge network. Nothing in this stack publishes a host port.
 
 ## The three compose files
 
@@ -8,7 +35,7 @@ Single VPS, compose stack, Caddy terminating TLS (ADR-0012).
 |---|---|---|
 | `docker-compose.yml` | always | every service; **publishes no host ports** |
 | `docker-compose.override.yml` | automatically, local only | dev ports (8080, 5500, 6500, 5683, 15683, 6380) + the test Postgres |
-| `docker-compose.prod.yml` | only when named explicitly | Caddy on 80/443, `restart: unless-stopped`, and every secret made **required** |
+| `docker-compose.prod.yml` | only when named explicitly | GHCR images (no builds), the gateway on the edge network, `restart: unless-stopped`, and every secret made **required** |
 
 The base file holds the production posture. Compose loads `override.yml` automatically,
 which is what makes local development convenient — and what makes production safe, because
@@ -18,39 +45,45 @@ production simply does not load it.
 # local
 docker compose up -d
 
-# production
+# production (on the droplet, /opt/fireplace/.env sets COMPOSE_FILE so plain
+# `docker compose` picks up both files)
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-## Production checklist
+## First-time setup
 
-1. **DNS first.** `FIREPLACE_DOMAIN` must already resolve to the box. Caddy obtains a
-   Let's Encrypt certificate on boot and the ACME challenge fails otherwise.
-2. **Secrets from outside the repo.** Copy `.env.example` to `.env` on the server, or export
-   the variables in the unit/shell that runs compose. Every one is `${VAR:?}` in the prod
-   overlay, so a missing value stops the deploy rather than starting with a default that is
-   printed in this repository.
-3. **Generate real passwords.** The dev defaults (`owner` / `app` / `fireplace`) exist so
-   `docker compose up` works on a laptop. They must not survive to production.
-4. **Database credentials are read twice.** The same values create the roles (via
-   `scripts/db/init-databases.sh`) and are used by the containers. They only take effect on
-   an **empty** volume — changing them later needs `docker compose down -v`, which destroys
+1. **`/opt/fireplace/.env` on the droplet**, mode `600`. Start from `.env.example` and add
+   `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml`. Every value is `${VAR:?}` in the
+   prod overlay, so a missing one stops the deploy instead of booting on a default printed in
+   this repository. Generate passwords with `openssl rand -hex 24`. The dev defaults
+   (`owner` / `app` / `fireplace`) must not survive to production.
+2. **Database credentials are read twice.** The same values create the roles (via
+   `scripts/db/init-databases.sh`) and are used by the containers. They only take effect on an
+   **empty** volume, so changing them later needs `docker compose down -v`, which destroys
    data. Set them correctly the first time.
-5. **Firewall.** Only 80 and 443 need to be open. Nothing else publishes a port.
+3. **The edge site block.** Append `deploy/edge-site.caddy` to `/opt/tomato-timer/Caddyfile`,
+   mirror it in tomato-timer's `deploy/Caddyfile` (and regenerate its `bootstrap.sh`), then
+   `docker exec tomato_timer_caddy caddy reload --config /etc/caddy/Caddyfile`. Reload checks
+   the file first, so a bad edit is refused rather than taking the other sites down.
+4. **Repo secrets** `DROPLET_HOST`, `DROPLET_USER`, `DROPLET_SSH_KEY`: the same values
+   tomato-timer and after-dark use. Then run the `deploy` workflow (Actions → deploy → Run
+   workflow).
+5. **Vercel.** Import the repo with root directory `client/` and set
+   `NEXT_PUBLIC_API_BASE_URL=https://fireplace.206-189-40-30.sslip.io`. Put the Vercel origin in
+   `CORS_ALLOWED_ORIGINS` in `/opt/fireplace/.env` and `docker compose up -d api-gateway`.
 6. **Turn on DigitalOcean droplet backups** (ADR-0016). See below.
 
-## What is reachable
+## Day-to-day
 
-Only Caddy. Postgres, RabbitMQ, Redis, plan-service and insights-service publish nothing and
-are reachable solely on the internal Docker network; the gateway is reached only through
-Caddy's reverse proxy.
+Every push to `main` that touches the backend deploys. `client/`, `docs/` and Markdown changes
+are skipped. Actions → deploy → Run workflow redeploys without a commit.
 
-```
-  internet ──443──▶ caddy ──▶ api-gateway:8080
-                                 │
-                                 ├──gRPC──▶ plan-service:7103
-                                 ├──gRPC──▶ insights-service:7106
-                                 └──SQL───▶ postgres:5432 (three databases)
+```bash
+ssh root@206.189.40.30 'cd /opt/fireplace && docker compose ps'
+ssh root@206.189.40.30 'cd /opt/fireplace && docker compose logs -f api-gateway'
+
+# roll back: pin an older commit's images in .env, then
+ssh root@206.189.40.30 'cd /opt/fireplace && docker compose up -d'
 ```
 
 ## Rollout order
