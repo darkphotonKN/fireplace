@@ -1,0 +1,181 @@
+# Deploy the backend to the shared DigitalOcean droplet (ADR-0017).
+#
+#   build  — build the api-gateway, plan-service and insights-service images and
+#            push them to GHCR, tagged :latest and :<sha>.
+#   deploy — SSH to the droplet, sync the compose files, pull, restart, verify.
+#
+# Images are built HERE, never on the droplet: it is a shared 4 GB box running
+# tomato-timer and After Dark too, and compiling three Go services on it would
+# starve them. Pulling prebuilt images deploys in seconds.
+#
+# The frontend is not deployed here — Vercel builds client/ on its own.
+#
+# Repo secrets: DROPLET_HOST, DROPLET_USER, DROPLET_SSH_KEY (the same values the
+# tomato-timer and after-dark repos use). Runtime secrets (database passwords,
+# JWT, OpenAI) never pass through Actions: they live in /opt/fireplace/.env on
+# the droplet (.env.example, deploy/README.md).
+#
+# No test job yet: fireplace's build/test CI is its own piece of work (issue #46).
+# The image build is the compile check.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    # The frontend ships via Vercel; docs don't ship.
+    paths-ignore:
+      - 'client/**'
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false   # never kill a deploy halfway through a migration
+
+env:
+  API_DOMAIN: fireplace.206-189-40-30.sslip.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # required to push to GHCR
+    strategy:
+      matrix:
+        service: [api-gateway, plan-service, insights-service]
+    steps:
+      - uses: actions/checkout@v7
+
+      # GHCR paths must be lowercase; the GitHub username isn't.
+      - name: compute image name
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')-${{ matrix.service }}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build context is the REPO ROOT: each service's go.mod replaces common/
+      # with ../../common (see the Dockerfiles).
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: services/${{ matrix.service }}/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read           # lets the droplet pull the images with this run's token
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: open an SSH session to the droplet
+        env:
+          SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+          HOST: ${{ secrets.DROPLET_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Trust-on-first-use, as in tomato-timer and after-dark.
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      # The repo is the source of truth for the compose files and the role-creating
+      # init script; .env on the droplet is the only file that is not synced.
+      - name: sync the compose files
+        env:
+          HOST: ${{ secrets.DROPLET_HOST }}
+          USER_NAME: ${{ secrets.DROPLET_USER }}
+        run: |
+          ssh -o BatchMode=yes "$USER_NAME@$HOST" 'mkdir -p /opt/fireplace/scripts/db'
+          scp -o BatchMode=yes docker-compose.yml docker-compose.prod.yml "$USER_NAME@$HOST:/opt/fireplace/"
+          scp -o BatchMode=yes scripts/db/init-databases.sh "$USER_NAME@$HOST:/opt/fireplace/scripts/db/"
+
+      - name: pull the new images and restart
+        env:
+          HOST: ${{ secrets.DROPLET_HOST }}
+          USER_NAME: ${{ secrets.DROPLET_USER }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          SHA: ${{ github.sha }}
+        run: |
+          prefix="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+
+          # Log the droplet in with this run's short-lived token (over stdin, never on
+          # a command line), pull, then log out, so no credential outlives the deploy.
+          printf '%s' "$GHCR_TOKEN" | ssh -o BatchMode=yes "$USER_NAME@$HOST" \
+            "docker login ghcr.io -u '$GHCR_USER' --password-stdin >/dev/null"
+
+          # Pin this commit's images. Shell env beats /opt/fireplace/.env in compose
+          # interpolation, so .env's :latest values stay for manual runs.
+          ssh -o BatchMode=yes "$USER_NAME@$HOST" \
+            env PREFIX="$prefix" \
+                GATEWAY_IMAGE="$prefix-api-gateway:$SHA" \
+                PLAN_IMAGE="$prefix-plan-service:$SHA" \
+                INSIGHTS_IMAGE="$prefix-insights-service:$SHA" \
+            bash -se <<'REMOTE'
+          set -euo pipefail
+          cd /opt/fireplace
+          export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+          trap 'docker logout ghcr.io >/dev/null' EXIT
+
+          # Fails here, before anything is touched, when .env lacks a required value.
+          docker compose config --quiet
+
+          docker compose pull gateway-migrate api-gateway plan-migrate plan-service insights-migrate insights-service
+
+          # Each *-migrate container must exit 0 before its service starts
+          # (service_completed_successfully), so a failed migration fails `up` here
+          # and the old containers keep serving.
+          if ! docker compose up -d --remove-orphans; then
+            echo "::error::the stack did not start"
+            docker compose ps -a
+            docker compose logs --tail=60 gateway-migrate plan-migrate insights-migrate api-gateway plan-service insights-service
+            exit 1
+          fi
+
+          # The gateway answers its own OpenAPI document once it is serving.
+          for i in $(seq 1 30); do
+            if docker exec fireplace_api_gateway wget -qO /dev/null http://localhost:8080/api/openapi.json; then
+              echo "gateway serving"; break
+            fi
+            [ "$i" = "30" ] && { echo "::error::gateway did not start serving"; docker compose logs --tail=80 api-gateway plan-service insights-service; exit 1; }
+            sleep 2
+          done
+          docker compose ps
+
+          # Every deploy pulls three :<sha> images, and tagged images are never
+          # "dangling", so `prune` alone keeps every past release on a shared disk.
+          docker image ls --filter "reference=$PREFIX-*" --format '{{.Repository}}:{{.Tag}}' \
+            | grep -v -x -F -e "$GATEWAY_IMAGE" -e "$PLAN_IMAGE" -e "$INSIGHTS_IMAGE" \
+            | xargs -r docker rmi >/dev/null 2>&1 || true
+          docker image prune -f
+          REMOTE
+
+      - name: verify HTTPS from the public internet
+        run: |
+          # Caddy may still be provisioning the certificate on the very first deploy.
+          for i in $(seq 1 10); do
+            if curl -fsS -o /dev/null "https://$API_DOMAIN/api/openapi.json"; then
+              echo "deploy verified: https://$API_DOMAIN"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::https://$API_DOMAIN/api/openapi.json did not answer"
+          exit 1

@@ -1,0 +1,28 @@
+# The Fireplace site block for the droplet's edge Caddy (ADR-0017).
+#
+# The edge Caddy belongs to the tomato-timer stack; this block is appended to
+# /opt/tomato-timer/Caddyfile on the droplet (and mirrored in tomato-timer's
+# deploy/Caddyfile + bootstrap.sh, so a bootstrap re-run keeps it). Change it
+# here, copy it over, then run:
+#   docker exec tomato_timer_caddy caddy reload --config /etc/caddy/Caddyfile
+#
+# sslip.io resolves fireplace.206-189-40-30.sslip.io to 206.189.40.30 with no DNS
+# setup, and Caddy gets a Let's Encrypt certificate for it on the first request.
+# A real domain later is a hostname change here plus a redirect line, as After
+# Dark did.
+#
+# fireplace_api_gateway is a container name on the shared edge network
+# (tomato-timer_default). Nothing else in the fireplace stack is on that network.
+
+fireplace.206-189-40-30.sslip.io {
+	encode zstd gzip
+
+	reverse_proxy fireplace_api_gateway:8080 {
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

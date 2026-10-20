@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { createPlan } from '@/api/plans';
@@ -25,7 +25,7 @@ interface ApiResponse {
   };
 }
 
-export default function CreatePlan() {
+function CreatePlanContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -250,5 +250,15 @@ export default function CreatePlan() {
         </Card>
       </div>
     </main>
+  );
+}
+
+// useSearchParams() needs a Suspense boundary for `next build` to prerender
+// this route; the boundary renders nothing extra.
+export default function CreatePlan() {
+  return (
+    <Suspense>
+      <CreatePlanContent />
+    </Suspense>
   );
 }

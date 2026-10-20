@@ -2,13 +2,13 @@
 
 import { useSearchParams } from 'next/navigation';
 import { Calendar } from '@/components/calendar/Calendar';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { PlanDetailData } from '@/services/api';
 import { getPlan } from '@/api/plans';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 
-export default function CalendarPage() {
+function CalendarPageContent() {
   const searchParams = useSearchParams();
   const planId = searchParams.get('planId');
   const [plan, setPlan] = useState<PlanDetailData | null>(null);
@@ -84,5 +84,15 @@ export default function CalendarPage() {
         <Calendar planId={planId} />
       </div>
     </main>
+  );
+}
+
+// useSearchParams() needs a Suspense boundary for `next build` to prerender
+// this route; the boundary renders nothing extra.
+export default function CalendarPage() {
+  return (
+    <Suspense>
+      <CalendarPageContent />
+    </Suspense>
   );
 }

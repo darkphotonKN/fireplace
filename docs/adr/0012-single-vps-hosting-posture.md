@@ -5,6 +5,10 @@ Date: 2026-08-30
 Scope: root — governs deployment topology, host port exposure, service discovery, secrets and backups
 Related: ADR-0009 (the three services deployed here), ADR-0010 (the database instance this box
 runs), ADR-0011 (what was removed to fit)
+Amended by: **ADR-0016** — §6 (backups). Droplet backups plus an on-demand `pg_dumpall` replace
+the cron to object storage and its restore drill. Every other decision here stands.
+Amended by: **ADR-0017** — §3 (Caddy). The droplet's shared edge Caddy fronts the gateway instead
+of one in this stack, and images are built in CI. Every other decision here stands.
 
 ## Context
 
