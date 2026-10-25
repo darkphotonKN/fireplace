@@ -15,6 +15,7 @@
 - [x] Focus prompt on the authenticated home → FS-none
 - [x] Dashboard home for signed-in users → FS-KSJFR
 - [x] Day-gated focus prompt → FS-KSJFR
+- [ ] Day plan roll-up on home → FS-02JBZ
 
 ## API integration
 
@@ -44,6 +45,14 @@
 
 - [x] Plans sidebar → FS-none
 - [x] Docked sidebar that remembers open or hidden → FS-S6WVY
+
+## Suggestions
+
+- [x] Daily suggestions on the daily tab → FS-none
+- [ ] Today's moves toward milestones → FS-DF4ZB
+- [ ] Suggested steps for a milestone → FS-DF4ZB
+- [ ] Suggested next milestone → FS-DF4ZB
+- [ ] Day plan on the plan page → FS-02JBZ
 
 ## Project Overview
 
@@ -194,7 +203,6 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:6060'
 - archiveChecklistItem(id: string, planId: string): Promise<UpdateResponse>
 - getChecklistSuggestion(planId: string, scope: ScopeType): Promise<SuggestionResponse>
 - getDailyInsights(planId: string): Promise<InsightsResponse>
-- toggleDailyReset(planId: string): Promise<ApiResponse>
 ```
 
 #### Notes Service (`notesService.ts`)

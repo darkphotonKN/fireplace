@@ -15,10 +15,10 @@ read-model, HTTP REST surface, AI suggestions) are listed under **Owned elsewher
 | Term             | Definition                                                                                   |
 | ---------------- | -------------------------------------------------------------------------------------------- |
 | Plan             | A project or learning goal container — `plan_type`: `project` or `learning`                  |
-| Checklist Item   | A task or note within a plan, scoped `daily` (recurring) or `longterm` (milestone)           |
-| Scope            | Whether an item is `daily` (short-term, repeatable) or `longterm` (milestone-based)          |
+| Checklist Item   | A task or note within a plan; every item is `longterm` since `daily` was retired (FS-02JBZ)  |
+| Scope            | An item's list: `longterm`; `daily` is a retired value, refused on write (FS-02JBZ)          |
 | Focus            | A plan's stated objective (`focus`, NOT NULL) — fed to AI by insights-service for context    |
-| Daily Reset      | Bulk reset of completed daily-scoped items to `done=false` (this service's `DailyReset` RPC) |
+| ~~Daily Reset~~  | *Retired (FS-02JBZ).* Was the bulk reset of done daily items; RPC and cron removed           |
 | Task             | Checklist item with `type='task'` (default) — supports the `done` checkbox                   |
 | Note             | Checklist item with `type='note'` — text-only; no checkbox, `done` always false              |
 | Parent Item      | A top-level item (`parent_id IS NULL`) that may have children                                |
@@ -35,7 +35,7 @@ read-model, HTTP REST surface, AI suggestions) are listed under **Owned elsewher
 
 - [x] CRUD for plans
 - [x] Plan types (`project` | `learning`) with a required focus
-- [x] Per-plan daily-reset toggle, defaulted by plan type
+- [ ] ~Per-plan daily-reset toggle, defaulted by plan type~ → removed FS-02JBZ
 - [x] Plan name search
 - [x] Plan sharing, and listing owned ∪ shared-with-me
 - [x] Ownership assertion for sibling services
@@ -49,13 +49,15 @@ read-model, HTTP REST surface, AI suggestions) are listed under **Owned elsewher
 
 - [x] CRUD within a plan, scoped `daily` | `longterm`
 - [x] Archive / unarchive
-- [x] Bulk daily reset
+- [ ] ~Bulk daily reset~ → removed FS-02JBZ
 - [x] List a user's items across their plans
 - [x] `checklist_item.completed` / `.uncompleted` events on done-flip
-- [ ] Daily-items-only-via-AI rule (not currently enforced)
+- [ ] ~Daily-items-only-via-AI rule (not currently enforced)~ → superseded by FS-02JBZ
 - [ ] User-defined item order → FS-0009
 - [ ] Initial items materialized from generated insights → FS-0006
 - [x] Duplicate an item → FS-F6AEE
+- [ ] Self-describing item completion events → FS-DF4ZB
+- [ ] Daily scope retired, existing daily items kept as long-term → FS-02JBZ
 
 ### Plan Calendar (data side)
 
@@ -188,7 +190,6 @@ Partial index `idx_outbox_pending(created_at) WHERE published_at IS NULL`. Drain
 | ListSharedPlans     | user_id, limit, offset                             | ListPlansResponse   | Owned ∪ shared-with-me (UNION over `plan_shares`)       |
 | SearchPlans         | user_id, query, limit, offset                      | SearchPlansResponse | User-scoped `name ILIKE %query%`; returns id/name/desc  |
 | UpdatePlan          | id, user*id, \_optional fields*                    | Plan                | COALESCE partial update; scoped by user_id              |
-| ToggleDailyReset    | id, user_id                                        | Plan                | Flips `daily_reset`                                     |
 | DeletePlan          | id, user_id                                        | Empty               | Deletes plan (children cascade); `plan.deleted` is stub |
 | AssertPlanOwnership | plan_id, user_id                                   | Empty               | `ErrNotFound` if absent, `ErrForbidden` if other owner  |
 
@@ -207,7 +208,6 @@ Partial index `idx_outbox_pending(created_at) WHERE published_at IS NULL`. Drain
 | UpdateItemDates       | id, start_date?, due_date?                         | ChecklistItem                    | Set/leave each; validates `start <= due`                 |
 | ArchiveItem           | id, archived                                       | ChecklistItem                    |                                                          |
 | DeleteItem            | id                                                 | Empty                            | Children cascade via FK                                  |
-| DailyReset            | (none)                                             | DailyResetResponse (reset_count) | Bulk CTE reset; invoked by api-gateway cron              |
 
 ---
 
@@ -229,10 +229,8 @@ Consumer error policy: `ErrTransient` → `Nack(requeue=true)`; parse/permanent 
 
 ## Business Rules
 
-**Daily Reset** — `DailyReset` RPC runs a single bulk CTE: `UPDATE checklist_items SET
-done=false` where the item is `done=true`, `scope='daily'`, and its plan has
-`daily_reset=true`. Row-by-row updates are not used. The nightly schedule (14:00 UTC cron)
-that calls this RPC lives in **api-gateway**, not here.
+**Daily Reset** — *retired (FS-02JBZ R52).* The `DailyReset` and `ToggleDailyReset` RPCs
+are removed; `plans.daily_reset` stays in the schema with no effect (R55).
 
 **Checklist Scope Validation** — real allowed values are **`'daily'` and `'longterm'`**,
 enforced by DB CHECK `check_valid_scope` (migration 000008) and by service-layer checks in
@@ -295,7 +293,7 @@ returns owned plans UNION plans shared with the user. Share insert is idempotent
   bar, week/month grid) → **calendar-service**. This service only supplies the raw
   date-windowed items via `ListItemsInDateWindow`.
 - **HTTP REST surface + drag/drop UI** (all `/api/plans/...` routes, `PATCH /dates`,
-  indent/outdent keyboard flows, the nightly daily-reset cron) → **api-gateway** and
+  indent/outdent keyboard flows) → **api-gateway** and
   **client** (flow-client).
 - **AI daily suggestions** that feed `daily`-scoped items (checklist suggestion / daily
   suggestion accept flow) → **insights-service**.

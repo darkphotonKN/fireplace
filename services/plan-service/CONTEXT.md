@@ -75,6 +75,34 @@ trimmed, blank clears to null), set only through item update, never at create. G
 this service never says *milestone* (ADR-0014); the client reads it as a milestone's "why it
 matters" (FS-043WP).
 
+## Checklist items and the retired daily scope (FS-02JBZ)
+
+**Scope** — an item's list, `longterm` or `daily` (`checklist_items.scope`). Since FS-02JBZ every
+item is long-term in practice: `daily` survives only as an enum value in the schema and the
+contract, so an old client's request is well-formed and its refusal is a domain decision. Listing
+or reordering by `daily` is accepted and finds nothing.
+
+**Daily Scope** — *retired (FS-02JBZ D12).* Formerly the short-term, repeatable list beside the
+long-term one. Migration 000022 rewrites every `daily` row to `longterm`, keeping `done`, dates,
+parents, intention and archived state, and places them after the existing long-term siblings.
+Creating or updating an item to `daily` is refused with `DAILY_SCOPE_RETIRED`. Do not use
+"daily item" for anything new; the daily surface is now insights-service's **day plan**, which
+this service never sees.
+
+**Daily Reset** — *retired (FS-02JBZ).* The bulk `DailyReset` RPC that un-completed done daily
+items in plans with `daily_reset = true`, triggered nightly by the gateway. Removed with
+`ToggleDailyReset` and the gateway's cron job.
+
+**dailyReset** — *vestigial.* The `plans.daily_reset` column and field still exist, are still
+accepted on create and update and still returned, and do nothing. Dropping them is later
+cleanup; do not read meaning into the value.
+
+**Done** — an item's `done`: the item is **finished**. Set and cleared only by item update; nothing
+resets it on a schedule any more. One meaning only: insights-service's **day tick** ("done for
+today") is a separate per-user fact stored there and never changes `done`, and `done` never
+changes it. Recurrence is not a concept in this service; the only recurrence on the platform is
+insights-service's revision ladder.
+
 ## Access
 
 **Relation** — a user's relation to one plan, exactly one of **owner**, **member** or **none**
