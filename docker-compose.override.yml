@@ -34,8 +34,9 @@ services:
   # grant model instead of routing around it. A separate SERVER, not just
   # separate databases, so a test that drops and recreates can never reach dev
   # data by mistyping a name. Local and CI only; the VPS runs no test instance.
+  # Same image as the shared instance, changed together (ADR-0018, ADR-0010 §5).
   postgres-test:
-    image: postgres:17
+    image: pgvector/pgvector:0.8.7-pg17-trixie
     container_name: fireplace_postgres_test
     environment:
       POSTGRES_USER: postgres

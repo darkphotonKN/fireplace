@@ -88,8 +88,32 @@ SQL
 SQL
 }
 
+# pgvector (ADR-0018, FS-DF4ZB R31b). The ONE extension created as superuser,
+# deliberately outside the SET ROLE block above.
+#
+# pgvector is NOT a trusted extension (its vector.control has no trusted = true),
+# so no database owner can create it: only the instance superuser can. That is
+# why this cannot be a migration (migrations run as <db>_owner) and why the
+# owner-creates-extensions rule above does not apply. This step creates the
+# extension and nothing else: no role gains superuser or CREATE from it.
+#
+# fireplace_insights ONLY. The library being in the image is not permission to
+# use it elsewhere: fireplace_plans and fireplace_gateway never get it.
+#
+# Like the rest of this script it runs only on an EMPTY volume. An existing
+# volume needs the documented one-off in deploy/README.md ("The vector
+# extension on an existing volume") before the rag_chunks migration reaches it.
+create_superuser_extension() {
+  local db="$1${SUFFIX}" ext="$2"
+  echo "→ ${db}: creating extension ${ext} as superuser"
+  psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "${db}" \
+    -c "CREATE EXTENSION IF NOT EXISTS ${ext}"
+}
+
 create_db fireplace_gateway  "${GATEWAY_OWNER_PASSWORD:-owner}"  "${GATEWAY_APP_PASSWORD:-app}"
 create_db fireplace_plans    "${PLANS_OWNER_PASSWORD:-owner}"    "${PLANS_APP_PASSWORD:-app}"
 create_db fireplace_insights "${INSIGHTS_OWNER_PASSWORD:-owner}" "${INSIGHTS_APP_PASSWORD:-app}"
+
+create_superuser_extension fireplace_insights vector
 
 echo "✓ three databases, six roles ready${SUFFIX:+ (suffix: ${SUFFIX})}"
