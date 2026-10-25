@@ -210,7 +210,9 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient, access *Acces
 		Summary: "Create a checklist item",
 		Description: "Creates a task or note under the plan. `scope` and `type` are optional; " +
 			"plan-service defaults them to longterm and task. Parent nesting is validated " +
-			"downstream — a parent must be a top-level item in the same plan.",
+			"downstream — a parent must be a top-level item in the same plan. The daily " +
+			"scope is retired: `scope: daily` is well-formed but refused with 400 " +
+			"DAILY_SCOPE_RETIRED.",
 		Errors: writeErrs,
 	}, func(ctx context.Context, in *CreateChecklistInput) (*ChecklistOutput, error) {
 		userID, err := authorize(ctx, "create checklist item", in.PlanID)
@@ -263,7 +265,8 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient, access *Acces
 			"leave it unchanged or send a string to set it; the server trims it, an empty " +
 			"result clears it, and more than 280 characters after trimming is 400 " +
 			"VALIDATION_FAILED. Conversion, re-parenting and the intention length rules are " +
-			"enforced downstream.",
+			"enforced downstream. The daily scope is retired: `scope: daily` is well-formed " +
+			"but refused with 400 DAILY_SCOPE_RETIRED.",
 		Errors: writeErrs,
 	}, func(ctx context.Context, in *UpdateChecklistInput) (*ChecklistOutput, error) {
 		userID, err := authorize(ctx, "update checklist item", in.PlanID)

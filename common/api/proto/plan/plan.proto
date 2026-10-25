@@ -16,7 +16,6 @@ service PlanService {
   rpc ListSharedPlans(ListSharedPlansRequest) returns (ListPlansResponse);
   rpc SearchPlans(SearchPlansRequest) returns (SearchPlansResponse);
   rpc UpdatePlan(UpdatePlanRequest) returns (Plan);
-  rpc ToggleDailyReset(ToggleDailyResetRequest) returns (Plan);
   rpc DeletePlan(DeletePlanRequest) returns (google.protobuf.Empty);
 
   // AssertPlanOwnership returns OK if the plan exists and is owned by user_id;
@@ -118,11 +117,6 @@ message UpdatePlanRequest {
   optional string description = 5;
   optional string plan_type = 6;
   optional bool daily_reset = 7;
-}
-
-message ToggleDailyResetRequest {
-  string id = 1;
-  string user_id = 2;
 }
 
 message DeletePlanRequest {

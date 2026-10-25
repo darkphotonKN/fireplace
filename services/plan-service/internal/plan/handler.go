@@ -16,7 +16,6 @@ type Service interface {
 	Create(ctx context.Context, in *CreatePlanInput) (*Plan, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Plan, error)
 	Update(ctx context.Context, in *UpdatePlanInput) (*Plan, error)
-	ToggleDailyReset(ctx context.Context, id, userID uuid.UUID) (*Plan, error)
 	Delete(ctx context.Context, id, userID uuid.UUID) error
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]*Plan, error)
 	ListAccessible(ctx context.Context, userID uuid.UUID) ([]*Plan, error)
@@ -163,22 +162,6 @@ func (h *Handler) UpdatePlan(ctx context.Context, req *pb.UpdatePlanRequest) (*p
 	})
 	if err != nil {
 		return nil, commongrpc.Fail(ctx, "plan: update plan", err)
-	}
-	return planToProto(p), nil
-}
-
-func (h *Handler) ToggleDailyReset(ctx context.Context, req *pb.ToggleDailyResetRequest) (*pb.Plan, error) {
-	id, err := uuid.Parse(req.Id)
-	if err != nil {
-		return nil, commongrpc.Fail(ctx, "plan: toggle daily reset", badUUID("id", req.Id))
-	}
-	userID, err := uuid.Parse(req.UserId)
-	if err != nil {
-		return nil, commongrpc.Fail(ctx, "plan: toggle daily reset", badUUID("user_id", req.UserId))
-	}
-	p, err := h.service.ToggleDailyReset(ctx, id, userID)
-	if err != nil {
-		return nil, commongrpc.Fail(ctx, "plan: toggle daily reset", err)
 	}
 	return planToProto(p), nil
 }

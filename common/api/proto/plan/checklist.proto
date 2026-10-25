@@ -35,10 +35,6 @@ service ChecklistService {
   rpc UpdateItemDates(UpdateItemDatesRequest) returns (ChecklistItem);
   rpc ArchiveItem(ArchiveItemRequest) returns (ChecklistItem);
   rpc DeleteItem(DeleteItemRequest) returns (google.protobuf.Empty);
-
-  // DailyReset un-completes all daily-scope items across all plans (job-scheduled,
-  // called from the gateway's nightly job in 4c).
-  rpc DailyReset(DailyResetRequest) returns (DailyResetResponse);
 }
 
 message ChecklistItem {
@@ -180,8 +176,3 @@ message DeleteItemRequest {
   string plan_id = 3;
 }
 
-message DailyResetRequest {}
-
-message DailyResetResponse {
-  int32 reset_count = 1;
-}
