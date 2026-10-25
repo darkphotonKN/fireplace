@@ -18,8 +18,8 @@ import (
 //
 // THE SPLIT THAT MAKES CODE-FIRST GENERATION POSSIBLE:
 //
-//	SetupRouter(db, registry)  = WIRING. Needs Postgres, RabbitMQ, an API key,
-//	                             and starts cron jobs. Cannot run in CI.
+//	SetupRouter(db, registry)  = WIRING. Needs Postgres, RabbitMQ and an API
+//	                             key. Cannot run in CI.
 //	RegisterAPI(engine, deps)  = REGISTRATION. Pure. Reads type signatures only.
 //	                             cmd/openapi calls THIS to emit the spec.
 //
@@ -71,6 +71,9 @@ type APIDeps struct {
 	// Two, not one: the router builds a separate service per generator.
 	Suggestions      insights.SuggestionsService
 	VideoSuggestions insights.VideoSuggestionsService
+	// DayPlans serves the day plan (FS-02JBZ), through the insights-service
+	// gRPC client.
+	DayPlans insights.DayPlanService
 
 	// Analytics may be nil — its operation answers 501 before consulting it.
 	Analytics useranalytics.AnalyticsService
@@ -169,6 +172,7 @@ func RegisterAPI(engine *gin.Engine, deps APIDeps, protect func(huma.Context, fu
 	plangw.RegisterMemberOperations(api, deps.Members, deps.People, deps.PlanAccess, protect, Secured)
 	notes.RegisterNotesOperations(api, deps.Notes, deps.PlanAccess, protect, Secured)
 	insights.RegisterInsightsOperations(api, deps.Suggestions, deps.VideoSuggestions, deps.PlanAccess, protect, Secured)
+	insights.RegisterDayPlanOperations(api, deps.DayPlans, deps.PlanAccess, protect, Secured)
 	useranalytics.RegisterAnalyticsOperations(api, deps.Analytics, protect, Secured)
 	calendargw.RegisterCalendarOperations(api, deps.Calendar, protect, Secured)
 	return api

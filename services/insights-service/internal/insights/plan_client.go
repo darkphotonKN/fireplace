@@ -8,6 +8,8 @@ import (
 	planpb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 	"github.com/darkphotonKN/fireplace/common/discovery"
+	"github.com/darkphotonKN/fireplace/services/insights-service/internal/dayplan"
+	"github.com/darkphotonKN/fireplace/services/insights-service/internal/guided"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -130,6 +132,81 @@ func (c *PlanClient) GetPlanContext(ctx context.Context, planID, userID uuid.UUI
 		Focus:          plan.Focus,
 		ChecklistItems: checklist,
 	}, nil
+}
+
+// GetPlanProfile returns the plan's type and focus, which the day plan's
+// prompt and rule gate read beside its items (FS-02JBZ R7, R17). plan-service
+// answers NotFound for a plan it does not have.
+func (c *PlanClient) GetPlanProfile(ctx context.Context, planID, userID uuid.UUID) (dayplan.PlanProfile, error) {
+	conn, err := c.ensureConn(ctx)
+	if err != nil {
+		return dayplan.PlanProfile{}, fmt.Errorf("insights: plan client: connect: %w", err)
+	}
+	plan, err := planpb.NewPlanServiceClient(conn).GetPlan(ctx, &planpb.GetPlanRequest{
+		Id:     planID.String(),
+		UserId: userID.String(),
+	})
+	if err != nil {
+		return dayplan.PlanProfile{}, fromPlanService("get plan", err)
+	}
+	return toPlanProfile(plan), nil
+}
+
+func toPlanProfile(p *planpb.Plan) dayplan.PlanProfile {
+	return dayplan.PlanProfile{Type: p.GetPlanType(), Focus: p.GetFocus()}
+}
+
+// ListPlanItems returns every item plan-service lists for the plan, with the
+// fields guided suggestions and the day plan need (id, parent id, type, scope,
+// done, archived, due date, last update). It does not filter: which items form
+// the plan tree is the guided flow's rule (FS-DF4ZB R1), not this client's.
+func (c *PlanClient) ListPlanItems(ctx context.Context, planID, userID uuid.UUID) ([]guided.PlanItem, error) {
+	conn, err := c.ensureConn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("insights: plan client: connect: %w", err)
+	}
+	resp, err := planpb.NewChecklistServiceClient(conn).ListItems(ctx, &planpb.ListItemsRequest{
+		PlanId: planID.String(),
+		UserId: userID.String(),
+	})
+	if err != nil {
+		return nil, fromPlanService("list items", err)
+	}
+	return toPlanItems(resp.GetItems())
+}
+
+// toPlanItems maps plan-service items. A malformed id from plan-service is a
+// server fault, not something to drop silently.
+func toPlanItems(items []*planpb.ChecklistItem) ([]guided.PlanItem, error) {
+	out := make([]guided.PlanItem, 0, len(items))
+	for _, it := range items {
+		id, err := uuid.Parse(it.GetId())
+		if err != nil {
+			return nil, fmt.Errorf("insights: plan client: item id %q: %w", it.GetId(), err)
+		}
+		item := guided.PlanItem{
+			ID:          id,
+			Description: it.GetDescription(),
+			Type:        it.GetType(),
+			Scope:       it.GetScope(),
+			Done:        it.GetDone(),
+			Archived:    it.GetArchived(),
+			UpdatedAt:   it.GetUpdatedAt().AsTime(),
+		}
+		if it.GetParentId() != "" {
+			parentID, err := uuid.Parse(it.GetParentId())
+			if err != nil {
+				return nil, fmt.Errorf("insights: plan client: parent id %q: %w", it.GetParentId(), err)
+			}
+			item.ParentID = &parentID
+		}
+		if it.DueDate != nil {
+			due := it.GetDueDate().AsTime()
+			item.DueDate = &due
+		}
+		out = append(out, item)
+	}
+	return out, nil
 }
 
 // Close releases the underlying gRPC connection.

@@ -19,9 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	InsightsService_GenerateSuggestion_FullMethodName       = "/insights.InsightsService/GenerateSuggestion"
-	InsightsService_GenerateDailySuggestions_FullMethodName = "/insights.InsightsService/GenerateDailySuggestions"
-	InsightsService_SuggestVideos_FullMethodName            = "/insights.InsightsService/SuggestVideos"
+	InsightsService_GenerateSuggestion_FullMethodName = "/insights.InsightsService/GenerateSuggestion"
+	InsightsService_SuggestVideos_FullMethodName      = "/insights.InsightsService/SuggestVideos"
+	InsightsService_GetDayPlan_FullMethodName         = "/insights.InsightsService/GetDayPlan"
+	InsightsService_PlanMyDay_FullMethodName          = "/insights.InsightsService/PlanMyDay"
+	InsightsService_TickDayPlanEntry_FullMethodName   = "/insights.InsightsService/TickDayPlanEntry"
+	InsightsService_UntickDayPlanEntry_FullMethodName = "/insights.InsightsService/UntickDayPlanEntry"
+	InsightsService_SetItemRevisions_FullMethodName   = "/insights.InsightsService/SetItemRevisions"
 )
 
 // InsightsServiceClient is the client API for InsightsService service.
@@ -41,11 +45,50 @@ type InsightsServiceClient interface {
 	// GenerateSuggestion returns a single, actionable next checklist item for the
 	// plan, derived from its focus + current checklist.
 	GenerateSuggestion(ctx context.Context, in *GenerateSuggestionRequest, opts ...grpc.CallOption) (*GenerateSuggestionResponse, error)
-	// GenerateDailySuggestions returns a handful of daily focus suggestions
-	// derived from longterm checklist items + plan focus.
-	GenerateDailySuggestions(ctx context.Context, in *GenerateDailySuggestionsRequest, opts ...grpc.CallOption) (*GenerateDailySuggestionsResponse, error)
 	// SuggestVideos returns recommended learning videos for the plan.
 	SuggestVideos(ctx context.Context, in *SuggestVideosRequest, opts ...grpc.CallOption) (*SuggestVideosResponse, error)
+	// GetDayPlan returns the stored day plan for (plan, user, date), or status
+	// "not_planned" with no groups when none is stored (FS-02JBZ R14). It never
+	// calls the model, never draws by rules and never copies another date's
+	// plan forward. A date more than one day from the server's UTC date is
+	// InvalidArgument with ErrorInfo reason BRIEF_DATE_OUT_OF_RANGE.
+	GetDayPlan(ctx context.Context, in *GetDayPlanRequest, opts ...grpc.CallOption) (*GetDayPlanResponse, error)
+	// PlanMyDay draws or redraws the day plan for (plan, user, date) and returns
+	// what the key then serves (FS-02JBZ R13-R21). An unchanged plan returns the
+	// stored ai plan with no generation. The key's first successful AI draw is
+	// free; later ones spend from the per (plan, user, date) refresh counter,
+	// and past its cap of 3 the call is ResourceExhausted with ErrorInfo reason
+	// BRIEF_REFRESH_LIMIT_REACHED and the stored plan is untouched. A plan
+	// plan-service does not have is NotFound. A failed generation (the token
+	// budget spent, the provider down, output outside the schema) is not an
+	// error: it falls back to a rules plan, stored with source "rules", and
+	// gives back any refresh it spent (R36). A draw that loses to a concurrent
+	// draw, tick or untick returns the stored plan and spends nothing.
+	PlanMyDay(ctx context.Context, in *PlanMyDayRequest, opts ...grpc.CallOption) (*PlanMyDayResponse, error)
+	// TickDayPlanEntry marks an entry of the caller's day plan done for its plan
+	// date and returns the entry, ticked (FS-02JBZ R24-R28, R30). An
+	// existing_item entry takes no item_id, or its own. An unbound new_step
+	// entry needs item_id: the item the user created from it, which must be a
+	// non-archived task under the entry's parent in the same plan; the entry is
+	// then bound (kind existing_item for that item, text and reason kept).
+	// Refusals: an entry that is not the caller's is NotFound; an entry that
+	// cannot be ticked is FailedPrecondition with ErrorInfo reason
+	// DAY_PLAN_ENTRY_NOT_TICKABLE; a plan date outside the date rule is
+	// InvalidArgument with BRIEF_DATE_OUT_OF_RANGE. Ticking a ticked entry
+	// returns it unchanged. The item's done is never changed.
+	TickDayPlanEntry(ctx context.Context, in *TickDayPlanEntryRequest, opts ...grpc.CallOption) (*TickDayPlanEntryResponse, error)
+	// UntickDayPlanEntry removes the day tick of an entry of the caller's day
+	// plan for its plan date (FS-02JBZ R29, R30). Unticking an unticked entry
+	// succeeds and changes nothing. Refusals are TickDayPlanEntry's NotFound
+	// and date rule.
+	UntickDayPlanEntry(ctx context.Context, in *UntickDayPlanEntryRequest, opts ...grpc.CallOption) (*UntickDayPlanEntryResponse, error)
+	// SetItemRevisions switches the revision ladder on or off for one item of
+	// the caller's plan (FS-02JBZ R47, R48). Off cancels the item's open
+	// revision and schedules no more; on schedules nothing by itself, and the
+	// item's next day tick schedules the next rung, never past revision 3. A
+	// plan the caller cannot access, or an item not in the plan, is NotFound.
+	// On a project plan it is accepted and has no effect.
+	SetItemRevisions(ctx context.Context, in *SetItemRevisionsRequest, opts ...grpc.CallOption) (*SetItemRevisionsResponse, error)
 }
 
 type insightsServiceClient struct {
@@ -66,20 +109,60 @@ func (c *insightsServiceClient) GenerateSuggestion(ctx context.Context, in *Gene
 	return out, nil
 }
 
-func (c *insightsServiceClient) GenerateDailySuggestions(ctx context.Context, in *GenerateDailySuggestionsRequest, opts ...grpc.CallOption) (*GenerateDailySuggestionsResponse, error) {
+func (c *insightsServiceClient) SuggestVideos(ctx context.Context, in *SuggestVideosRequest, opts ...grpc.CallOption) (*SuggestVideosResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GenerateDailySuggestionsResponse)
-	err := c.cc.Invoke(ctx, InsightsService_GenerateDailySuggestions_FullMethodName, in, out, cOpts...)
+	out := new(SuggestVideosResponse)
+	err := c.cc.Invoke(ctx, InsightsService_SuggestVideos_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *insightsServiceClient) SuggestVideos(ctx context.Context, in *SuggestVideosRequest, opts ...grpc.CallOption) (*SuggestVideosResponse, error) {
+func (c *insightsServiceClient) GetDayPlan(ctx context.Context, in *GetDayPlanRequest, opts ...grpc.CallOption) (*GetDayPlanResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SuggestVideosResponse)
-	err := c.cc.Invoke(ctx, InsightsService_SuggestVideos_FullMethodName, in, out, cOpts...)
+	out := new(GetDayPlanResponse)
+	err := c.cc.Invoke(ctx, InsightsService_GetDayPlan_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *insightsServiceClient) PlanMyDay(ctx context.Context, in *PlanMyDayRequest, opts ...grpc.CallOption) (*PlanMyDayResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PlanMyDayResponse)
+	err := c.cc.Invoke(ctx, InsightsService_PlanMyDay_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *insightsServiceClient) TickDayPlanEntry(ctx context.Context, in *TickDayPlanEntryRequest, opts ...grpc.CallOption) (*TickDayPlanEntryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TickDayPlanEntryResponse)
+	err := c.cc.Invoke(ctx, InsightsService_TickDayPlanEntry_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *insightsServiceClient) UntickDayPlanEntry(ctx context.Context, in *UntickDayPlanEntryRequest, opts ...grpc.CallOption) (*UntickDayPlanEntryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UntickDayPlanEntryResponse)
+	err := c.cc.Invoke(ctx, InsightsService_UntickDayPlanEntry_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *insightsServiceClient) SetItemRevisions(ctx context.Context, in *SetItemRevisionsRequest, opts ...grpc.CallOption) (*SetItemRevisionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetItemRevisionsResponse)
+	err := c.cc.Invoke(ctx, InsightsService_SetItemRevisions_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -103,11 +186,50 @@ type InsightsServiceServer interface {
 	// GenerateSuggestion returns a single, actionable next checklist item for the
 	// plan, derived from its focus + current checklist.
 	GenerateSuggestion(context.Context, *GenerateSuggestionRequest) (*GenerateSuggestionResponse, error)
-	// GenerateDailySuggestions returns a handful of daily focus suggestions
-	// derived from longterm checklist items + plan focus.
-	GenerateDailySuggestions(context.Context, *GenerateDailySuggestionsRequest) (*GenerateDailySuggestionsResponse, error)
 	// SuggestVideos returns recommended learning videos for the plan.
 	SuggestVideos(context.Context, *SuggestVideosRequest) (*SuggestVideosResponse, error)
+	// GetDayPlan returns the stored day plan for (plan, user, date), or status
+	// "not_planned" with no groups when none is stored (FS-02JBZ R14). It never
+	// calls the model, never draws by rules and never copies another date's
+	// plan forward. A date more than one day from the server's UTC date is
+	// InvalidArgument with ErrorInfo reason BRIEF_DATE_OUT_OF_RANGE.
+	GetDayPlan(context.Context, *GetDayPlanRequest) (*GetDayPlanResponse, error)
+	// PlanMyDay draws or redraws the day plan for (plan, user, date) and returns
+	// what the key then serves (FS-02JBZ R13-R21). An unchanged plan returns the
+	// stored ai plan with no generation. The key's first successful AI draw is
+	// free; later ones spend from the per (plan, user, date) refresh counter,
+	// and past its cap of 3 the call is ResourceExhausted with ErrorInfo reason
+	// BRIEF_REFRESH_LIMIT_REACHED and the stored plan is untouched. A plan
+	// plan-service does not have is NotFound. A failed generation (the token
+	// budget spent, the provider down, output outside the schema) is not an
+	// error: it falls back to a rules plan, stored with source "rules", and
+	// gives back any refresh it spent (R36). A draw that loses to a concurrent
+	// draw, tick or untick returns the stored plan and spends nothing.
+	PlanMyDay(context.Context, *PlanMyDayRequest) (*PlanMyDayResponse, error)
+	// TickDayPlanEntry marks an entry of the caller's day plan done for its plan
+	// date and returns the entry, ticked (FS-02JBZ R24-R28, R30). An
+	// existing_item entry takes no item_id, or its own. An unbound new_step
+	// entry needs item_id: the item the user created from it, which must be a
+	// non-archived task under the entry's parent in the same plan; the entry is
+	// then bound (kind existing_item for that item, text and reason kept).
+	// Refusals: an entry that is not the caller's is NotFound; an entry that
+	// cannot be ticked is FailedPrecondition with ErrorInfo reason
+	// DAY_PLAN_ENTRY_NOT_TICKABLE; a plan date outside the date rule is
+	// InvalidArgument with BRIEF_DATE_OUT_OF_RANGE. Ticking a ticked entry
+	// returns it unchanged. The item's done is never changed.
+	TickDayPlanEntry(context.Context, *TickDayPlanEntryRequest) (*TickDayPlanEntryResponse, error)
+	// UntickDayPlanEntry removes the day tick of an entry of the caller's day
+	// plan for its plan date (FS-02JBZ R29, R30). Unticking an unticked entry
+	// succeeds and changes nothing. Refusals are TickDayPlanEntry's NotFound
+	// and date rule.
+	UntickDayPlanEntry(context.Context, *UntickDayPlanEntryRequest) (*UntickDayPlanEntryResponse, error)
+	// SetItemRevisions switches the revision ladder on or off for one item of
+	// the caller's plan (FS-02JBZ R47, R48). Off cancels the item's open
+	// revision and schedules no more; on schedules nothing by itself, and the
+	// item's next day tick schedules the next rung, never past revision 3. A
+	// plan the caller cannot access, or an item not in the plan, is NotFound.
+	// On a project plan it is accepted and has no effect.
+	SetItemRevisions(context.Context, *SetItemRevisionsRequest) (*SetItemRevisionsResponse, error)
 	mustEmbedUnimplementedInsightsServiceServer()
 }
 
@@ -121,11 +243,23 @@ type UnimplementedInsightsServiceServer struct{}
 func (UnimplementedInsightsServiceServer) GenerateSuggestion(context.Context, *GenerateSuggestionRequest) (*GenerateSuggestionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GenerateSuggestion not implemented")
 }
-func (UnimplementedInsightsServiceServer) GenerateDailySuggestions(context.Context, *GenerateDailySuggestionsRequest) (*GenerateDailySuggestionsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GenerateDailySuggestions not implemented")
-}
 func (UnimplementedInsightsServiceServer) SuggestVideos(context.Context, *SuggestVideosRequest) (*SuggestVideosResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SuggestVideos not implemented")
+}
+func (UnimplementedInsightsServiceServer) GetDayPlan(context.Context, *GetDayPlanRequest) (*GetDayPlanResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetDayPlan not implemented")
+}
+func (UnimplementedInsightsServiceServer) PlanMyDay(context.Context, *PlanMyDayRequest) (*PlanMyDayResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PlanMyDay not implemented")
+}
+func (UnimplementedInsightsServiceServer) TickDayPlanEntry(context.Context, *TickDayPlanEntryRequest) (*TickDayPlanEntryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TickDayPlanEntry not implemented")
+}
+func (UnimplementedInsightsServiceServer) UntickDayPlanEntry(context.Context, *UntickDayPlanEntryRequest) (*UntickDayPlanEntryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UntickDayPlanEntry not implemented")
+}
+func (UnimplementedInsightsServiceServer) SetItemRevisions(context.Context, *SetItemRevisionsRequest) (*SetItemRevisionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetItemRevisions not implemented")
 }
 func (UnimplementedInsightsServiceServer) mustEmbedUnimplementedInsightsServiceServer() {}
 func (UnimplementedInsightsServiceServer) testEmbeddedByValue()                         {}
@@ -166,24 +300,6 @@ func _InsightsService_GenerateSuggestion_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
-func _InsightsService_GenerateDailySuggestions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GenerateDailySuggestionsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InsightsServiceServer).GenerateDailySuggestions(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InsightsService_GenerateDailySuggestions_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InsightsServiceServer).GenerateDailySuggestions(ctx, req.(*GenerateDailySuggestionsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _InsightsService_SuggestVideos_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SuggestVideosRequest)
 	if err := dec(in); err != nil {
@@ -202,6 +318,96 @@ func _InsightsService_SuggestVideos_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InsightsService_GetDayPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDayPlanRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InsightsServiceServer).GetDayPlan(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InsightsService_GetDayPlan_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InsightsServiceServer).GetDayPlan(ctx, req.(*GetDayPlanRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InsightsService_PlanMyDay_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PlanMyDayRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InsightsServiceServer).PlanMyDay(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InsightsService_PlanMyDay_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InsightsServiceServer).PlanMyDay(ctx, req.(*PlanMyDayRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InsightsService_TickDayPlanEntry_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TickDayPlanEntryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InsightsServiceServer).TickDayPlanEntry(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InsightsService_TickDayPlanEntry_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InsightsServiceServer).TickDayPlanEntry(ctx, req.(*TickDayPlanEntryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InsightsService_UntickDayPlanEntry_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UntickDayPlanEntryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InsightsServiceServer).UntickDayPlanEntry(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InsightsService_UntickDayPlanEntry_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InsightsServiceServer).UntickDayPlanEntry(ctx, req.(*UntickDayPlanEntryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InsightsService_SetItemRevisions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetItemRevisionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InsightsServiceServer).SetItemRevisions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InsightsService_SetItemRevisions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InsightsServiceServer).SetItemRevisions(ctx, req.(*SetItemRevisionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InsightsService_ServiceDesc is the grpc.ServiceDesc for InsightsService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -214,12 +420,28 @@ var InsightsService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _InsightsService_GenerateSuggestion_Handler,
 		},
 		{
-			MethodName: "GenerateDailySuggestions",
-			Handler:    _InsightsService_GenerateDailySuggestions_Handler,
-		},
-		{
 			MethodName: "SuggestVideos",
 			Handler:    _InsightsService_SuggestVideos_Handler,
+		},
+		{
+			MethodName: "GetDayPlan",
+			Handler:    _InsightsService_GetDayPlan_Handler,
+		},
+		{
+			MethodName: "PlanMyDay",
+			Handler:    _InsightsService_PlanMyDay_Handler,
+		},
+		{
+			MethodName: "TickDayPlanEntry",
+			Handler:    _InsightsService_TickDayPlanEntry_Handler,
+		},
+		{
+			MethodName: "UntickDayPlanEntry",
+			Handler:    _InsightsService_UntickDayPlanEntry_Handler,
+		},
+		{
+			MethodName: "SetItemRevisions",
+			Handler:    _InsightsService_SetItemRevisions_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

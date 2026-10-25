@@ -71,6 +71,8 @@ services:
       DB_PASSWORD: ${INSIGHTS_APP_PASSWORD:?INSIGHTS_APP_PASSWORD must be set}
       RABBITMQ_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set}
+      # Global daily token budget (ADR-0019, FS-02JBZ R34, D8).
+      LLM_DAILY_TOKEN_BUDGET: ${LLM_DAILY_TOKEN_BUDGET:-2000000}
 
   # --- Infrastructure: secrets become REQUIRED (ADR-0012 §5) -----------------
   # The base file defaults these so local dev works out of the box. Here they

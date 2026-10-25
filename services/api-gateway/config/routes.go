@@ -14,7 +14,6 @@ import (
 	calendargw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/calendar"
 	insightsgw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/insights"
 	plangw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/plan"
-	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/jobs"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/logger"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/notes"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/useranalytics"
@@ -124,6 +123,7 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 
 		Suggestions:      insightsGwClient,
 		VideoSuggestions: insightsGwClient,
+		DayPlans:         insightsGwClient,
 		Analytics:        userAnalyticsService,
 		Calendar:         calendarGwClient,
 	})
@@ -143,14 +143,6 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 	// replacement, not coexistence per path.
 
 	// Calendar routes are SERIALIZED (FS-0004, I-0019), registered above.
-
-	// --- JOBS ---
-	// Daily reset is now a gRPC call to plan-service.DailyReset (via the adapter).
-	dailyJob := jobs.NewDailyResetJob(planAdapter)
-
-	jobManager := jobs.NewManager()
-	jobManager.AddJob(dailyJob)
-	jobManager.StartAll()
 
 	return router
 }

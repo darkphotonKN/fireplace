@@ -42,14 +42,13 @@ const searchTermsSystemPrompt string = `
 	Focus on finding content that will directly help the user make progress on their current project and learning objectives.
 	`
 
-// NewChecklistGen builds the generator behind GenerateSuggestion and
-// GenerateDailySuggestions.
-func NewChecklistGen() *Generator {
-	return NewGenerator(checklistSystemPrompt, os.Getenv("OPENAI_API_KEY"))
+// NewChecklistGen builds the generator behind GenerateSuggestion.
+func NewChecklistGen(meter *Meter) *Generator {
+	return NewGenerator(checklistSystemPrompt, os.Getenv("OPENAI_API_KEY"), meter)
 }
 
 // NewSearchTermGen builds the generator behind SuggestVideos, whose output is
 // parsed one search term per line and fed to the video finder.
-func NewSearchTermGen() *Generator {
-	return NewGenerator(searchTermsSystemPrompt, os.Getenv("OPENAI_API_KEY"))
+func NewSearchTermGen(meter *Meter) *Generator {
+	return NewGenerator(searchTermsSystemPrompt, os.Getenv("OPENAI_API_KEY"), meter)
 }

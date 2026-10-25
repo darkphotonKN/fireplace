@@ -2,31 +2,29 @@ package insights
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/darkphotonKN/fireplace/common/errcode"
+	commongrpc "github.com/darkphotonKN/fireplace/common/grpcerror"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
 )
 
 type recordingSuggestions struct {
 	gotPlanID uuid.UUID
 	gotUserID uuid.UUID
-	daily     []string
 	single    string
 }
 
 func (r *recordingSuggestions) GenerateSuggestions(ctx context.Context, planID, userID uuid.UUID) (string, error) {
 	r.gotPlanID, r.gotUserID = planID, userID
 	return r.single, nil
-}
-
-func (r *recordingSuggestions) GenerateDailySuggestions(ctx context.Context, planID, userID uuid.UUID) ([]string, error) {
-	r.gotPlanID, r.gotUserID = planID, userID
-	return r.daily, nil
 }
 
 type recordingVideos struct {
@@ -76,14 +74,6 @@ func TestInsights_CallerIdentityReachesTheService(t *testing.T) {
 			t.Fatalf("userID = %s, want %s", s.gotUserID, caller)
 		}
 	})
-	t.Run("daily", func(t *testing.T) {
-		s := &recordingSuggestions{}
-		api := newInsightsAPIAs(t, s, &recordingVideos{}, caller)
-		api.Get("/api/insights/checklist-suggestion-daily?plan_id=" + planID.String())
-		if s.gotUserID != caller {
-			t.Fatalf("userID = %s, want %s", s.gotUserID, caller)
-		}
-	})
 	t.Run("videos", func(t *testing.T) {
 		v := &recordingVideos{}
 		api := newInsightsAPIAs(t, &recordingSuggestions{}, v, caller)
@@ -123,15 +113,18 @@ func TestGetChecklistSuggestion_BodyIsBareString(t *testing.T) {
 	}
 }
 
-// The daily suggestions ship as an array of strings — bare, matching every
-// other collection this contract publishes.
-func TestGetDailyChecklistSuggestion_BodyIsBareStringArray(t *testing.T) {
-	s := &recordingSuggestions{daily: []string{"a", "b", "c"}}
-	api := newInsightsAPI(t, s, &recordingVideos{})
+// The legacy daily set is gone (FS-DF4ZB R55, L14): Today's moves replaced it,
+// so the route is unregistered and absent from the contract.
+func TestGetDailyChecklistSuggestion_Removed_Is404AndUnpublished(t *testing.T) {
+	api := newInsightsAPI(t, &recordingSuggestions{}, &recordingVideos{})
+	const path = "/api/insights/checklist-suggestion-daily"
 
-	resp := api.Get("/api/insights/checklist-suggestion-daily?plan_id=" + uuid.New().String())
-	if got := strings.TrimSpace(resp.Body.String()); got != `["a","b","c"]` {
-		t.Fatalf("body = %s, want a bare JSON string array", got)
+	resp := api.Get(path + "?plan_id=" + uuid.New().String())
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404: %s", resp.Code, resp.Body.String())
+	}
+	if _, ok := api.OpenAPI().Paths[path]; ok {
+		t.Fatalf("%s is still published in the contract", path)
 	}
 }
 
@@ -140,12 +133,46 @@ func TestInsights_EmptyCollectionsAreArraysNotNull(t *testing.T) {
 	api := newInsightsAPI(t, &recordingSuggestions{}, &recordingVideos{})
 	planID := uuid.New().String()
 
-	for _, path := range []string{
-		"/api/insights/checklist-suggestion-daily?plan_id=" + planID,
-		"/api/insights/suggest-videos?plan_id=" + planID,
-	} {
-		if got := strings.TrimSpace(api.Get(path).Body.String()); got != "[]" {
-			t.Fatalf("%s body = %s, want []", path, got)
-		}
+	path := "/api/insights/suggest-videos?plan_id=" + planID
+	if got := strings.TrimSpace(api.Get(path).Body.String()); got != "[]" {
+		t.Fatalf("%s body = %s, want []", path, got)
+	}
+}
+
+// failingGenerators answers every insights call with err.
+type failingGenerators struct{ err error }
+
+func (f failingGenerators) GenerateSuggestions(context.Context, uuid.UUID, uuid.UUID) (string, error) {
+	return "", f.err
+}
+func (f failingGenerators) SuggestVideos(context.Context, uuid.UUID, uuid.UUID) ([]VideoSuggestionResponse, error) {
+	return nil, f.err
+}
+
+// Over the global token budget insights-service answers ResourceExhausted with
+// LLM_BUDGET_EXHAUSTED; the two generating operations publish it as 429 with
+// that code, and declare the 429 in the contract (FS-02JBZ R33, R60).
+func TestInsights_BudgetExhaustedIs429WithItsCode(t *testing.T) {
+	f := failingGenerators{err: commongrpc.WithCode(codes.ResourceExhausted, errcode.LLMBudgetExhausted, "budget spent")}
+	api := newInsightsAPI(t, f, f)
+
+	for _, path := range []string{"/api/insights/checklist-suggestion", "/api/insights/suggest-videos"} {
+		t.Run(path, func(t *testing.T) {
+			resp := api.Get(path + "?plan_id=" + uuid.NewString())
+
+			if resp.Code != http.StatusTooManyRequests {
+				t.Fatalf("status = %d, want 429: %s", resp.Code, resp.Body.String())
+			}
+			var p struct {
+				Code errcode.Code `json:"code"`
+			}
+			json.Unmarshal(resp.Body.Bytes(), &p)
+			if p.Code != errcode.LLMBudgetExhausted {
+				t.Fatalf("code = %q, want LLM_BUDGET_EXHAUSTED", p.Code)
+			}
+			if _, ok := api.OpenAPI().Paths[path].Get.Responses["429"]; !ok {
+				t.Fatalf("%s does not declare 429", path)
+			}
+		})
 	}
 }

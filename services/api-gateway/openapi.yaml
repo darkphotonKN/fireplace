@@ -205,7 +205,7 @@ components:
           type: string
         scope:
           examples:
-            - daily
+            - longterm
           type: string
         type:
           examples:
@@ -261,6 +261,123 @@ components:
         - name
         - focus
         - planType
+      type: object
+    DayPlanEntryResponse:
+      additionalProperties: false
+      properties:
+        id:
+          description: Entry id
+          format: uuid
+          type: string
+        itemId:
+          description: The item; present iff kind is existing_item
+          format: uuid
+          type: string
+        kind:
+          description: existing_item points at an item of the plan; new_step proposes a new child of a parent item
+          enum:
+            - existing_item
+            - new_step
+          type: string
+        minutes:
+          description: Rough minutes estimate; absent on rules entries
+          format: int64
+          maximum: 240
+          minimum: 5
+          type: integer
+        parentItemId:
+          description: For new_step, the parent item the step goes under; for existing_item, the item's parent if it has one
+          format: uuid
+          type: string
+        reason:
+          description: "One line: why today"
+          type: string
+        revision:
+          description: Revision number, set by the server only
+          format: int64
+          maximum: 3
+          minimum: 1
+          type: integer
+        revisionsEnabled:
+          description: Present only on existing_item entries of learning plans
+          type: boolean
+        text:
+          description: The item's description when drawn, or the proposed step text
+          type: string
+        ticked:
+          description: Day tick for this entry's date
+          type: boolean
+      required:
+        - id
+        - kind
+        - text
+        - reason
+        - ticked
+      type: object
+    DayPlanGroupResponse:
+      additionalProperties: false
+      properties:
+        entries:
+          description: The group's entries, in order
+          items:
+            $ref: "#/components/schemas/DayPlanEntryResponse"
+          maxItems: 6
+          minItems: 1
+          type: array
+        label:
+          description: Short topic label
+          maxLength: 40
+          minLength: 1
+          type: string
+      required:
+        - label
+        - entries
+      type: object
+    DayPlanResponse:
+      additionalProperties: false
+      properties:
+        date:
+          description: The day plan's date as sent, YYYY-MM-DD
+          format: date
+          type: string
+        generatedAt:
+          description: When the plan was drawn; present iff status is planned, and unchanged when a redraw was served from the stored plan
+          format: date-time
+          type: string
+        groups:
+          description: Zero to three groups, six entries at most across them; never null, empty when not_planned
+          items:
+            $ref: "#/components/schemas/DayPlanGroupResponse"
+          maxItems: 3
+          type: array
+        planId:
+          description: Plan id
+          format: uuid
+          type: string
+        refreshesRemaining:
+          description: Counted redraws left for this plan and date; 3 until the free first draw is used
+          format: int64
+          maximum: 3
+          minimum: 0
+          type: integer
+        source:
+          description: How the plan was drawn; present iff status is planned. rules is the basic plan
+          enum:
+            - ai
+            - rules
+          type: string
+        status:
+          description: planned once Plan my day has drawn for this date; not_planned until then
+          enum:
+            - planned
+            - not_planned
+          type: string
+      required:
+        - planId
+        - date
+        - status
+        - refreshesRemaining
+        - groups
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -360,6 +477,21 @@ components:
         - email
         - relation
         - since
+      type: object
+    PlanMyDayRequest:
+      additionalProperties: false
+      properties:
+        date:
+          description: The caller's local calendar date, YYYY-MM-DD. Must be within one day of the server's UTC date
+          format: date
+          type: string
+        planId:
+          description: Plan id
+          format: uuid
+          type: string
+      required:
+        - planId
+        - date
       type: object
     PlanResp:
       additionalProperties: false
@@ -529,6 +661,20 @@ components:
         - name
         - similarity
       type: object
+    SetItemRevisionsRequest:
+      additionalProperties: false
+      properties:
+        enabled:
+          description: false switches the item's revisions off, cancelling its open revision; true switches them back on, and the item's next day tick schedules the next revision
+          type: boolean
+        planId:
+          description: Plan id; the item must belong to it
+          format: uuid
+          type: string
+      required:
+        - planId
+        - enabled
+      type: object
     SigninRequest:
       additionalProperties: false
       properties:
@@ -564,6 +710,14 @@ components:
         - email
         - password
         - name
+      type: object
+    TickDayPlanEntryRequest:
+      additionalProperties: false
+      properties:
+        itemId:
+          description: The item created from a new_step entry (required to tick an unbound new_step); for an existing_item entry, omit it or send the entry's own item
+          format: uuid
+          type: string
       type: object
     UpdateChecklistReq:
       additionalProperties: false
@@ -841,7 +995,7 @@ paths:
       summary: Get a user's daily analytics
   /api/insights/checklist-suggestion:
     get:
-      description: Returns one concrete, verb-first next task derived from the plan's focus and current checklist. The body is the suggestion itself.
+      description: "Returns one concrete, verb-first next task derived from the plan's focus and current checklist. The body is the suggestion itself. 429 · LLM_BUDGET_EXHAUSTED: the platform's daily token budget is spent; retry after the next UTC midnight."
       operationId: getChecklistSuggestion
       parameters:
         - description: Plan id
@@ -876,6 +1030,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
         "500":
           content:
             application/problem+json:
@@ -891,35 +1051,54 @@ paths:
       security:
         - bearerAuth: []
       summary: Suggest the next checklist item
-  /api/insights/checklist-suggestion-daily:
+  /api/insights/day-plan:
     get:
-      description: Returns three suggestions biased toward breaking down long-term checklist items, each nudged away from the previous so the set does not repeat itself.
-      operationId: getDailyChecklistSuggestion
+      description: "Returns the caller's day plan for the plan and date: up to six entries in up to three labelled groups, or status not_planned with no groups when Plan my day has not drawn one for the date. A read never generates anything. A date more than one day from the server's UTC date is refused with BRIEF_DATE_OUT_OF_RANGE."
+      operationId: getDayPlan
       parameters:
         - description: Plan id
           explode: false
           in: query
-          name: plan_id
+          name: planId
+          required: true
           schema:
             description: Plan id
+            format: uuid
+            type: string
+        - description: The caller's local calendar date, YYYY-MM-DD. Must be within one day of the server's UTC date
+          explode: false
+          in: query
+          name: date
+          required: true
+          schema:
+            description: The caller's local calendar date, YYYY-MM-DD. Must be within one day of the server's UTC date
+            format: date
             type: string
       responses:
         "200":
           content:
             application/json:
               schema:
-                items:
-                  type: string
-                type:
-                  - array
-                  - "null"
+                $ref: "#/components/schemas/DayPlanResponse"
           description: OK
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
         "401":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
         "404":
           content:
             application/problem+json:
@@ -946,10 +1125,268 @@ paths:
           description: Service Unavailable
       security:
         - bearerAuth: []
-      summary: Suggest daily items from long-term work
+      summary: Get the day plan for a plan
+    post:
+      description: Draws or redraws the caller's day plan for the plan and date and returns it. If nothing changed since the stored plan was drawn, the stored plan is returned and nothing is spent. The first successful draw of a date is free; each later one spends one of 3 redraws per plan and date (refreshesRemaining), and with none left it is refused with 429 BRIEF_REFRESH_LIMIT_REACHED and the stored plan is unchanged. A date more than one day from the server's UTC date is refused with BRIEF_DATE_OUT_OF_RANGE. If generation fails (the platform's daily token budget is spent, the model is unreachable or times out, or its output is invalid), a rule-based plan is drawn instead and returned with 200 and source rules; it is stored, spends nothing and leaves the free draw unused, and the next draw tries the model again. 503 SERVICE_UNAVAILABLE means the insights service could not be reached; retrying is correct.
+      operationId: planMyDay
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanMyDayRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayPlanResponse"
+          description: OK
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Plan my day
+  /api/insights/day-plan/entries/{id}/tick:
+    delete:
+      description: Removes the entry's day tick for the day plan's date. Unticking an unticked entry succeeds and changes nothing. A day plan date more than one day from the server's UTC date is refused with BRIEF_DATE_OUT_OF_RANGE. An entry that is not the caller's is 404.
+      operationId: untickDayPlanEntry
+      parameters:
+        - description: Entry id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Entry id
+            format: uuid
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Remove a day plan entry's tick
+    put:
+      description: Marks the entry's item done for the day plan's date and returns the entry, ticked. This is not the item's done, which it never changes; ticking the item itself done is a separate item update. An existing_item entry takes no itemId, or its own. An unbound new_step entry needs itemId, the item created from it, which must be a task under the entry's parent item in the same plan; the entry is then bound to that item (kind existing_item, text and reason kept). Ticking a ticked entry returns it unchanged. An entry that cannot be ticked (an unbound new_step without a valid itemId, an item now archived or deleted, or an itemId that contradicts the entry's own) is refused with DAY_PLAN_ENTRY_NOT_TICKABLE; a day plan date more than one day from the server's UTC date with BRIEF_DATE_OUT_OF_RANGE. An entry that is not the caller's is 404.
+      operationId: tickDayPlanEntry
+      parameters:
+        - description: Entry id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Entry id
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TickDayPlanEntryRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayPlanEntryResponse"
+          description: OK
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Tick a day plan entry done for today
+  /api/insights/day-plan/items/{itemId}/revisions:
+    put:
+      description: "Switches the revision ladder on or off for one item of the caller's plan; on by default, and per user on a shared plan. Off cancels the item's open revision and schedules no more. On schedules nothing by itself: the item's next day tick schedules the next revision, never past revision 3. Only learning plans revise; on a project plan the switch is accepted and has no effect. A plan the caller cannot access, or an item not in the plan, is 404."
+      operationId: setItemRevisions
+      parameters:
+        - description: Item id
+          in: path
+          name: itemId
+          required: true
+          schema:
+            description: Item id
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetItemRevisionsRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Switch revisions for an item
   /api/insights/suggest-videos:
     get:
-      description: Generates search terms from the plan's focus and checklist, then returns one recommended video per term.
+      description: "Generates search terms from the plan's focus and checklist, then returns one recommended video per term. 429 · LLM_BUDGET_EXHAUSTED: the platform's daily token budget is spent; retry after the next UTC midnight."
       operationId: getSuggestedVideos
       parameters:
         - description: Plan id
@@ -988,6 +1425,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
         "500":
           content:
             application/problem+json:
@@ -1551,7 +1994,7 @@ paths:
         - bearerAuth: []
       summary: List a plan's checklist items
     post:
-      description: Creates a task or note under the plan. `scope` and `type` are optional; plan-service defaults them to longterm and task. Parent nesting is validated downstream — a parent must be a top-level item in the same plan.
+      description: "Creates a task or note under the plan. `scope` and `type` are optional; plan-service defaults them to longterm and task. Parent nesting is validated downstream — a parent must be a top-level item in the same plan. The daily scope is retired: `scope: daily` is well-formed but refused with 400 DAILY_SCOPE_RETIRED."
       operationId: createChecklist
       parameters:
         - description: Plan id
@@ -1943,7 +2386,7 @@ paths:
         - bearerAuth: []
       summary: Get a checklist item
     patch:
-      description: "Partial update. `parentId` is three-state: send a UUID to re-parent, null to clear, or omit to leave unchanged. `intention` is free text: omit it to leave it unchanged or send a string to set it; the server trims it, an empty result clears it, and more than 280 characters after trimming is 400 VALIDATION_FAILED. Conversion, re-parenting and the intention length rules are enforced downstream."
+      description: "Partial update. `parentId` is three-state: send a UUID to re-parent, null to clear, or omit to leave unchanged. `intention` is free text: omit it to leave it unchanged or send a string to set it; the server trims it, an empty result clears it, and more than 280 characters after trimming is 400 VALIDATION_FAILED. Conversion, re-parenting and the intention length rules are enforced downstream. The daily scope is retired: `scope: daily` is well-formed but refused with 400 DAILY_SCOPE_RETIRED."
       operationId: updateChecklist
       parameters:
         - description: Plan id
@@ -2850,64 +3293,6 @@ paths:
       security:
         - bearerAuth: []
       summary: Update a note
-  /api/plans/{id}/toggle-daily-reset:
-    patch:
-      description: "Flips dailyReset and returns the updated plan. Takes no body. Owner only: a member gets 403, and anyone else 404."
-      operationId: toggleDailyReset
-      parameters:
-        - description: Plan id
-          in: path
-          name: id
-          required: true
-          schema:
-            description: Plan id
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PlanResp"
-          description: OK
-        "401":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-          description: Unauthorized
-        "403":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-          description: Forbidden
-        "404":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-          description: Not Found
-        "422":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-          description: Unprocessable Entity
-        "500":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-          description: Internal Server Error
-        "503":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-          description: Service Unavailable
-      security:
-        - bearerAuth: []
-      summary: Toggle a plan's daily-reset flag
   /api/users:
     get:
       description: Returns every user. UNBOUNDED — there is no pagination today, and this is transcribed as-is (ADR-0006 §2). Adding pagination later is a breaking change to a shape that arguably should not have been published unbounded.

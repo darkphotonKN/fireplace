@@ -2,7 +2,7 @@ package ai
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"time"
 
 	"github.com/sashabaranov/go-openai"
@@ -12,73 +12,45 @@ import (
 // It pairs a fixed system prompt with a chat client; callers supply only the
 // user message, so a generator IS its system prompt (one per generation kind).
 //
-// Ported verbatim from the api-gateway's internal/ai during the strangler move
-// of the insights domain — behaviour is deliberately unchanged.
+// Ported from the api-gateway's internal/ai during the strangler move of the
+// insights domain. Its requests now go through the shared chatCaller, so each
+// is checked against the global token budget and recorded in the usage ledger
+// under the caller's Call (FS-02JBZ R31–R33).
 type Generator struct {
-	client       *openai.Client
+	caller       chatCaller
 	systemPrompt string
-
-	maxRetries int
-	retryDelay time.Duration
 }
 
-// NewGenerator builds a Generator for one system prompt.
+// NewGenerator builds a Generator for one system prompt, metered by meter.
 //
 // NOTE:
 // Secret Management: In production, use a secrets manager like HashiCorp Vault, AWS Secrets Manager, or GCP Secret Manager
-func NewGenerator(systemPrompt string, clientKey string) *Generator {
-	client := openai.NewClient(clientKey)
-
-	return &Generator{
-		client:       client,
-		systemPrompt: systemPrompt,
-
-		maxRetries: 3,
-		retryDelay: time.Second,
-	}
+func NewGenerator(systemPrompt string, clientKey string, meter *Meter) *Generator {
+	return newGenerator(systemPrompt, openai.NewClient(clientKey), meter, time.Second)
 }
 
-func (g *Generator) Generate(message string) (string, error) {
-	var resp openai.ChatCompletionResponse
-	var err error
+func newGenerator(systemPrompt string, client *openai.Client, meter *Meter, retryDelay time.Duration) *Generator {
+	return &Generator{caller: newChatCaller(client, meter, retryDelay), systemPrompt: systemPrompt}
+}
 
-	// retry on error
-	for attempt := 0; attempt < g.maxRetries; attempt++ {
-		resp, err = g.client.CreateChatCompletion(
-			context.Background(),
-			openai.ChatCompletionRequest{
-				Model:           modelName(),
-				ReasoningEffort: "minimal",
-				Messages: []openai.ChatCompletionMessage{
-					{
-						Role:    openai.ChatMessageRoleSystem,
-						Content: g.systemPrompt,
-					},
-					{
-						Role:    openai.ChatMessageRoleUser,
-						Content: message,
-					},
-				},
-				MaxCompletionTokens: 200,
-			},
-		)
-
-		// retry chat completion gen after a short delay
-		if err != nil {
-			time.Sleep(g.retryDelay)
-			continue
+// Generate returns the model's answer to message, on behalf of call.
+func (g *Generator) Generate(ctx context.Context, call Call, message string) (string, error) {
+	resp, err := g.caller.complete(ctx, call, openai.ChatCompletionRequest{
+		Model:           modelName(),
+		ReasoningEffort: "minimal",
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: g.systemPrompt},
+			{Role: openai.ChatMessageRoleUser, Content: message},
+		},
+		MaxCompletionTokens: 200,
+	}, func(resp openai.ChatCompletionResponse) error {
+		if len(resp.Choices) == 0 {
+			return errors.New("ai: chat completion returned no choices")
 		}
-
-		break
-	}
-
+		return nil
+	})
 	if err != nil {
-		return "", fmt.Errorf("ai: chat completion failed after %d attempts: %w", g.maxRetries, err)
+		return "", err
 	}
-
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("ai: chat completion returned no choices")
-	}
-
 	return resp.Choices[0].Message.Content, nil
 }

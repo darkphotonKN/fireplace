@@ -28,11 +28,10 @@ func (r relations) GetPlanAccess(ctx context.Context, planID, userID uuid.UUID) 
 
 var insightsPaths = []string{
 	"/api/insights/checklist-suggestion",
-	"/api/insights/checklist-suggestion-daily",
 	"/api/insights/suggest-videos",
 }
 
-// R4, R7, R5, R8: the three ?plan_id= routes were open to any signed-in caller.
+// R4, R7, R5, R8: the ?plan_id= routes were open to any signed-in caller.
 // They are now owner-or-member, a stranger gets 404, and a refused request
 // never reaches insights-service.
 func TestInsightsOperations_Access(t *testing.T) {
@@ -70,7 +69,7 @@ func TestInsightsOperations_Access(t *testing.T) {
 	}
 }
 
-// The three operations declare the 404 they now produce.
+// The operations declare the 404 they now produce.
 func TestInsightsOperations_Declare404(t *testing.T) {
 	_, api := humatest.New(t, huma.DefaultConfig("test", "1"))
 	RegisterInsightsOperations(api, nil, nil, nil, func(ctx huma.Context, next func(huma.Context)) {}, nil)
