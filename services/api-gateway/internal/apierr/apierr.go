@@ -68,6 +68,14 @@ func httpForCode(code codes.Code) (int, string) {
 		return http.StatusConflict, "already exists"
 	case codes.InvalidArgument:
 		return http.StatusBadRequest, "invalid request"
+	case codes.FailedPrecondition:
+		// A well-formed request the domain refused in its current state: 400,
+		// like any domain refusal (ADR-0005; malformed is 422). FS-DF4ZB R52.
+		return http.StatusBadRequest, "request refused"
+	case codes.ResourceExhausted:
+		// A per-user limit was reached (FS-DF4ZB R52). Not a gateway fault and
+		// not a malformed request: the same request may succeed later.
+		return http.StatusTooManyRequests, "limit reached"
 	case codes.Unauthenticated:
 		return http.StatusUnauthorized, "unauthorized"
 	case codes.PermissionDenied:

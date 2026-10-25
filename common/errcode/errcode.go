@@ -56,4 +56,38 @@ const (
 	// the rule and answers InvalidArgument; the add-member operation attaches
 	// this code itself rather than leaving it to message sniffing.
 	MemberIsOwner Code = "MEMBER_IS_OWNER"
+
+	// Guided suggestions (FS-DF4ZB R53), kept by the day plan that replaced
+	// the daily brief (FS-02JBZ R22, R15). Decided by insights-service and sent
+	// as an ErrorInfo detail (commongrpc.WithCode), so the gateway needs no
+	// mapping of its own. The BRIEF_ prefix is the wire value clients already
+	// switch on, so it stays.
+	//
+	// BriefDateOutOfRange (400): the day plan's date is more than one day from
+	// the server's UTC date. Bounds cap evasion by date-hopping.
+	BriefDateOutOfRange Code = "BRIEF_DATE_OUT_OF_RANGE"
+	// BriefRefreshLimitReached (429): the 3 counted draws for this plan and
+	// date are spent. The stored day plan is untouched; the next date resets.
+	BriefRefreshLimitReached Code = "BRIEF_REFRESH_LIMIT_REACHED"
+
+	// DailyScopeRetired (400): an item was created as, or updated to, scope
+	// `daily` (FS-02JBZ R51). The enum value stays in the proto and the HTTP
+	// contract so the request is well-formed; the refusal is a domain decision
+	// (ADR-0005). Decided by plan-service and sent as an ErrorInfo detail.
+	DailyScopeRetired Code = "DAILY_SCOPE_RETIRED"
+
+	// LLMBudgetExhausted (429): today's (server UTC) global token budget,
+	// LLM_DAILY_TOKEN_BUDGET, is spent, so no model call was made (FS-02JBZ
+	// R33, ADR-0019). Retrying after the UTC day rolls over is correct;
+	// retrying now is not, which is why it is not 503. Decided by
+	// insights-service and sent as an ErrorInfo detail on ResourceExhausted.
+	LLMBudgetExhausted Code = "LLM_BUDGET_EXHAUSTED"
+
+	// DayPlanEntryNotTickable (400): the day plan entry cannot carry a day
+	// tick (FS-02JBZ R26, D3): an unbound new step without the id of a
+	// non-archived task created under its parent in the same plan, an entry
+	// whose item is now archived or deleted, or an item id that contradicts
+	// the entry's own. Decided by insights-service and sent as an ErrorInfo
+	// detail on FailedPrecondition.
+	DayPlanEntryNotTickable Code = "DAY_PLAN_ENTRY_NOT_TICKABLE"
 )

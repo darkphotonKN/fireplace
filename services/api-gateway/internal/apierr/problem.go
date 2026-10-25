@@ -8,6 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 	"github.com/darkphotonKN/fireplace/common/errcode"
+	commongrpc "github.com/darkphotonKN/fireplace/common/grpcerror"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -62,18 +63,37 @@ func CodeFor(err error) errcode.Code {
 	}
 
 	if st, ok := status.FromError(err); ok && st.Code() != codes.OK {
+		// A domain code the service attached as structured detail is the
+		// precise answer, whatever the status class (FS-DF4ZB R52). The class
+		// still picks the HTTP status in StatusFor; only the code comes from
+		// here. A new domain code therefore needs no case below.
+		if code, ok := commongrpc.DomainCode(err); ok {
+			return code
+		}
 		switch st.Code() {
 		case codes.NotFound:
 			return errcode.NotFound
 		case codes.AlreadyExists:
 			return errcode.AlreadyExists
 		case codes.InvalidArgument:
-			// auth-service's only profile validation rule. The wire carries no
-			// structured field detail, so the precision must live in the code.
-			if msg := st.Message(); msg != "" && containsFold(msg, "name") {
+			// LEGACY: auth-service's only profile validation rule, sent with no
+			// detail, so the code is sniffed from the message. Restricted to a
+			// detail-free status so it can never capture a status from a
+			// service that speaks in details (e.g. insights' "parent item name"
+			// failures). Do not extend this rule; new codes go through
+			// commongrpc.WithCode.
+			if len(st.Proto().GetDetails()) == 0 && containsFold(st.Message(), "name") {
 				return errcode.ProfileNameEmpty
 			}
 			return errcode.ValidationFailed
+		case codes.FailedPrecondition:
+			return errcode.ValidationFailed
+		case codes.ResourceExhausted:
+			// Status is 429 (StatusFor), but errcode has no generic limit code
+			// and FS-DF4ZB adds none. Every real producer attaches its own code
+			// via commongrpc.WithCode, so this arm is reached only by a bare
+			// ResourceExhausted, e.g. a gRPC transport limit.
+			return errcode.Internal
 		case codes.Unauthenticated:
 			return errcode.Unauthenticated
 		case codes.PermissionDenied:
