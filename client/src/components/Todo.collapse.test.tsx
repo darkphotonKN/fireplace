@@ -35,12 +35,10 @@ vi.mock('@/services/api', () => ({
 
 vi.mock('@/api/insights', () => ({
   getChecklistSuggestion: vi.fn(async () => ''),
-  getDailyInsights: vi.fn(async () => []),
 }));
 
 vi.mock('@/api/plans', () => ({
   getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-  toggleDailyReset: vi.fn(),
 }));
 
 const item = (
@@ -246,23 +244,6 @@ describe('Todo remembers collapsed groups (FS-0007 R6)', () => {
     await screen.findByText('item A');
     expect(screen.queryByText('item B')).toBeNull();
     expect(screen.getByRole('button', { name: 'Expand item A' })).toBeTruthy();
-  });
-
-  it('should keep the daily list expanded when the same parent id is collapsed in the long-term list', async () => {
-    // Same ids in both scopes, so only the storage key can tell them apart.
-    fetchChecklist.mockImplementation(async (_planId: string, scope: string) =>
-      ITEMS.map((t) => ({ ...t, scope }))
-    );
-    const Todo = (await import('./Todo')).default;
-    const longterm = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-    await screen.findByText('item A');
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
-    longterm.unmount();
-
-    render(<Todo fixedTaskType="daily" />);
-    await screen.findByText('item A');
-    expect(screen.getByText('item B')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Collapse item A' })).toBeTruthy();
   });
 
   it('should not touch the network when collapsing or expanding', async () => {

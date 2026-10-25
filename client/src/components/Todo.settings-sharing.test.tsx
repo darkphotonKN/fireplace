@@ -47,12 +47,10 @@ vi.mock('@/services/api', () => ({
 
 vi.mock('@/api/insights', () => ({
   getChecklistSuggestion: vi.fn(async () => ''),
-  getDailyInsights: vi.fn(async () => []),
 }));
 
 vi.mock('@/api/plans', () => ({
   getPlan: (...a: unknown[]) => getPlan(...a),
-  toggleDailyReset: vi.fn(),
   listPlanMembers: (...a: unknown[]) => listPlanMembers(...a),
   addPlanMember: vi.fn(),
   removePlanMember: vi.fn(),
@@ -80,10 +78,13 @@ beforeEach(() => {
 });
 
 describe('Todo settings — as the owner', () => {
-  it('should offer the daily-reset toggle and Sharing with an email field', async () => {
+  // FS-02JBZ R91: the daily scope is retired, so there is no daily reset to
+  // configure. Sharing and the archived view are what settings still holds.
+  it('should offer Sharing with an email field and no daily-reset toggle', async () => {
     await openSettingsAs('owner');
 
-    expect(screen.getByText('Refresh daily tasks')).toBeInTheDocument();
+    expect(screen.queryByText('Refresh daily tasks')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Sharing' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /email/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove Nick' })).toBeInTheDocument();
@@ -91,7 +92,7 @@ describe('Todo settings — as the owner', () => {
 });
 
 describe('Todo settings — as a member', () => {
-  it('should show who is on the plan with no controls and no daily-reset toggle', async () => {
+  it('should show who is on the plan with no controls', async () => {
     await openSettingsAs('member');
 
     expect(screen.getByRole('heading', { name: 'Sharing' })).toBeInTheDocument();
@@ -121,21 +122,21 @@ describe('Todo settings — relation not known', () => {
     await screen.findByRole('button', { name: /view archived tasks/i });
   }
 
-  it('should hide the daily-reset toggle while getPlan has not answered', async () => {
+  it('should hide Sharing while getPlan has not answered', async () => {
     await openSettingsWithPlan(new Promise(() => {}));
 
-    expect(screen.queryByText('Refresh daily tasks')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sharing' })).not.toBeInTheDocument();
   });
 
-  it('should hide the daily-reset toggle when getPlan fails', async () => {
+  it('should hide Sharing when getPlan fails', async () => {
     await openSettingsWithPlan(Promise.reject(new Error('boom')));
 
-    expect(screen.queryByText('Refresh daily tasks')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sharing' })).not.toBeInTheDocument();
   });
 
-  it('should hide the daily-reset toggle when getPlan carries no relation', async () => {
+  it('should hide Sharing when getPlan carries no relation', async () => {
     await openSettingsWithPlan(Promise.resolve({ id: 'plan-1', dailyReset: false }));
 
-    expect(screen.queryByText('Refresh daily tasks')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sharing' })).not.toBeInTheDocument();
   });
 });

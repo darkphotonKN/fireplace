@@ -36,12 +36,10 @@ vi.mock('@/services/api', () => ({
 
 vi.mock('@/api/insights', () => ({
   getChecklistSuggestion: vi.fn(async () => ''),
-  getDailyInsights: vi.fn(async () => []),
 }));
 
 vi.mock('@/api/plans', () => ({
   getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-  toggleDailyReset: vi.fn(),
 }));
 
 const item = (
@@ -179,17 +177,6 @@ describe('Todo paging', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
     expect(counter()!.textContent).toBe('1 of 2');
     expect(screen.getByText('item n1')).toBeTruthy();
-  });
-
-  it('should return to page 1 when the daily / long-term list changes', async () => {
-    const Todo = (await import('./Todo')).default;
-    render(<Todo enableTypeFilter />);
-    await screen.findByText('item t1');
-    fireEvent.click(next());
-    expect(counter()!.textContent).toBe('2 of 3');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Long-term' }));
-    await waitFor(() => expect(counter()!.textContent).toBe('1 of 3'));
   });
 
   it('should start on page 1 on a fresh mount while collapse state is restored', async () => {

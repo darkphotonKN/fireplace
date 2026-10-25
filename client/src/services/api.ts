@@ -151,12 +151,6 @@ export interface ChecklistSuggestionResponse {
   statusCode: number;
 }
 
-export interface DailyInsightsResponse {
-  result: string[];
-  message: string;
-  statusCode: number;
-}
-
 export interface PlanDetailResponse {
   statusCode: number;
   message: string;

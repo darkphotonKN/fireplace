@@ -90,17 +90,13 @@ function isWaiting(item: ChecklistItem): boolean {
 }
 
 /**
- * Today's rule, in one place: due today, overdue, or a daily-scope habit
- * (R23). The three are a single filter rather than three concatenated lists,
- * which is why an item that is both due today and daily appears once.
+ * Today's rule, in one place: due today or overdue (R23). Scope plays no part:
+ * the daily scope is retired (FS-02JBZ R91), so a leftover daily row is an
+ * ordinary item that qualifies by its dates alone.
  */
 function isTodays(item: ChecklistItem): boolean {
   const start = itemStartDate(item);
-  return (
-    isDueToday(start, item.dueDate) ||
-    isRangePast(start, item.dueDate) ||
-    item.scope === "daily"
-  );
+  return isDueToday(start, item.dueDate) || isRangePast(start, item.dueDate);
 }
 
 /** One plan's items, ready or not. The array order is the server's `sequence` order. */

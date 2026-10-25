@@ -26,6 +26,12 @@ vi.mock('@/api/checklists', () => ({
 vi.mock('@/components/ui/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
+// The day plan roll-up's read (FS-02JBZ R85): a day nobody planned, so the
+// real client never reaches for the network from these tests.
+vi.mock('@/api/insights', () => ({
+  getDayPlan: (planId: string, date: string) =>
+    Promise.resolve({ planId, date, status: 'not_planned', groups: [], refreshesRemaining: 3 }),
+}));
 
 import Dashboard from './Dashboard';
 import type { Plan } from '@/api/plans';
