@@ -19,10 +19,15 @@ import {
   type DayPlanEntry,
 } from '@/api/insights';
 import { readMilestones } from '@/lib/milestones';
-import { resolveDayPlan, type ResolvedEntry } from '@/lib/dayPlan';
+import {
+  resolveDayPlan,
+  type ResolvedEntry,
+  type ResolvedGroup,
+} from '@/lib/dayPlan';
 import { announcePlanItemsChanged } from '@/lib/planItemsChanged';
 import { toDateOnly } from '@/lib/itemDates';
 import { cn } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox';
 
 /**
  * The Day plan section (FS-02JBZ R62–R74): where the plan page's Daily card
@@ -447,14 +452,14 @@ export default function DayPlanSection({ planId }: { planId: string }) {
         <button
           type="button"
           onClick={toggleShown}
-          className="text-sm text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300"
+          className="text-sm text-foreground/45 transition-colors hover:text-foreground"
         >
           {shown ? 'Hide' : 'Show'}
         </button>
       </div>
 
       {shown && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {error && (
             <div className="p-2 text-base text-red-600 bg-red-50 rounded-md">
               {error}
@@ -464,7 +469,7 @@ export default function DayPlanSection({ planId }: { planId: string }) {
           {status === 'loading' ? (
             <DayPlanSkeleton label="Loading the day plan" />
           ) : status === 'failed' || !dayPlan ? (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <p className="flex items-center gap-2 text-sm text-foreground/50">
               Couldn&apos;t load the day plan.
               <button
                 type="button"
@@ -487,8 +492,8 @@ export default function DayPlanSection({ planId }: { planId: string }) {
           ) : (
             <>
               {isBasic && (
-                <p className="text-sm text-muted-foreground">
-                  <span className="mr-2 rounded bg-foreground/10 px-1.5 py-0.5 text-xs font-medium text-foreground">
+                <p className="text-sm text-foreground/50">
+                  <span className="mr-2 rounded-full bg-foreground/[0.08] px-2 py-0.5 text-xs font-medium text-foreground/80">
                     Basic plan
                   </span>
                   The AI wasn&apos;t available, so this plan was made by
@@ -496,19 +501,31 @@ export default function DayPlanSection({ planId }: { planId: string }) {
                 </p>
               )}
               {groups.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-foreground/50">
                   {hasMilestones
                     ? 'Nothing to plan for today.'
                     : 'Start a milestone in your plan and the day plan will help you push it forward.'}
                 </p>
               ) : (
-                <div className="space-y-4">
+                <>
+                <DayProgress groups={groups} />
+                <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {groups.map((group, i) => (
-                    <div key={`${i}-${group.label}`}>
-                      <h3 className="mb-2 text-sm font-medium text-muted-foreground">
-                        {group.label}
-                      </h3>
-                      <ul className="space-y-3">
+                    <div
+                      key={`${i}-${group.label}`}
+                      className={cn(
+                        'rounded-xl bg-foreground/[0.04] px-4 py-4 backdrop-blur-sm',
+                        'transition-[background-color,box-shadow] duration-300',
+                        'hover:bg-foreground/[0.06] hover:shadow-[0_2px_18px_-12px_rgba(247,111,83,0.55)]'
+                      )}
+                    >
+                      <div className="flex items-baseline justify-between gap-3">
+                        <h3 className="text-base font-medium leading-6 text-foreground">
+                          {group.label}
+                        </h3>
+                        <GroupMinutes entries={group.entries} />
+                      </div>
+                      <ul className="mt-3 space-y-3 border-t border-foreground/[0.07] pt-3">
                         {group.entries.map((entry) => (
                           <EntryRow
                             key={entry.id}
@@ -536,6 +553,7 @@ export default function DayPlanSection({ planId }: { planId: string }) {
                     </div>
                   ))}
                 </div>
+                </>
               )}
               <PlanBar
                 label={isBasic ? 'Plan my day' : 'Plan again'}
@@ -607,10 +625,10 @@ function NotPlanned({
   onPlan: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-foreground/[0.04] px-4 py-4 backdrop-blur-sm">
       <p
         aria-live="polite"
-        className="flex items-center gap-2 text-sm text-muted-foreground"
+        className="flex items-center gap-2 text-sm text-foreground/50"
       >
         {failed ? (
           <PlanFailed onRetry={onPlan} />
@@ -622,8 +640,7 @@ function NotPlanned({
         type="button"
         onClick={onPlan}
         disabled={retired}
-        className="shrink-0 text-sm px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 dark:hover:bg-gray-700/50 disabled:opacity-50"
-        style={{ color: 'rgb(247, 111, 83)' }}
+        className={PRIMARY_ACTION}
       >
         Plan my day
       </button>
@@ -679,47 +696,49 @@ function EntryRow({
   // a new step once it has been added.
   const tickable = entry.kind === 'existing_item' || added;
   return (
-    <li className="flex items-start gap-3">
+    <li className="group/row flex items-start gap-2.5">
       {tickable ? (
-        <input
-          type="checkbox"
-          checked={entry.ticked}
-          onChange={onTick}
-          disabled={ticking || planning}
-          aria-label={`Done for today: ${entry.text}`}
-          title="Done for today"
-          className="mt-1 h-4 w-4 shrink-0 rounded border-gray-300 dark:border-gray-600"
-          style={{ accentColor: 'rgb(247, 111, 83)' }}
-        />
+        // The same checkbox the milestone cards use, so a day tick reads as
+        // a tick; what it means ("done for today") is in its name.
+        <span className="mt-[3px] shrink-0">
+          <Checkbox
+            checked={entry.ticked}
+            onCheckedChange={onTick}
+            disabled={ticking || planning}
+            aria-label={`Done for today: ${entry.text}`}
+            title="Done for today"
+          />
+        </span>
       ) : (
         // Keeps the text column aligned with tickable rows.
-        <span aria-hidden className="h-4 w-4 shrink-0" />
+        <span aria-hidden className="mt-[3px] h-4 w-4 shrink-0" />
       )}
       <div className="min-w-0 flex-1">
         {entry.milestoneTitle && (
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">
-            {entry.milestoneTitle}
-          </p>
+          <p className="text-xs text-foreground/40">{entry.milestoneTitle}</p>
         )}
         <p className="flex flex-wrap items-baseline gap-x-2">
           <span
             className={cn(
-              'text-base text-foreground',
+              'text-base leading-6 text-foreground transition-colors',
+              // Struck only when the item itself is done; a day tick just
+              // settles the row, since done for today isn't done.
+              entry.ticked && !entry.done && 'text-foreground/55',
               entry.done && 'line-through text-foreground/50'
             )}
           >
             {entry.text}
           </span>
           {entry.revision !== undefined && (
-            <span className="whitespace-nowrap rounded bg-foreground/10 px-1.5 py-0.5 text-xs font-medium text-foreground">
+            <span className="whitespace-nowrap rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
               {`Revision ${entry.revision}`}
             </span>
           )}
         </p>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm leading-5 text-foreground/45">
           {entry.reason}
           {entry.minutes !== undefined && (
-            <span className="ml-2 whitespace-nowrap text-xs">
+            <span className="ml-2 whitespace-nowrap text-xs tabular-nums text-foreground/35">
               ~{entry.minutes} min
             </span>
           )}
@@ -738,14 +757,14 @@ function EntryRow({
           // level it sits at, and goes away on its own.
           <p
             aria-live="polite"
-            className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+            className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-foreground/55"
           >
             <span>{`Also mark '${ask.text}' done?`}</span>
             <button
               type="button"
               onClick={() => onMarkDone(ask)}
               disabled={planning}
-              className="underline underline-offset-4 hover:text-foreground"
+              className="font-medium text-primary underline-offset-4 hover:underline"
             >
               Yes
             </button>
@@ -754,15 +773,14 @@ function EntryRow({
       </div>
       {entry.kind === 'new_step' &&
         (added ? (
-          <span className="shrink-0 text-sm text-muted-foreground">Added</span>
+          <span className="shrink-0 text-sm leading-6 text-foreground/40">Added</span>
         ) : (
           <button
             type="button"
             onClick={onAdd}
             disabled={adding}
             aria-label={`Add ${entry.text}`}
-            className="shrink-0 text-sm px-2 py-1 rounded bg-white/5 hover:bg-white/10 dark:hover:bg-gray-700/50 disabled:opacity-50"
-            style={{ color: 'rgb(247, 111, 83)' }}
+            className="-my-0.5 shrink-0 rounded-md px-2 py-0.5 text-sm leading-6 text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
           >
             Add
           </button>
@@ -771,7 +789,7 @@ function EntryRow({
         type="button"
         onClick={onDismiss}
         aria-label={`Dismiss ${entry.text}`}
-        className="shrink-0 mt-[2px] text-muted-foreground hover:text-foreground transition-colors"
+        className="mt-[3px] shrink-0 text-foreground/25 opacity-0 transition-[color,opacity] hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100"
       >
         <X strokeWidth={1.75} className="h-4 w-4" />
       </button>
@@ -802,13 +820,19 @@ function DontRevise({
       aria-label={`Don't revise: ${text}`}
       onClick={() => onChange(!off)}
       disabled={disabled}
-      className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+      className={cn(
+        'mt-1.5 inline-flex items-center gap-1.5 text-xs text-foreground/40 transition-[color,opacity] hover:text-foreground disabled:opacity-50',
+        // Quiet until it matters: shown on the row's hover or focus, and
+        // always once switched on, so a set switch is never hidden.
+        !off &&
+          'opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100'
+      )}
     >
       <span
         aria-hidden
         className={cn(
           'relative inline-block h-3 w-5 rounded-full transition-colors',
-          off ? 'bg-[rgb(247,111,83)]' : 'bg-foreground/20'
+          off ? 'bg-primary' : 'bg-foreground/20'
         )}
       >
         <span
@@ -891,7 +915,7 @@ function PlanBar({
   onPlan: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+    <div className="flex items-center justify-between gap-3 text-sm text-foreground/45">
       <p aria-live="polite" className="flex min-w-0 items-center gap-2">
         {notice === 'unchanged' &&
           'Nothing has changed since this plan was made.'}
@@ -903,7 +927,7 @@ function PlanBar({
         // Retired at zero (R68): the count is on the day plan, so no request
         // is needed to find out.
         disabled={planning || remaining <= 0}
-        className="shrink-0 underline-offset-4 hover:underline hover:text-foreground disabled:opacity-50 disabled:no-underline disabled:hover:text-muted-foreground"
+        className="shrink-0 rounded-md px-2.5 py-1 tabular-nums transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-foreground/45"
       >
         {planning ? 'Planning…' : label} · {remaining} left
       </button>
@@ -927,5 +951,57 @@ function DayPlanSkeleton({ label }: { label: string }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** The primary action, in the ember the rest of the plan page uses. */
+const PRIMARY_ACTION =
+  'shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/15 disabled:opacity-50 disabled:hover:bg-primary/10';
+
+/**
+ * Today's date and how much of the day is ticked: the day plan's answer to
+ * the Items card's "N of M milestones" line, with the same quiet meter.
+ */
+function DayProgress({ groups }: { groups: ResolvedGroup[] }) {
+  const entries = groups.flatMap((g) => g.entries);
+  const ticked = entries.filter((e) => e.ticked).length;
+  const pct = entries.length ? Math.round((ticked / entries.length) * 100) : 0;
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+  return (
+    <div className="space-y-2">
+      <p className="text-sm tabular-nums text-foreground/45">
+        {today} · {ticked} of {entries.length} done today
+      </p>
+      <div
+        aria-hidden
+        className="h-1.5 overflow-hidden rounded-full bg-foreground/[0.08]"
+      >
+        <div
+          className="h-full rounded-full bg-primary transition-[width] duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** A group's rough total, when the model sized more than one entry. */
+function GroupMinutes({ entries }: { entries: ResolvedEntry[] }) {
+  const sized = entries.filter((e) => e.minutes !== undefined);
+  // One sized entry already shows its own minutes; a total adds nothing.
+  if (sized.length < 2) return null;
+  const total = sized.reduce((sum, e) => sum + (e.minutes ?? 0), 0);
+  const label =
+    total >= 60
+      ? `~${Math.floor(total / 60)}h${total % 60 ? ` ${total % 60}m` : ''}`
+      : `~${total} min`;
+  return (
+    <span className="shrink-0 text-sm tabular-nums text-foreground/40">
+      {label}
+    </span>
   );
 }

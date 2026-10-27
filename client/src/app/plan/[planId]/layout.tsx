@@ -144,25 +144,17 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
 
         {/* Main Grid - Flexible Layout */}
         <div className="grid grid-cols-1 gap-6">
-          {/* Day plan (FS-02JBZ R62) — the warm "reminder" strip pinned to
-              the top of the stack, where the Daily card was. The accent
-              border + tint set it apart from the neutral core blocks below;
-              the section renders its own "Day plan" header.
+          {/* Day plan (FS-02JBZ R62), where the Daily card was. The same
+              neutral card as the Items card below, so the page reads as one
+              set of sections; the section itself carries the ember accents.
               Stacking: backdrop-blur makes this card a stacking context, as it
               does the later-in-DOM middle card. `relative z-[5]` lifts it above
               the middle card so the section's "i" tooltip, which opens
               downward, can spill past a short card; 5 stays under the title
               card's z-10 so the focus tooltip still paints over this card.
-              The card itself doesn't clip (that would cut the tooltip off):
-              only the decorative glow's own wrapper does. */}
-          <Card className="relative z-[5] backdrop-blur-sm shadow-sm border-0 border-l-4 border-l-amber-500/50 bg-gradient-to-br from-amber-500/[0.07] to-orange-500/[0.02] ring-1 ring-amber-500/10">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]"
-            >
-              <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-amber-400/10 blur-3xl" />
-            </div>
-            <div className="relative p-6">
+              The card doesn't clip, which would cut the tooltip off. */}
+          <Card className="relative z-[5] backdrop-blur-sm shadow-sm border-0">
+            <div className="p-6">
               <DayPlanSection planId={planId} />
             </div>
           </Card>
