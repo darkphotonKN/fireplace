@@ -66,16 +66,6 @@ export const deletePlan = async (id: string): Promise<void> => {
   markTouchedToday();
 };
 
-export const toggleDailyReset = async (id: string): Promise<Plan> => {
-  const { data, error, response } = await api.PATCH(
-    "/api/plans/{id}/toggle-daily-reset",
-    { params: { path: { id } } },
-  );
-  if (error) throw apiErrorFrom(error, response.status);
-  markTouchedToday();
-  return data!;
-};
-
 export const listSharedPlans = async (
   limit = 20,
   offset = 0,

@@ -464,27 +464,6 @@ func (r *repository) Delete(ctx context.Context, planID, id uuid.UUID) error {
 	return nil
 }
 
-// BulkResetDailyItems uncompletes every "daily" item belonging to a plan with
-// daily_reset=true. Called by the nightly job's DailyReset RPC.
-func (r *repository) BulkResetDailyItems(ctx context.Context) (int64, error) {
-	query := `
-	WITH items_to_update AS (
-		SELECT checklist_items.id AS id
-		FROM checklist_items
-		JOIN plans ON checklist_items.plan_id = plans.id
-		WHERE done = true AND daily_reset = true AND scope = 'daily'
-	)
-	UPDATE checklist_items SET done = false
-	WHERE id IN (SELECT id FROM items_to_update)`
-
-	res, err := r.db.ExecContext(ctx, query)
-	if err != nil {
-		return 0, wrapDBErr("bulk reset daily items", err)
-	}
-	rows, _ := res.RowsAffected()
-	return rows, nil
-}
-
 // GetByUserID returns non-archived items across all of a user's plans —
 // used by useranalytics in 4c via gRPC.
 func (r *repository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item, error) {

@@ -24,7 +24,6 @@ func (strangerRelations) GetPlanAccess(ctx context.Context, planID, userID uuid.
 func planScopedRoutes(planID string) []struct{ method, path string } {
 	return []struct{ method, path string }{
 		{http.MethodGet, "/api/plans/" + planID},
-		{http.MethodPatch, "/api/plans/" + planID + "/toggle-daily-reset"},
 		{http.MethodDelete, "/api/plans/" + planID},
 		{http.MethodGet, "/api/plans/" + planID + "/checklists"},
 		{http.MethodDelete, "/api/plans/" + planID + "/checklists/" + uuid.NewString()},
@@ -34,7 +33,6 @@ func planScopedRoutes(planID string) []struct{ method, path string } {
 		{http.MethodDelete, "/api/plans/" + planID + "/members/" + uuid.NewString()},
 		{http.MethodGet, "/api/plans/" + planID + "/calendar?view=week"},
 		{http.MethodGet, "/api/insights/checklist-suggestion?plan_id=" + planID},
-		{http.MethodGet, "/api/insights/checklist-suggestion-daily?plan_id=" + planID},
 		{http.MethodGet, "/api/insights/suggest-videos?plan_id=" + planID},
 	}
 }

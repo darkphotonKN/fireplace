@@ -10,7 +10,10 @@ import (
 
 	commonbroker "github.com/darkphotonKN/fireplace/common/broker"
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
+	"github.com/darkphotonKN/fireplace/common/errcode"
+	commongrpc "github.com/darkphotonKN/fireplace/common/grpcerror"
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
 )
 
 type Repository interface {
@@ -29,7 +32,6 @@ type Repository interface {
 	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item, error)
 	HasChildren(ctx context.Context, id uuid.UUID) (bool, error)
 	CountItems(ctx context.Context) (int, error)
-	BulkResetDailyItems(ctx context.Context) (int64, error)
 }
 
 type service struct {
@@ -88,6 +90,9 @@ func (s *service) Create(ctx context.Context, in CreateItemInput) (*Item, error)
 	if in.Scope != nil && *in.Scope != ScopeDaily && *in.Scope != ScopeLongterm {
 		return nil, fmt.Errorf("%w: scope must be 'daily' or 'longterm'", commonconstants.ErrInvalidInput)
 	}
+	if err := refuseDailyScope(in.Scope); err != nil {
+		return nil, err
+	}
 	if in.Type != nil && *in.Type != TypeTask && *in.Type != TypeNote {
 		return nil, fmt.Errorf("%w: type must be 'task' or 'note'", commonconstants.ErrInvalidInput)
 	}
@@ -130,6 +135,9 @@ func (s *service) validateParent(ctx context.Context, planID, parentID uuid.UUID
 }
 
 func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error) {
+	if err := refuseDailyScope(in.Scope); err != nil {
+		return nil, err
+	}
 	if in.Type != nil && *in.Type != TypeTask && *in.Type != TypeNote {
 		return nil, fmt.Errorf("%w: type must be 'task' or 'note'", commonconstants.ErrInvalidInput)
 	}
@@ -196,6 +204,20 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 		s.PublishItemUncompleted(ctx, updated)
 	}
 	return updated, nil
+}
+
+// refuseDailyScope refuses an item write that names the retired daily scope
+// (FS-02JBZ R51). The value stays a legal enum member in the proto and the
+// schema, so an old client's request is well-formed; the refusal is a domain
+// decision and carries DAILY_SCOPE_RETIRED as an ErrorInfo detail. It is
+// returned unwrapped so the status, and its detail, reach the handler intact.
+// Reads and reorders by daily are not refused (S15): they find nothing.
+func refuseDailyScope(scope *string) error {
+	if scope == nil || *scope != ScopeDaily {
+		return nil
+	}
+	return commongrpc.WithCode(codes.InvalidArgument, errcode.DailyScopeRetired,
+		"the daily scope is retired: items are long-term")
 }
 
 // normalizeIntention trims an intention and turns an empty result into nil, so
@@ -345,14 +367,6 @@ func (s *service) Delete(ctx context.Context, planID, id uuid.UUID) error {
 		return fmt.Errorf("checklistitem: delete: %w", err)
 	}
 	return nil
-}
-
-func (s *service) DailyReset(ctx context.Context) (int64, error) {
-	n, err := s.repo.BulkResetDailyItems(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("checklistitem: daily reset: %w", err)
-	}
-	return n, nil
 }
 
 // GetByUserID returns non-archived items across all the user's plans.

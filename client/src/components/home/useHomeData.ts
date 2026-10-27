@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listPlans, type Plan } from "@/api/plans";
 import { listChecklists, type ChecklistItem } from "@/api/checklists";
+import { getDayPlan, type DayPlan } from "@/api/insights";
 import { FOCUSED_PLAN_COUNT, byRecentlyUpdated } from "@/lib/homePlans";
+import { toDateOnly } from "@/lib/itemDates";
 
 /**
  * One focused plan's items, as three states rather than a nullable array.
@@ -15,6 +17,16 @@ import { FOCUSED_PLAN_COUNT, byRecentlyUpdated } from "@/lib/homePlans";
 export type ItemsState =
   | { status: "loading" }
   | { status: "ready"; items: ChecklistItem[] }
+  | { status: "failed" };
+
+/**
+ * One focused plan's day plan read (FS-02JBZ R85). `failed` stays distinct
+ * from a `not_planned` day: both get rule picks on home (R87), but only one
+ * of them is a fact about the user's day.
+ */
+export type DayPlanState =
+  | { status: "loading" }
+  | { status: "ready"; dayPlan: DayPlan }
   | { status: "failed" };
 
 export type HomeData = {
@@ -30,18 +42,28 @@ export type HomeData = {
   focusedPlans: Plan[];
   /** Items keyed by plan id, present only for the focused plans. */
   itemsByPlan: Record<string, ItemsState>;
+  /** Cached day plans keyed by plan id, present only for the focused plans. */
+  dayPlansByPlan: Record<string, DayPlanState>;
   /** Re-runs the whole fan-out. Wired to the retry on the error state. */
   reload: () => void;
 };
 
 /**
- * The capped fan-out home is assembled from (ADR-0013, FS-KSJFR R20–R22).
+ * The capped fan-out home is assembled from (ADR-0013, FS-KSJFR R20–R22,
+ * FS-02JBZ R85/R90).
  *
- * `GET /api/plans`, sorted by `updatedAt`, then checklists for the top three —
- * four requests whatever the account holds. The three item fetches are issued
- * together and settled independently: one rejecting marks that plan `failed`
- * and leaves the other two alone, because a single `Promise.all` would throw
- * away two good responses to report one bad one.
+ * `GET /api/plans`, sorted by `updatedAt`, then for the top three their
+ * checklists and their cached day plans for the browser-local date — **seven
+ * requests** whatever the account holds. ADR-0013's bound rose from 4 to 7
+ * with the day plan roll-up (FS-02JBZ R90); its decision holds: the same three
+ * plans, only shipped endpoints, no home aggregate. The day plan read is a
+ * `GET`, which never generates (ADR-0019): home NEVER calls `planMyDay`.
+ *
+ * The six per-plan requests are issued together and settled independently:
+ * one rejecting marks that plan's slot `failed` and leaves the others alone,
+ * because a single `Promise.all` would throw away good responses to report
+ * one bad one. A failed day plan read costs that plan nothing worse than rule
+ * picks (R87).
  *
  * The plan-derived state lands first and on its own, which is what makes the
  * page paint progressively instead of behind a full-page spinner: callers can
@@ -53,12 +75,14 @@ export function useHomeData(): HomeData {
   const [plansStatus, setPlansStatus] = useState<HomeData["plansStatus"]>("loading");
   const [plans, setPlans] = useState<Plan[]>([]);
   const [itemsByPlan, setItemsByPlan] = useState<Record<string, ItemsState>>({});
+  const [dayPlansByPlan, setDayPlansByPlan] = useState<Record<string, DayPlanState>>({});
 
   useEffect(() => {
     let cancelled = false;
     setPlansStatus("loading");
     setPlans([]);
     setItemsByPlan({});
+    setDayPlansByPlan({});
 
     const run = async () => {
       let ordered: Plan[];
@@ -77,6 +101,11 @@ export function useHomeData(): HomeData {
           focused.map((plan) => [plan.id, { status: "loading" } as ItemsState]),
         ),
       );
+      setDayPlansByPlan(
+        Object.fromEntries(
+          focused.map((plan) => [plan.id, { status: "loading" } as DayPlanState]),
+        ),
+      );
       setPlansStatus("ready");
 
       // Issued in one pass, settled one at a time. Each result is merged into
@@ -85,10 +114,20 @@ export function useHomeData(): HomeData {
         if (cancelled) return;
         setItemsByPlan((prev) => ({ ...prev, [id]: state }));
       };
+      const recordDayPlan = (id: string, state: DayPlanState) => {
+        if (cancelled) return;
+        setDayPlansByPlan((prev) => ({ ...prev, [id]: state }));
+      };
+      // The browser-local day, the same date the plan page's section reads.
+      const today = toDateOnly(new Date())!;
       focused.forEach((plan) => {
         listChecklists(plan.id).then(
           (items) => record(plan.id, { status: "ready", items: items ?? [] }),
           () => record(plan.id, { status: "failed" }),
+        );
+        getDayPlan(plan.id, today).then(
+          (dayPlan) => recordDayPlan(plan.id, { status: "ready", dayPlan }),
+          () => recordDayPlan(plan.id, { status: "failed" }),
         );
       });
     };
@@ -115,6 +154,7 @@ export function useHomeData(): HomeData {
     plans,
     focusedPlans,
     itemsByPlan,
+    dayPlansByPlan,
     reload,
   };
 }

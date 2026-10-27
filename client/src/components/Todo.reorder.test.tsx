@@ -38,12 +38,10 @@ vi.mock('@/services/api', () => ({
 
 vi.mock('@/api/insights', () => ({
   getChecklistSuggestion: vi.fn(async () => ''),
-  getDailyInsights: vi.fn(async () => []),
 }));
 
 vi.mock('@/api/plans', () => ({
   getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-  toggleDailyReset: vi.fn(),
 }));
 
 const item = (

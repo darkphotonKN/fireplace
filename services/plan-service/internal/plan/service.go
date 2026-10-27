@@ -239,26 +239,6 @@ func (s *service) Update(ctx context.Context, in *UpdatePlanInput) (*Plan, error
 	return p, nil
 }
 
-func (s *service) ToggleDailyReset(ctx context.Context, id, userID uuid.UUID) (*Plan, error) {
-	p, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("plan: toggle daily reset: %w", err)
-	}
-	flipped := !p.DailyReset
-	if err := s.repo.Update(ctx, &UpdatePlanInput{
-		ID:         id,
-		UserID:     userID,
-		DailyReset: &flipped,
-	}); err != nil {
-		return nil, fmt.Errorf("plan: toggle daily reset: %w", err)
-	}
-	updated, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("plan: toggle daily reset: reload: %w", err)
-	}
-	return updated, nil
-}
-
 func (s *service) Delete(ctx context.Context, id, userID uuid.UUID) error {
 	if err := s.repo.Delete(ctx, id, userID); err != nil {
 		return fmt.Errorf("plan: delete: %w", err)

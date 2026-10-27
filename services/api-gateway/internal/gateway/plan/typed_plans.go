@@ -51,7 +51,6 @@ type PlansClient interface {
 	ListSharedPlans(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*PlanResp, error)
 	SearchPlans(ctx context.Context, userID uuid.UUID, params SearchParam) ([]*pb.SearchPlanResult, error)
 	UpdatePlan(ctx context.Context, id, userID uuid.UUID, req UpdatePlanReq) (*PlanResp, error)
-	ToggleDailyReset(ctx context.Context, id, userID uuid.UUID) (*PlanResp, error)
 	DeletePlan(ctx context.Context, id, userID uuid.UUID) error
 }
 
@@ -238,26 +237,6 @@ func RegisterPlanOperations(api huma.API, c PlansClient, access *Access,
 		plan, err := c.UpdatePlan(ctx, in.ID, userID, in.Body)
 		if err != nil {
 			return nil, apierr.ProblemFor("update plan", err)
-		}
-		return &PlanOutput{Body: withRelation(*plan, rel)}, nil
-	})
-
-	huma.Register(api, huma.Operation{
-		OperationID: "toggleDailyReset", Method: http.MethodPatch,
-		Path:        "/api/plans/{id}/toggle-daily-reset",
-		Middlewares: mw, Security: secured,
-		Summary: "Toggle a plan's daily-reset flag",
-		Description: "Flips dailyReset and returns the updated plan. Takes no body. Owner " +
-			"only: a member gets 403, and anyone else 404.",
-		Errors: errs,
-	}, func(ctx context.Context, in *PlanIDInput) (*PlanOutput, error) {
-		userID, rel, err := authorize(ctx, "toggle daily_reset", in.ID, NeedOwner)
-		if err != nil {
-			return nil, err
-		}
-		plan, err := c.ToggleDailyReset(ctx, in.ID, userID)
-		if err != nil {
-			return nil, apierr.ProblemFor("toggle daily_reset", err)
 		}
 		return &PlanOutput{Body: withRelation(*plan, rel)}, nil
 	})

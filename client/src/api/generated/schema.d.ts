@@ -33,7 +33,7 @@ export interface paths {
         };
         /**
          * Suggest the next checklist item
-         * @description Returns one concrete, verb-first next task derived from the plan's focus and current checklist. The body is the suggestion itself.
+         * @description Returns one concrete, verb-first next task derived from the plan's focus and current checklist. The body is the suggestion itself. 429 · LLM_BUDGET_EXHAUSTED: the platform's daily token budget is spent; retry after the next UTC midnight.
          */
         get: operations["getChecklistSuggestion"];
         put?: never;
@@ -44,7 +44,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/insights/checklist-suggestion-daily": {
+    "/api/insights/day-plan": {
         parameters: {
             query?: never;
             header?: never;
@@ -52,11 +52,59 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Suggest daily items from long-term work
-         * @description Returns three suggestions biased toward breaking down long-term checklist items, each nudged away from the previous so the set does not repeat itself.
+         * Get the day plan for a plan
+         * @description Returns the caller's day plan for the plan and date: up to six entries in up to three labelled groups, or status not_planned with no groups when Plan my day has not drawn one for the date. A read never generates anything. A date more than one day from the server's UTC date is refused with BRIEF_DATE_OUT_OF_RANGE.
          */
-        get: operations["getDailyChecklistSuggestion"];
+        get: operations["getDayPlan"];
         put?: never;
+        /**
+         * Plan my day
+         * @description Draws or redraws the caller's day plan for the plan and date and returns it. If nothing changed since the stored plan was drawn, the stored plan is returned and nothing is spent. The first successful draw of a date is free; each later one spends one of 3 redraws per plan and date (refreshesRemaining), and with none left it is refused with 429 BRIEF_REFRESH_LIMIT_REACHED and the stored plan is unchanged. A date more than one day from the server's UTC date is refused with BRIEF_DATE_OUT_OF_RANGE. If generation fails (the platform's daily token budget is spent, the model is unreachable or times out, or its output is invalid), a rule-based plan is drawn instead and returned with 200 and source rules; it is stored, spends nothing and leaves the free draw unused, and the next draw tries the model again. 503 SERVICE_UNAVAILABLE means the insights service could not be reached; retrying is correct.
+         */
+        post: operations["planMyDay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insights/day-plan/entries/{id}/tick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Tick a day plan entry done for today
+         * @description Marks the entry's item done for the day plan's date and returns the entry, ticked. This is not the item's done, which it never changes; ticking the item itself done is a separate item update. An existing_item entry takes no itemId, or its own. An unbound new_step entry needs itemId, the item created from it, which must be a task under the entry's parent item in the same plan; the entry is then bound to that item (kind existing_item, text and reason kept). Ticking a ticked entry returns it unchanged. An entry that cannot be ticked (an unbound new_step without a valid itemId, an item now archived or deleted, or an itemId that contradicts the entry's own) is refused with DAY_PLAN_ENTRY_NOT_TICKABLE; a day plan date more than one day from the server's UTC date with BRIEF_DATE_OUT_OF_RANGE. An entry that is not the caller's is 404.
+         */
+        put: operations["tickDayPlanEntry"];
+        post?: never;
+        /**
+         * Remove a day plan entry's tick
+         * @description Removes the entry's day tick for the day plan's date. Unticking an unticked entry succeeds and changes nothing. A day plan date more than one day from the server's UTC date is refused with BRIEF_DATE_OUT_OF_RANGE. An entry that is not the caller's is 404.
+         */
+        delete: operations["untickDayPlanEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/insights/day-plan/items/{itemId}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch revisions for an item
+         * @description Switches the revision ladder on or off for one item of the caller's plan; on by default, and per user on a shared plan. Off cancels the item's open revision and schedules no more. On schedules nothing by itself: the item's next day tick schedules the next revision, never past revision 3. Only learning plans revise; on a project plan the switch is accepted and has no effect. A plan the caller cannot access, or an item not in the plan, is 404.
+         */
+        put: operations["setItemRevisions"];
         post?: never;
         delete?: never;
         options?: never;
@@ -73,7 +121,7 @@ export interface paths {
         };
         /**
          * Suggest learning videos for a plan
-         * @description Generates search terms from the plan's focus and checklist, then returns one recommended video per term.
+         * @description Generates search terms from the plan's focus and checklist, then returns one recommended video per term. 429 · LLM_BUDGET_EXHAUSTED: the platform's daily token budget is spent; retry after the next UTC midnight.
          */
         get: operations["getSuggestedVideos"];
         put?: never;
@@ -211,7 +259,7 @@ export interface paths {
         put?: never;
         /**
          * Create a checklist item
-         * @description Creates a task or note under the plan. `scope` and `type` are optional; plan-service defaults them to longterm and task. Parent nesting is validated downstream — a parent must be a top-level item in the same plan.
+         * @description Creates a task or note under the plan. `scope` and `type` are optional; plan-service defaults them to longterm and task. Parent nesting is validated downstream — a parent must be a top-level item in the same plan. The daily scope is retired: `scope: daily` is well-formed but refused with 400 DAILY_SCOPE_RETIRED.
          */
         post: operations["createChecklist"];
         delete?: never;
@@ -303,7 +351,7 @@ export interface paths {
         head?: never;
         /**
          * Update a checklist item
-         * @description Partial update. `parentId` is three-state: send a UUID to re-parent, null to clear, or omit to leave unchanged. `intention` is free text: omit it to leave it unchanged or send a string to set it; the server trims it, an empty result clears it, and more than 280 characters after trimming is 400 VALIDATION_FAILED. Conversion, re-parenting and the intention length rules are enforced downstream.
+         * @description Partial update. `parentId` is three-state: send a UUID to re-parent, null to clear, or omit to leave unchanged. `intention` is free text: omit it to leave it unchanged or send a string to set it; the server trims it, an empty result clears it, and more than 280 characters after trimming is 400 VALIDATION_FAILED. Conversion, re-parenting and the intention length rules are enforced downstream. The daily scope is retired: `scope: daily` is well-formed but refused with 400 DAILY_SCOPE_RETIRED.
          */
         patch: operations["updateChecklist"];
         trace?: never;
@@ -482,26 +530,6 @@ export interface paths {
          * @description Applies a partial update. Omitted fields are left unchanged.
          */
         patch: operations["updateNote"];
-        trace?: never;
-    };
-    "/api/plans/{id}/toggle-daily-reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Toggle a plan's daily-reset flag
-         * @description Flips dailyReset and returns the updated plan. Takes no body. Owner only: a member gets 403, and anyone else 404.
-         */
-        patch: operations["toggleDailyReset"];
         trace?: never;
     };
     "/api/users": {
@@ -717,7 +745,7 @@ export interface components {
              * @example 550e8400-e29b-41d4-a716-446655440000
              */
             parentId?: string;
-            /** @example daily */
+            /** @example longterm */
             scope?: string;
             /** @example task */
             type?: string;
@@ -741,6 +769,86 @@ export interface components {
             focus: string;
             name: string;
             planType: string;
+        };
+        DayPlanEntryResponse: {
+            /**
+             * Format: uuid
+             * @description Entry id
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The item; present iff kind is existing_item
+             */
+            itemId?: string;
+            /**
+             * @description existing_item points at an item of the plan; new_step proposes a new child of a parent item
+             * @enum {string}
+             */
+            kind: "existing_item" | "new_step";
+            /**
+             * Format: int64
+             * @description Rough minutes estimate; absent on rules entries
+             */
+            minutes?: number;
+            /**
+             * Format: uuid
+             * @description For new_step, the parent item the step goes under; for existing_item, the item's parent if it has one
+             */
+            parentItemId?: string;
+            /** @description One line: why today */
+            reason: string;
+            /**
+             * Format: int64
+             * @description Revision number, set by the server only
+             */
+            revision?: number;
+            /** @description Present only on existing_item entries of learning plans */
+            revisionsEnabled?: boolean;
+            /** @description The item's description when drawn, or the proposed step text */
+            text: string;
+            /** @description Day tick for this entry's date */
+            ticked: boolean;
+        };
+        DayPlanGroupResponse: {
+            /** @description The group's entries, in order */
+            entries: components["schemas"]["DayPlanEntryResponse"][];
+            /** @description Short topic label */
+            label: string;
+        };
+        DayPlanResponse: {
+            /**
+             * Format: date
+             * @description The day plan's date as sent, YYYY-MM-DD
+             */
+            date: string;
+            /**
+             * Format: date-time
+             * @description When the plan was drawn; present iff status is planned, and unchanged when a redraw was served from the stored plan
+             */
+            generatedAt?: string;
+            /** @description Zero to three groups, six entries at most across them; never null, empty when not_planned */
+            groups: components["schemas"]["DayPlanGroupResponse"][];
+            /**
+             * Format: uuid
+             * @description Plan id
+             */
+            planId: string;
+            /**
+             * Format: int64
+             * @description Counted redraws left for this plan and date; 3 until the free first draw is used
+             */
+            refreshesRemaining: number;
+            /**
+             * @description How the plan was drawn; present iff status is planned. rules is the basic plan
+             * @enum {string}
+             */
+            source?: "ai" | "rules";
+            /**
+             * @description planned once Plan my day has drawn for this date; not_planned until then
+             * @enum {string}
+             */
+            status: "planned" | "not_planned";
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -790,6 +898,18 @@ export interface components {
              * @description Owner: when the plan was created. Member: when they were added.
              */
             since: string;
+        };
+        PlanMyDayRequest: {
+            /**
+             * Format: date
+             * @description The caller's local calendar date, YYYY-MM-DD. Must be within one day of the server's UTC date
+             */
+            date: string;
+            /**
+             * Format: uuid
+             * @description Plan id
+             */
+            planId: string;
         };
         PlanResp: {
             /** Format: date-time */
@@ -886,6 +1006,15 @@ export interface components {
              */
             similarity: number;
         };
+        SetItemRevisionsRequest: {
+            /** @description false switches the item's revisions off, cancelling its open revision; true switches them back on, and the item's next day tick schedules the next revision */
+            enabled: boolean;
+            /**
+             * Format: uuid
+             * @description Plan id; the item must belong to it
+             */
+            planId: string;
+        };
         SigninRequest: {
             /**
              * @description Email address
@@ -908,6 +1037,13 @@ export interface components {
             name: string;
             /** @description Plaintext password; hashed by auth-service */
             password: string;
+        };
+        TickDayPlanEntryRequest: {
+            /**
+             * Format: uuid
+             * @description The item created from a new_step entry (required to tick an unbound new_step); for an existing_item entry, omit it or send the entry's own item
+             */
+            itemId?: string;
         };
         UpdateChecklistReq: {
             /** @example false */
@@ -1152,6 +1288,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
                 headers: {
@@ -1172,11 +1317,13 @@ export interface operations {
             };
         };
     };
-    getDailyChecklistSuggestion: {
+    getDayPlan: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Plan id */
-                plan_id?: string;
+                planId: string;
+                /** @description The caller's local calendar date, YYYY-MM-DD. Must be within one day of the server's UTC date */
+                date: string;
             };
             header?: never;
             path?: never;
@@ -1190,11 +1337,378 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": string[] | null;
+                    "application/json": components["schemas"]["DayPlanResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    planMyDay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanMyDayRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayPlanResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    tickDayPlanEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Entry id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TickDayPlanEntryRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayPlanEntryResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    untickDayPlanEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Entry id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setItemRevisions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Item id */
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetItemRevisionsRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1281,6 +1795,15 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3462,83 +3985,6 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    toggleDailyReset: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Plan id */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlanResp"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
                 headers: {
                     [name: string]: unknown;
                 };

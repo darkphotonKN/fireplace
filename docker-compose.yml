@@ -57,8 +57,14 @@ services:
   # plan-service and insights-service must never share a database (ADR-0010 §3):
   # the effectively-once guarantee rests on producer and consumer being unable
   # to enlist in one transaction.
+  #
+  # Image: pgvector/pgvector, pinned to an exact pgvector version (ADR-0018).
+  # Same Postgres major as postgres:17, so an existing data directory carries
+  # over. The image only ships the library; `vector` exists in
+  # fireplace_insights alone (init-databases.sh, or the deploy/README.md one-off
+  # for a volume that predates it). Move postgres-test in the override with it.
   postgres:
-    image: postgres:17
+    image: pgvector/pgvector:0.8.7-pg17-trixie
     container_name: fireplace_postgres
     environment:
       POSTGRES_USER: postgres
@@ -220,6 +226,9 @@ services:
       OTEL_ENABLED: "false"
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Global daily token budget across every model call (ADR-0019, FS-02JBZ
+      # R34). Dev runs low so a runaway loop costs a known, small amount.
+      LLM_DAILY_TOKEN_BUDGET: 200000
     depends_on:
       insights-migrate: { condition: service_completed_successfully }
       fireplace-rabbitmq: { condition: service_healthy }

@@ -78,3 +78,26 @@
 # /api/users/profile and passes before and after.
 get /users/profile api path removed without deprecation
 patch /users/profile api path removed without deprecation
+
+# ---------------------------------------------------------------------------
+# FS-02JBZ R54 (I-02JBZ-2) — the per-plan daily-reset toggle is removed.
+#
+# The daily scope is retired (FS-02JBZ D12): migration 000022 turned every daily
+# item into a long-term one and the nightly reset job is gone, so the flag this
+# operation flipped has no effect. The operation is removed outright rather than
+# deprecated: its only consumer, the client's "Refresh daily tasks" setting, is
+# removed in the same change. plans.dailyReset stays on createPlan / updatePlan
+# and on plan bodies (R55), so no other operation changes.
+patch /api/plans/{id}/toggle-daily-reset api path removed without deprecation
+
+# ---------------------------------------------------------------------------
+# FS-DF4ZB R55, L14 (I-DF4ZB-9) — the legacy daily suggestions are removed.
+#
+# The guided daily surface (since replaced by the day plan, getDayPlan /
+# planMyDay, FS-02JBZ) took over from the daily tab's three free-text
+# suggestions, and the client stopped calling this operation
+# before it was removed (I-DF4ZB-7, -8), so no consumer is left to deprecate it
+# for. The insights-service GenerateDailySuggestions RPC behind it is removed in
+# the same change. The add-bar single suggestion and the video suggestions are
+# untouched (FS-DF4ZB §Out of Scope).
+get /api/insights/checklist-suggestion-daily api path removed without deprecation

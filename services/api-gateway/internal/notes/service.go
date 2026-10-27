@@ -133,9 +133,11 @@ func (s *Service) GenerateAINotes(planID uuid.UUID, requestType string) ([]Note,
 		return nil, fmt.Errorf("notes: generate ai notes: get plan %s: %w", planID, err)
 	}
 
-	// Get checklist items for context
-	scope := "daily"
-	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planID, &scope, nil, nil)
+	// Context is the plan's long-term task items (FS-02JBZ R56, S13). The daily
+	// scope is retired, so reading it would hand every generator an empty list;
+	// notes are excluded because the generators reason about doable work.
+	scope, itemType := "longterm", "task"
+	checklistItems, err := s.checklistService.GetAllByPlanId(ctx, planID, &scope, &itemType, nil)
 	if err != nil {
 		return nil, fmt.Errorf("notes: generate ai notes: get checklist items: %w", err)
 	}

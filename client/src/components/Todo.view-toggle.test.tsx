@@ -35,12 +35,10 @@ vi.mock('@/services/api', () => ({
 
 vi.mock('@/api/insights', () => ({
   getChecklistSuggestion: vi.fn(async () => ''),
-  getDailyInsights: vi.fn(async () => []),
 }));
 
 vi.mock('@/api/plans', () => ({
   getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-  toggleDailyReset: vi.fn(),
 }));
 
 const item = (
@@ -170,16 +168,5 @@ describe('Todo list / blocks toggle', () => {
 
     expect(cards().length).toBe(1);
     expect(screen.getByText('item N1')).toBeTruthy();
-  });
-
-  it('should offer no blocks view on the daily side, which has no nesting', async () => {
-    fetchChecklist.mockImplementation(async () =>
-      EIGHT.map((i) => ({ ...i, scope: 'daily' }))
-    );
-    const Todo = (await import('./Todo')).default;
-    render(<Todo fixedTaskType="daily" />);
-    await screen.findByText('item P0');
-
-    expect(screen.queryByRole('group', { name: 'View' })).toBeNull();
   });
 });

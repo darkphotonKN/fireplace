@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   fetchChecklist,
   createChecklistItem,
@@ -15,6 +15,7 @@ import {
   reorderChecklistItems,
   ChecklistResponse,
 } from '@/services/api';
+import { onPlanItemsChanged } from '@/lib/planItemsChanged';
 import {
   applyOrder,
   canMove,
@@ -39,8 +40,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import SortableItem from '@/components/SortableItem';
-import { getChecklistSuggestion, getDailyInsights } from '@/api/insights';
-import { getPlan, toggleDailyReset, type PlanMember } from '@/api/plans';
+import { getChecklistSuggestion } from '@/api/insights';
+import { getPlan, type PlanMember } from '@/api/plans';
 import { duplicateChecklistItem } from '@/api/checklists';
 import { insertDuplicate } from '@/lib/duplicate';
 import PlanSharing from '@/components/PlanSharing';
@@ -126,20 +127,20 @@ const pageButtonClass =
   'flex items-center transition-colors hover:text-primary focus-visible:text-primary disabled:pointer-events-none disabled:opacity-30';
 
 interface TodoProps {
-  /** When set, locks taskType to this value and hides the Daily/Long-term tab buttons. */
-  fixedTaskType?: 'daily' | 'longterm';
+  /**
+   * The list is always long-term: the daily scope is retired (FS-02JBZ R62,
+   * R91) and the Day plan is its own section. Kept so the plan page's
+   * `fixedTaskType="longterm"` still type-checks.
+   */
+  fixedTaskType?: 'longterm';
   /** Surfaces the All | Notes | Checklist filter tabs over the list (longterm only). */
   enableTypeFilter?: boolean;
-  /** Hides the manual "Add" form on the daily side; AI suggestions remain. */
-  dailyAIOnly?: boolean;
 }
 
 type ListTypeFilter = 'all' | 'note' | 'task';
 
 export default function Todo({
-  fixedTaskType,
   enableTypeFilter = false,
-  dailyAIOnly = false,
 }: TodoProps = {}) {
   const params = useParams();
   const planId = params?.planId as string;
@@ -169,19 +170,13 @@ export default function Todo({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Task type state. When fixedTaskType is supplied (the plan page uses
-  // <Todo fixedTaskType="longterm" /> and <Todo fixedTaskType="daily" />),
-  // it is ALWAYS the source of truth — we don't seed useState and let it
-  // drift, because React preserves component state across some navigation
-  // patterns and the prop change would otherwise be silently ignored.
-  const [internalTaskType, setInternalTaskType] = useState<
-    'daily' | 'longterm' | 'archived'
-  >(fixedTaskType ?? 'daily');
-  const taskType: 'daily' | 'longterm' | 'archived' =
-    fixedTaskType ?? internalTaskType;
-  const setTaskType = (next: 'daily' | 'longterm' | 'archived') => {
-    if (!fixedTaskType) setInternalTaskType(next);
-  };
+  // Task type: always long-term. The daily scope is retired and the plan
+  // page's Day plan is its own section, not a <Todo> (FS-02JBZ R62, R91).
+  // 'archived' stays in the type only for the `taskType === 'archived'`
+  // branches below, which nothing has set since the internal switcher went;
+  // the cast keeps TypeScript from narrowing them into errors until the
+  // component is reshaped (the archived list is driven by showArchived).
+  const taskType = 'longterm' as 'longterm' | 'archived';
 
   // Filter tab for All | Notes | Checklist (only used when enableTypeFilter).
   const [listTypeFilter, setListTypeFilter] = useState<ListTypeFilter>('all');
@@ -283,75 +278,19 @@ export default function Todo({
     Record<string, boolean>
   >({});
 
-  // Daily insights state
-  const [dailyInsights, setDailyInsights] = useState<string[]>([]);
-  const [showInsights, setShowInsights] = useState(true);
-  const [visibleInsights, setVisibleInsights] = useState<boolean[]>([]);
-
   // Archived state
   const [showArchived, setShowArchived] = useState(false);
   const [archivedTodos, setArchivedTodos] = useState<ChecklistItem[]>([]);
 
   // Settings state
   const [showSettings, setShowSettings] = useState(false);
-  const [refreshDailyTasks, setRefreshDailyTasks] = useState(true);
-  const [dailyReset, setDailyReset] = useState(false);
   // The viewer's relation to the plan (FS-12ZMF), from getPlan. Null until the
-  // plan has loaded: Sharing waits for it, and owner-only settings are hidden
-  // only once it says "member" (R31).
+  // plan has loaded: Sharing waits for it (R31).
   const [relation, setRelation] = useState<PlanMember['relation'] | null>(null);
-  const [isTogglingReset, setIsTogglingReset] = useState(false);
-  const [lastToggleTime, setLastToggleTime] = useState(0);
-  const TOGGLE_THROTTLE_MS = 1000; // 1 second throttle
 
   // Delete confirmation state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [todoToDelete, setTodoToDelete] = useState<ChecklistItem | null>(null);
-
-  // Load show/hide preference from localStorage on mount
-  useEffect(() => {
-    const savedPreference = localStorage.getItem('showDailyInsights');
-    if (savedPreference !== null) {
-      setShowInsights(savedPreference === 'true');
-    }
-  }, []);
-
-  // Save show/hide preference to localStorage
-  useEffect(() => {
-    localStorage.setItem('showDailyInsights', String(showInsights));
-  }, [showInsights]);
-
-  // Handle sequential fade-up animation for insights
-  useEffect(() => {
-    if (!dailyInsights.length) return;
-
-    // Initialize all insights as hidden
-    setVisibleInsights(new Array(dailyInsights.length).fill(false));
-
-    // Show each insight with a delay
-    dailyInsights.forEach((_, index) => {
-      setTimeout(() => {
-        setVisibleInsights((prev) => {
-          const newState = [...prev];
-          newState[index] = true;
-          return newState;
-        });
-      }, index * 300); // 300ms delay between each insight
-    });
-  }, [dailyInsights]);
-
-  // Load refresh preference from localStorage on mount
-  useEffect(() => {
-    const savedPreference = localStorage.getItem('refreshDailyTasks');
-    if (savedPreference !== null) {
-      setRefreshDailyTasks(savedPreference === 'true');
-    }
-  }, []);
-
-  // Save refresh preference to localStorage
-  useEffect(() => {
-    localStorage.setItem('refreshDailyTasks', String(refreshDailyTasks));
-  }, [refreshDailyTasks]);
 
   // Fetch todos on component mount and when planId or taskType changes.
   //
@@ -373,11 +312,11 @@ export default function Todo({
         let items: ChecklistItem[];
 
         if (taskType === 'archived') {
-          items = await fetchArchivedChecklist(planId, 'daily');
+          items = await fetchArchivedChecklist(planId);
         } else {
           items = await fetchChecklist(
             planId,
-            taskType as 'daily' | 'longterm'
+            'longterm'
           );
         }
 
@@ -398,16 +337,27 @@ export default function Todo({
 
     loadTodos();
 
-    // If we're in daily mode, also fetch the daily insights
-    if (taskType === 'daily') {
-      fetchDailyInsights();
-    } else {
-      // Clear insights when not in daily mode
-      setDailyInsights([]);
-    }
-
     return () => {
       cancelled = true;
+    };
+  }, [planId, taskType]);
+
+  // Another part of the page wrote this plan's items (the Day plan section's
+  // "Also mark done" or Add, FS-02JBZ R77): re-read quietly, no loading
+  // state, so the progress strip moves. A failed re-read keeps what is shown.
+  useEffect(() => {
+    if (taskType === 'archived') return;
+    let cancelled = false;
+    const off = onPlanItemsChanged(planId, () => {
+      fetchChecklist(planId, 'longterm')
+        .then((items) => {
+          if (!cancelled) setTodos(items);
+        })
+        .catch((err) => console.error('Failed to re-read checklist items:', err));
+    });
+    return () => {
+      cancelled = true;
+      off();
     };
   }, [planId, taskType]);
 
@@ -477,7 +427,7 @@ export default function Todo({
         id,
         { done: newDoneStatus },
         planId,
-        taskType as 'daily' | 'longterm'
+        'longterm'
       );
     } catch (error) {
       console.error('Error toggling todo:', error);
@@ -616,7 +566,7 @@ export default function Todo({
           description: updatedText,
         },
         planId,
-        taskType as 'daily' | 'longterm'
+        'longterm'
       );
 
     } catch (error) {
@@ -657,7 +607,7 @@ export default function Todo({
     const created = await createChecklistItem(
       text,
       planId,
-      taskType as 'daily' | 'longterm',
+      'longterm',
       { type, parentId }
     );
     setTodos((prev) => [...prev, created]);
@@ -750,110 +700,6 @@ export default function Todo({
     }
   };
 
-  // Fetch daily insights from API
-  const fetchDailyInsights = async () => {
-    try {
-      // First check if there are any long-term items
-      const longTermItems = await fetchChecklist(planId, 'longterm');
-      if (longTermItems.length === 0) {
-        // No long-term items, so no need to fetch insights
-        setDailyInsights([]);
-        setVisibleInsights([]);
-        return;
-      }
-
-      const response = await getDailyInsights(planId);
-      if (response.length > 0) {
-        setDailyInsights(response);
-      } else {
-        // Clear insights if API returns empty results
-        setDailyInsights([]);
-        setVisibleInsights([]);
-      }
-    } catch (error) {
-      console.error('Failed to fetch daily insights:', error);
-      // Clear insights on error
-      setDailyInsights([]);
-      setVisibleInsights([]);
-    }
-  };
-
-  // Add insight as a new todo
-  const addInsightAsTodo = async (description: string) => {
-    try {
-      // Create a temporary ID for the optimistic update
-      const tempId = `insight_${Date.now()}`;
-
-      // Create an optimistic todo item
-      const tempNewItem: ChecklistItem = {
-        id: tempId,
-        description: description,
-        done: false,
-      };
-
-      // Start animation for the new todo
-      setNewTodoAnimations((prev) => ({ ...prev, [tempId]: true }));
-
-      // Add to list with optimistic update
-      setTodos((prevTodos) => [...prevTodos, tempNewItem]);
-
-      // Actual API call
-      const newItem = await createChecklistItem(
-        description,
-        planId,
-        taskType as 'daily' | 'longterm'
-      );
-
-      // Update the item with the real ID from the API
-      setTodos((prevTodos) =>
-        prevTodos?.map((todo) => (todo.id === tempId ? newItem : todo))
-      );
-
-      // Remove the suggestion from the list to provide feedback that it was added
-      setDailyInsights((prevInsights) =>
-        prevInsights.filter((insight) => insight !== description)
-      );
-
-      // Clear errors if any
-      setError(null);
-    } catch (error) {
-      console.error('Failed to add suggested task:', error);
-      setError('Failed to add suggested task. Please try again.');
-
-      // Create a fallback ID for the item in case of API failure
-      const fallbackId = `fallback_${Date.now()}`;
-
-      // Add as a local item even if API fails
-      const fallbackItem = {
-        id: fallbackId,
-        description: description,
-        done: false,
-      };
-
-      setTodos((prevTodos) => [...prevTodos, fallbackItem]);
-
-      // Add animation for the fallback item
-      setNewTodoAnimations((prev) => ({
-        ...prev,
-        [fallbackId]: true,
-      }));
-
-      // Remove the animation after delay
-      setTimeout(() => {
-        setNewTodoAnimations((current) => {
-          const final = { ...current };
-          delete final[fallbackId];
-          return final;
-        });
-      }, 1000);
-    }
-  };
-
-  // Toggle insights visibility
-  const toggleInsightsVisibility = () => {
-    setShowInsights((prev) => !prev);
-  };
-
   // Archive a todo
   const archiveTodo = async (id: string) => {
     // Find the original todo before archiving it
@@ -868,7 +714,7 @@ export default function Todo({
       const response = await archiveChecklistItem(
         id,
         planId,
-        taskType as 'daily' | 'longterm'
+        'longterm'
       );
     } catch (error) {
       console.error('Error archiving todo:', error);
@@ -902,7 +748,7 @@ export default function Todo({
         id,
         { type: nextType },
         planId,
-        taskType as 'daily' | 'longterm'
+        'longterm'
       );
     } catch (err) {
       console.error('Error toggling item type:', err);
@@ -916,7 +762,7 @@ export default function Todo({
   };
 
   // Apply the active type filter (used by the longterm "All | Notes | Checklist"
-  // tab strip). For daily / archived, this is a no-op.
+  // tab strip). For archived, this is a no-op.
   const filteredTodos = useMemo(() => {
     if (!todos) return [];
     if (!enableTypeFilter || taskType !== 'longterm') return todos;
@@ -970,7 +816,7 @@ export default function Todo({
   // the current page: Tab targets what is on screen (R15).
   //
   // Blocks only make sense where nesting does, so the long-term list is the
-  // only place the toggle is offered; daily and archived stay rows whatever
+  // only place the toggle is offered; archived stays rows whatever
   // is remembered. A block is taller than a row, hence its own page size.
   const canUseGrid = taskType === 'longterm' && !showArchived && !showSettings;
   const isGrid = canUseGrid && view === 'grid';
@@ -1001,8 +847,8 @@ export default function Todo({
   }, [currentPage, page]);
 
   // A different list, or a different slice of it, always starts again at the
-  // top (R8). taskType covers the internal daily / long-term switcher; when
-  // fixedTaskType pins it, only the filter can move.
+  // top (R8). The list is always long-term, so in practice only the filter
+  // and the view can move.
   useEffect(() => {
     setPage(1);
   }, [taskType, listTypeFilter, isGrid]);
@@ -1044,10 +890,10 @@ export default function Todo({
       ? addBarParent.id
       : null;
 
-  // The add bar is absent in the archived view and on the daily side when
-  // dailyAIOnly is on. Named because the list area's scroller (FS-0008 R13)
-  // only exists to serve the pinned bar, so both keys off the same answer.
-  const showAddBar = taskType !== 'archived' && !(dailyAIOnly && taskType === 'daily');
+  // The add bar is absent in the archived view. Named because the list area's
+  // scroller (FS-0008 R13) only exists to serve the pinned bar, so both keys
+  // off the same answer.
+  const showAddBar = taskType !== 'archived';
 
   // Forget an ineligible target rather than holding it, so it can't silently
   // re-nest the bar when, say, the type filter is switched back.
@@ -1177,7 +1023,7 @@ export default function Todo({
       const created = await createChecklistItem(
         text,
         planId,
-        taskType as 'daily' | 'longterm',
+        'longterm',
         { type: 'task', parentId }
       );
       setTodos((prev) => [...prev, created]);
@@ -1365,7 +1211,7 @@ export default function Todo({
         id,
         { parentId: above.id },
         planId,
-        taskType as 'daily' | 'longterm'
+        'longterm'
       );
     } catch (err) {
       console.error('Error indenting item:', err);
@@ -1392,7 +1238,7 @@ export default function Todo({
         id,
         { parentId: null },
         planId,
-        taskType as 'daily' | 'longterm'
+        'longterm'
       );
     } catch (err) {
       console.error('Error outdenting item:', err);
@@ -1437,7 +1283,7 @@ export default function Todo({
   // Load archived todos
   const loadArchivedTodos = async () => {
     try {
-      setArchivedTodos(await fetchArchivedChecklist(planId, 'daily'));
+      setArchivedTodos(await fetchArchivedChecklist(planId));
     } catch (error) {
       console.error('Failed to load archived todos:', error);
       setError('Failed to load archived tasks. Please try again.');
@@ -1479,7 +1325,7 @@ export default function Todo({
     }
   };
 
-  // Fetch plan metadata (dailyReset). This effect owns PLAN state only — it
+  // Fetch plan metadata (the viewer's relation). This effect owns PLAN state only — it
   // must never touch `todos`. The taskType effect above is the single writer
   // of the checklist, and it is the only one that knows which scope this
   // instance is showing. This effect used to also fetch scope 'daily' and
@@ -1494,7 +1340,6 @@ export default function Todo({
       try {
         const planResponse = await getPlan(planId);
         // Bare resource, not planResponse.result — serialized (FS-0004).
-        setDailyReset(planResponse.dailyReset);
         setRelation(planResponse.relation ?? null);
       } catch (error) {
         console.error('Error fetching plan details:', error);
@@ -1503,31 +1348,6 @@ export default function Todo({
 
     loadPlanDetails();
   }, [planId]);
-
-  // Throttled toggle handler
-  const handleToggleDailyReset = useCallback(async () => {
-    const now = Date.now();
-    if (now - lastToggleTime < TOGGLE_THROTTLE_MS) return;
-
-    setIsTogglingReset(true);
-    setLastToggleTime(now);
-
-    // Optimistic update
-    setDailyReset((prev) => !prev);
-
-    try {
-      // Serialized: a failure THROWS rather than returning a body with a
-      // statusCode to inspect, so the catch below owns the revert. The old
-      // check also meant a 201/204 would have been treated as a failure.
-      const plan = await toggleDailyReset(planId);
-      setDailyReset(plan.dailyReset);
-    } catch (error) {
-      console.error('Error toggling daily reset:', error);
-      setError('Failed to update daily reset setting');
-    } finally {
-      setIsTogglingReset(false);
-    }
-  }, [planId, lastToggleTime]);
 
   if (loading) {
     return <div className="py-4">Loading tasks...</div>;
@@ -1570,8 +1390,6 @@ export default function Todo({
             ? 'Settings'
             : showArchived
             ? 'Archived Tasks'
-            : taskType === 'daily'
-            ? 'Daily'
             : 'Items'}
         </h2>
         {!showSettings && !showArchived && (
@@ -1660,33 +1478,6 @@ export default function Todo({
                 {anyCollapsed ? 'Expand all' : 'Collapse all'}
               </button>
             )}
-            {!fixedTaskType && (
-              <div className="flex items-center gap-3 text-base">
-                <button
-                  onClick={() => setTaskType('daily')}
-                  className={`transition-colors hover:opacity-80 ${
-                    taskType === 'daily' ? 'font-medium' : 'opacity-60'
-                  }`}
-                  style={{
-                    color: taskType === 'daily' ? 'rgb(247, 111, 83)' : '',
-                  }}
-                >
-                  Daily
-                </button>
-                <span className="opacity-30">|</span>
-                <button
-                  onClick={() => setTaskType('longterm')}
-                  className={`transition-colors hover:opacity-80 ${
-                    taskType === 'longterm' ? 'font-medium' : 'opacity-60'
-                  }`}
-                  style={{
-                    color: taskType === 'longterm' ? 'rgb(247, 111, 83)' : '',
-                  }}
-                >
-                  Long-term
-                </button>
-              </div>
-            )}
             <button
               onClick={() => setShowSettings(true)}
               className="ml-2 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -1718,37 +1509,6 @@ export default function Todo({
       {/* Settings View */}
       {showSettings && !showArchived && (
         <div className="space-y-6 animate-slideIn">
-          {/* Daily reset is the owner's setting (FS-12ZMF R31). Shown only once
-              getPlan has said so: an unknown relation never offers it. */}
-          {relation === 'owner' && (
-          <div className="flex items-center justify-between p-4 bg-white/5 dark:bg-gray-800/20 rounded-lg">
-            <div>
-              <h3 className="text-base font-medium mb-1">Refresh daily tasks</h3>
-              <p className="text-sm text-muted-foreground">
-                Automatically refresh daily tasks at the start of each day.{' '}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                This helps you automatically re-setup daily tasks that you may
-                want to work towards daily.
-              </p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={dailyReset}
-                onChange={handleToggleDailyReset}
-                disabled={isTogglingReset}
-              />
-              <div
-                className={`w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 dark:peer-focus:ring-orange-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-orange-500 ${
-                  isTogglingReset ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              ></div>
-            </label>
-          </div>
-          )}
-
           {relation && <PlanSharing planId={planId} relation={relation} />}
 
           <button
@@ -1881,8 +1641,8 @@ export default function Todo({
               to. 70vh keeps the whole card on screen while leaving a long
               page room to run; the bound only bites once the content exceeds
               it, so short lists look and behave exactly as before. Applied
-              only when the add bar is there, so a list with no bar (archived,
-              dailyAIOnly) is never boxed in for nothing. space-y-4 is the gap
+              only when the add bar is there, so a list with no bar (archived)
+              is never boxed in for nothing. space-y-4 is the gap
               the list and the add bar used to get from the wrapper above,
               which the add bar's guide rail measures its -top-7 against. */}
           {/* Once there is more than one page the area becomes a fixed window
@@ -1930,10 +1690,6 @@ export default function Todo({
                   ? 'No notes yet.'
                   : enableTypeFilter && taskType === 'longterm' && listTypeFilter === 'task'
                   ? 'No tasks yet.'
-                  : taskType === 'daily'
-                  ? dailyAIOnly
-                    ? 'No daily tasks yet. Use “Get Suggestion” below to generate some.'
-                    : 'No daily tasks yet. Add one below!'
                   : taskType === 'longterm'
                   ? 'No items yet. Add one below!'
                   : 'No archived items found.'}
@@ -2431,90 +2187,6 @@ export default function Todo({
             </div>
           )}
 
-          {/* Daily Insights Section - Only show for daily view */}
-          {taskType === 'daily' && (todos?.length > 0 || dailyAIOnly) && (
-            <div className="mt-8 border-t border-gray-100 dark:border-gray-800 pt-4">
-              <div className="flex justify-between items-center mb-2">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-medium">Suggested Daily Tasks</h3>
-                  <div className="relative group">
-                    <button
-                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                      aria-label="Information about daily suggestions"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        className="w-4 h-4"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </button>
-                    {/* Opens upward over the last daily rows. z-50 clears the
-                        rows' z-10 hover menus, the pinned add bar (z-20) and a
-                        dragged row (z-30), all of which otherwise paint over a
-                        z-auto tooltip. Opaque popover tokens so nothing beneath
-                        reads through it in either theme. */}
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                      <div className="bg-popover text-popover-foreground border border-border rounded-lg p-3 shadow-lg">
-                        <p className="text-base mb-1">
-                          Focus on what matters most to you
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Daily suggestions are driven by your long-term goals
-                          and priorities
-                        </p>
-                      </div>
-                      <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-popover border-r border-b border-border rotate-45"></div>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={toggleInsightsVisibility}
-                  className="text-sm text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300"
-                >
-                  {showInsights ? 'Hide suggestions' : 'Show suggestions'}
-                </button>
-              </div>
-
-              {showInsights && (
-                <div className="space-y-3 p-3 bg-white/5 dark:bg-gray-800/20 rounded-md">
-                  <div className="flex justify-end">
-                    <span className="text-sm text-muted-foreground">
-                      Based on long-term goals
-                    </span>
-                  </div>
-
-                  <ul className="space-y-2">
-                    {dailyInsights.map((insight, index) => (
-                      <li
-                        key={`insight-${index}`}
-                        className={`flex items-center justify-between transition-all duration-500 ${
-                          visibleInsights[index]
-                            ? 'opacity-100 translate-y-0'
-                            : 'opacity-0 translate-y-2'
-                        }`}
-                      >
-                        <span className="text-base text-gray-300">{insight}</span>
-                        <button
-                          onClick={() => addInsightAsTodo(insight)}
-                          className="text-sm px-2 py-1 rounded bg-white/5 hover:bg-white/10 dark:hover:bg-gray-700/50"
-                          style={{ color: 'rgb(247, 111, 83)' }}
-                        >
-                          Add
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 

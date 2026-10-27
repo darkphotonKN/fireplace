@@ -11,7 +11,7 @@ insights-service is the **owner** of the AI Insights + video-suggestion domain i
 | Term                  | Meaning                                                                                                                                                         |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Insight**           | An AI-generated productivity artifact for a plan: a single suggestion, a set of daily focus items, or video recommendations.                                    |
-| **Content Generator** | The pluggable LLM seam (`ContentGenerator.Generate(prompt) → text`). Implemented by `ai.Generator` over OpenAI (`gpt-5-mini` by default, `OPENAI_MODEL` overrides). One generator per system prompt. |
+| **Content Generator** | The pluggable LLM seam (`ContentGenerator.Generate(ctx, call, prompt) → text`, where `call` names the ledger kind, plan and user the usage is recorded under). Implemented by `ai.Generator` over OpenAI (`gpt-5-mini` by default, `OPENAI_MODEL` overrides). One generator per system prompt. |
 | **Discovery**         | The subsystem that turns AI-generated search terms into concrete tutorial videos (YouTube crawler). Both halves live here.                                     |
 | **Focus**             | A plan's high-level goal string, fetched from plan-service and fed into every prompt.                                                                           |
 | **Plan Context**      | Focus + flattened checklist items fetched from plan-service; insights owns none of this data.                                                                   |
@@ -32,6 +32,27 @@ insights-service is the **owner** of the AI Insights + video-suggestion domain i
 - [ ] Populate `generated_insights.content` (written empty today)
 - [ ] Planless draft generation for guided plan creation → FS-0006
 - [ ] Generation outcomes published as events → FS-0006
+
+## Guided suggestions
+
+- [ ] Daily brief of moves anchored to items → FS-DF4ZB
+- [ ] Step suggestions for a parent item → FS-DF4ZB
+- [ ] Item-tree suggestion for a plan → FS-DF4ZB
+- [ ] Suggestion feedback and dismissal filtering → FS-DF4ZB
+
+## Day Plan
+
+- [ ] Day plan built on the daily brief → FS-02JBZ
+- [ ] Day ticks on day plan entries → FS-02JBZ
+- [ ] Revision ladder for learning plans → FS-02JBZ
+- [ ] Global LLM spend cap with a rule-based fallback → FS-02JBZ
+
+## Retrieval
+
+- [ ] Shared playbook corpus with batch ingest → FS-DF4ZB
+- [ ] Personal memory from item completion events → FS-DF4ZB
+- [ ] Tenant-scoped retrieval over playbook and memory → FS-DF4ZB
+- [ ] Retrieval and generation eval → FS-DF4ZB
 
 ## gRPC Surface (`insights.InsightsService`, :7106)
 

@@ -32,7 +32,6 @@ import (
 // these routes ask the gateway's access seam first (PlanAccess below).
 type SuggestionsService interface {
 	GenerateSuggestions(ctx context.Context, planID, userID uuid.UUID) (string, error)
-	GenerateDailySuggestions(ctx context.Context, planID, userID uuid.UUID) ([]string, error)
 }
 
 type VideoSuggestionsService interface {
@@ -40,7 +39,7 @@ type VideoSuggestionsService interface {
 }
 
 // PlanAccess is the gateway's one plan-access seam (plangw.Access, ADR-0015),
-// declared at the consumer. All three operations are owner-or-member on their
+// declared at the consumer. Both operations are owner-or-member on their
 // plan_id (FS-12ZMF R4, R7): a caller with no relation gets 404.
 type PlanAccess interface {
 	RequireMember(ctx context.Context, planID, userID uuid.UUID) error
@@ -61,34 +60,25 @@ type VideoSuggestionResponse struct {
 	Description string `json:"description"`
 }
 
-// Bodies are BARE — a string and two arrays — because that is exactly what
+// Bodies are BARE — a string and an array — because that is exactly what
 // ships inside `result` today, and every other collection in this contract is
 // published as a bare array. Wrapping them would invent a field name that
 // exists nowhere in the current API (R6). The output types carry distinct Go
 // names so nothing collides at registration.
 type SuggestionOutput struct{ Body string }
-type DailySuggestionsOutput struct{ Body []string }
 type VideoSuggestionsOutput struct{ Body []VideoSuggestionResponse }
 
-// PlanIDQueryInput is the shape all three operations share. `plan_id` is
+// PlanIDQueryInput is the shape both operations share. `plan_id` is
 // snake_case while notes uses camelCase; both are transcribed as they ship.
 type PlanIDQueryInput struct {
 	PlanID uuid.UUID `query:"plan_id" doc:"Plan id"`
 }
 
-func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSuggestionsService,
-	access PlanAccess,
-	protect func(huma.Context, func(huma.Context)), secured []map[string][]string,
-) {
-	mw := huma.Middlewares{protect}
-	errs := []int{
-		http.StatusUnauthorized, http.StatusNotFound, http.StatusUnprocessableEntity,
-		http.StatusServiceUnavailable,
-	}
-
-	// authorize resolves the caller, then asks whether they may read the plan.
-	// A nil access checker fails CLOSED (R8).
-	authorize := func(ctx context.Context, op string, planID uuid.UUID) (uuid.UUID, error) {
+// authorizer returns the check every insights operation runs first: resolve the
+// caller, then ask whether they may read the plan. A nil access checker fails
+// CLOSED (R8).
+func authorizer(access PlanAccess) func(ctx context.Context, op string, planID uuid.UUID) (uuid.UUID, error) {
+	return func(ctx context.Context, op string, planID uuid.UUID) (uuid.UUID, error) {
 		userID, ok := auth.UserIDFromCtx(ctx)
 		if !ok {
 			return uuid.Nil, apierr.ProblemFor(op, apierr.ErrNoIdentity())
@@ -102,6 +92,21 @@ func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSugge
 		}
 		return userID, nil
 	}
+}
+
+func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSuggestionsService,
+	access PlanAccess,
+	protect func(huma.Context, func(huma.Context)), secured []map[string][]string,
+) {
+	mw := huma.Middlewares{protect}
+	// Both operations generate, so both also answer 429 · LLM_BUDGET_EXHAUSTED
+	// when the global daily token budget is spent (FS-02JBZ R33, R60).
+	errs := []int{
+		http.StatusUnauthorized, http.StatusNotFound, http.StatusUnprocessableEntity,
+		http.StatusServiceUnavailable, http.StatusTooManyRequests,
+	}
+
+	authorize := authorizer(access)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "getChecklistSuggestion", Method: http.MethodGet,
@@ -109,7 +114,8 @@ func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSugge
 		Middlewares: mw, Security: secured,
 		Summary: "Suggest the next checklist item",
 		Description: "Returns one concrete, verb-first next task derived from the plan's focus " +
-			"and current checklist. The body is the suggestion itself.",
+			"and current checklist. The body is the suggestion itself. 429 · LLM_BUDGET_EXHAUSTED: " +
+			"the platform's daily token budget is spent; retry after the next UTC midnight.",
 		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDQueryInput) (*SuggestionOutput, error) {
 		userID, err := authorize(ctx, "insights: generate suggestions", in.PlanID)
@@ -124,35 +130,13 @@ func RegisterInsightsOperations(api huma.API, s SuggestionsService, v VideoSugge
 	})
 
 	huma.Register(api, huma.Operation{
-		OperationID: "getDailyChecklistSuggestion", Method: http.MethodGet,
-		Path:        "/api/insights/checklist-suggestion-daily",
-		Middlewares: mw, Security: secured,
-		Summary: "Suggest daily items from long-term work",
-		Description: "Returns three suggestions biased toward breaking down long-term checklist " +
-			"items, each nudged away from the previous so the set does not repeat itself.",
-		Errors: errs,
-	}, func(ctx context.Context, in *PlanIDQueryInput) (*DailySuggestionsOutput, error) {
-		userID, err := authorize(ctx, "insights: generate daily suggestions", in.PlanID)
-		if err != nil {
-			return nil, err
-		}
-		res, err := s.GenerateDailySuggestions(ctx, in.PlanID, userID)
-		if err != nil {
-			return nil, apierr.ProblemFor("insights: generate daily suggestions", err)
-		}
-		if res == nil {
-			res = []string{}
-		}
-		return &DailySuggestionsOutput{Body: res}, nil
-	})
-
-	huma.Register(api, huma.Operation{
 		OperationID: "getSuggestedVideos", Method: http.MethodGet,
 		Path:        "/api/insights/suggest-videos",
 		Middlewares: mw, Security: secured,
 		Summary: "Suggest learning videos for a plan",
 		Description: "Generates search terms from the plan's focus and checklist, then returns " +
-			"one recommended video per term.",
+			"one recommended video per term. 429 · LLM_BUDGET_EXHAUSTED: the platform's daily " +
+			"token budget is spent; retry after the next UTC midnight.",
 		Errors: errs,
 	}, func(ctx context.Context, in *PlanIDQueryInput) (*VideoSuggestionsOutput, error) {
 		userID, err := authorize(ctx, "insights: suggested video links", in.PlanID)

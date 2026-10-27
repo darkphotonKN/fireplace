@@ -7,6 +7,8 @@ import MilestoneStrip from "@/components/MilestoneStrip";
 import SharedMark from "@/components/SharedMark";
 import { cardProgressOf, type CardProgress } from "@/lib/homePlans";
 import { selectHomeWork } from "@/lib/homeWork";
+import { selectDayPlanRollup } from "@/lib/dayPlanRollup";
+import DayPlanRollup from "./DayPlanRollup";
 import FirstRun from "./FirstRun";
 import OtherPlans from "./OtherPlans";
 import StatusLine from "./StatusLine";
@@ -18,7 +20,9 @@ import { useHomeTicks } from "./useHomeTicks";
  * The signed-in dashboard (FS-KSJFR §The dashboard, slice 2).
  *
  * Block order is R19: the status line, then Today/Next up (I-KSJFR-4), then
- * Continue, then Your other plans (I-KSJFR-3). The status line and the block
+ * Continue, then Your other plans (I-KSJFR-3). The day plan roll-up
+ * (FS-02JBZ R85, S11) sits between the status line and Today: read-only rows
+ * from the same three plans' cached day plans, never generated here. The status line and the block
  * are handed the same `work` object, so the sentence and the list can never
  * disagree about what is due — and the derivation behind it runs once per data
  * change rather than once per render, because `useHomeData` returns a
@@ -37,10 +41,15 @@ import { useHomeTicks } from "./useHomeTicks";
  * and should rhyme. Home's job is orientation, not content.
  */
 export default function Dashboard({ onStartPlan }: { onStartPlan: () => void }) {
-  const { plansStatus, plans, focusedPlans, itemsByPlan, reload } = useHomeData();
+  const { plansStatus, plans, focusedPlans, itemsByPlan, dayPlansByPlan, reload } =
+    useHomeData();
   const selected = useMemo(
     () => selectHomeWork(focusedPlans, itemsByPlan),
     [focusedPlans, itemsByPlan],
+  );
+  const rollup = useMemo(
+    () => selectDayPlanRollup(focusedPlans, itemsByPlan, dayPlansByPlan),
+    [focusedPlans, itemsByPlan, dayPlansByPlan],
   );
   const { work, tick, tickedIds } = useHomeTicks(selected);
 
@@ -62,6 +71,7 @@ export default function Dashboard({ onStartPlan }: { onStartPlan: () => void }) 
           <FirstRun onStart={onStartPlan} />
         ) : (
           <>
+            <DayPlanRollup rollup={rollup} />
             <TodayBlock work={work} onRetry={reload} onTick={tick} />
             {focusedPlans.length > 0 && (
               <ContinueBlock

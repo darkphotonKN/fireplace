@@ -26,7 +26,6 @@ const (
 	PlanService_ListSharedPlans_FullMethodName     = "/plan.PlanService/ListSharedPlans"
 	PlanService_SearchPlans_FullMethodName         = "/plan.PlanService/SearchPlans"
 	PlanService_UpdatePlan_FullMethodName          = "/plan.PlanService/UpdatePlan"
-	PlanService_ToggleDailyReset_FullMethodName    = "/plan.PlanService/ToggleDailyReset"
 	PlanService_DeletePlan_FullMethodName          = "/plan.PlanService/DeletePlan"
 	PlanService_AssertPlanOwnership_FullMethodName = "/plan.PlanService/AssertPlanOwnership"
 	PlanService_GetPlanAccess_FullMethodName       = "/plan.PlanService/GetPlanAccess"
@@ -49,7 +48,6 @@ type PlanServiceClient interface {
 	ListSharedPlans(ctx context.Context, in *ListSharedPlansRequest, opts ...grpc.CallOption) (*ListPlansResponse, error)
 	SearchPlans(ctx context.Context, in *SearchPlansRequest, opts ...grpc.CallOption) (*SearchPlansResponse, error)
 	UpdatePlan(ctx context.Context, in *UpdatePlanRequest, opts ...grpc.CallOption) (*Plan, error)
-	ToggleDailyReset(ctx context.Context, in *ToggleDailyResetRequest, opts ...grpc.CallOption) (*Plan, error)
 	DeletePlan(ctx context.Context, in *DeletePlanRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// AssertPlanOwnership returns OK if the plan exists and is owned by user_id;
 	// returns NotFound or PermissionDenied otherwise. Cheap ownership check for
@@ -146,16 +144,6 @@ func (c *planServiceClient) UpdatePlan(ctx context.Context, in *UpdatePlanReques
 	return out, nil
 }
 
-func (c *planServiceClient) ToggleDailyReset(ctx context.Context, in *ToggleDailyResetRequest, opts ...grpc.CallOption) (*Plan, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Plan)
-	err := c.cc.Invoke(ctx, PlanService_ToggleDailyReset_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *planServiceClient) DeletePlan(ctx context.Context, in *DeletePlanRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
@@ -230,7 +218,6 @@ type PlanServiceServer interface {
 	ListSharedPlans(context.Context, *ListSharedPlansRequest) (*ListPlansResponse, error)
 	SearchPlans(context.Context, *SearchPlansRequest) (*SearchPlansResponse, error)
 	UpdatePlan(context.Context, *UpdatePlanRequest) (*Plan, error)
-	ToggleDailyReset(context.Context, *ToggleDailyResetRequest) (*Plan, error)
 	DeletePlan(context.Context, *DeletePlanRequest) (*emptypb.Empty, error)
 	// AssertPlanOwnership returns OK if the plan exists and is owned by user_id;
 	// returns NotFound or PermissionDenied otherwise. Cheap ownership check for
@@ -284,9 +271,6 @@ func (UnimplementedPlanServiceServer) SearchPlans(context.Context, *SearchPlansR
 }
 func (UnimplementedPlanServiceServer) UpdatePlan(context.Context, *UpdatePlanRequest) (*Plan, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdatePlan not implemented")
-}
-func (UnimplementedPlanServiceServer) ToggleDailyReset(context.Context, *ToggleDailyResetRequest) (*Plan, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ToggleDailyReset not implemented")
 }
 func (UnimplementedPlanServiceServer) DeletePlan(context.Context, *DeletePlanRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeletePlan not implemented")
@@ -435,24 +419,6 @@ func _PlanService_UpdatePlan_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _PlanService_ToggleDailyReset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ToggleDailyResetRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(PlanServiceServer).ToggleDailyReset(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: PlanService_ToggleDailyReset_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(PlanServiceServer).ToggleDailyReset(ctx, req.(*ToggleDailyResetRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _PlanService_DeletePlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeletePlanRequest)
 	if err := dec(in); err != nil {
@@ -591,10 +557,6 @@ var PlanService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdatePlan",
 			Handler:    _PlanService_UpdatePlan_Handler,
-		},
-		{
-			MethodName: "ToggleDailyReset",
-			Handler:    _PlanService_ToggleDailyReset_Handler,
 		},
 		{
 			MethodName: "DeletePlan",

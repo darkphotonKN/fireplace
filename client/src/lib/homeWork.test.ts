@@ -73,7 +73,9 @@ describe('selectHomeWork — what qualifies for Today', () => {
   it.each([
     { case: 'due today', fixture: item('x', { dueDate: TODAY_STR }), listed: true },
     { case: 'overdue', fixture: item('x', { dueDate: YESTERDAY }), listed: true },
-    { case: 'daily-scope, undated', fixture: item('x', { scope: 'daily' }), listed: true },
+    // FS-02JBZ R91: scope no longer decides Today. A leftover daily row is an
+    // ordinary item and qualifies only by its dates.
+    { case: 'daily-scope, undated', fixture: item('x', { scope: 'daily' }), listed: false },
     { case: 'due today by startDate alone', fixture: item('x', { startDate: TODAY_STR }), listed: true },
     {
       case: 'due today by the deprecated scheduledTime',
@@ -101,7 +103,7 @@ describe('selectHomeWork — what qualifies for Today', () => {
     expect(todayRows([fixture]).includes('x')).toBe(listed);
   });
 
-  it('should list an item that is both due today and daily-scope exactly once', () => {
+  it('should list a daily-scope item that is due today exactly once, by its date', () => {
     const rows = todayRows([item('both', { dueDate: TODAY_STR, scope: 'daily' })]);
     expect(rows).toEqual(['both', 'anchor']);
   });
@@ -157,7 +159,7 @@ describe('selectHomeWork — what qualifies for Today', () => {
 describe('selectHomeWork — across the fetched plans', () => {
   it('should draw from every ready plan, in plan order then sequence order', () => {
     const work = selectHomeWork([plan('a'), plan('b')], {
-      a: ready([item('a1', { dueDate: TODAY_STR }), item('a2', { scope: 'daily' })]),
+      a: ready([item('a1', { dueDate: TODAY_STR }), item('a2', { startDate: TODAY_STR })]),
       b: ready([item('b1', { dueDate: YESTERDAY })]),
     });
     expect(work.rows.map((r) => r.description)).toEqual(['a1', 'a2', 'b1']);

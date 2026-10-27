@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/darkphotonKN/fireplace/common/errcode"
+	commongrpc "github.com/darkphotonKN/fireplace/common/grpcerror"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -82,5 +83,67 @@ func TestProblemFor_Unavailable_CarriesBothStatusAndCode(t *testing.T) {
 	}
 	if p.Errors == nil {
 		t.Fatal("Problem.Errors is nil; it must be present and empty so clients never null-check")
+	}
+}
+
+// FS-DF4ZB R52: the seam reads the domain code from the status detail before
+// it falls back to the status class. The status itself still comes from the
+// class, so a detailed status and an undetailed one of the same class share an
+// HTTP status and differ only by code.
+func TestProblemFor_ErrorSeam(t *testing.T) {
+	const limitCode = errcode.Code("SOME_LIMIT_REACHED") // stands in for a later slice's code
+
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantCode   errcode.Code
+	}{
+		// Detail first, whatever the class.
+		{"detail on ResourceExhausted", commongrpc.WithCode(codes.ResourceExhausted, limitCode, "cap reached"),
+			http.StatusTooManyRequests, limitCode},
+		{"detail on FailedPrecondition", commongrpc.WithCode(codes.FailedPrecondition, errcode.MemberIsOwner, "refused"),
+			http.StatusBadRequest, errcode.MemberIsOwner},
+		{"detail on NotFound", commongrpc.WithCode(codes.NotFound, limitCode, "gone"),
+			http.StatusNotFound, limitCode},
+		{"wrapped detail", fmt.Errorf("calling insights: %w", commongrpc.WithCode(codes.ResourceExhausted, limitCode, "x")),
+			http.StatusTooManyRequests, limitCode},
+
+		// The "name" rule must not capture a status that carries a detail.
+		{"InvalidArgument with detail mentioning name", commongrpc.WithCode(codes.InvalidArgument, errcode.ValidationFailed, "parent item name is invalid"),
+			http.StatusBadRequest, errcode.ValidationFailed},
+		{"InvalidArgument with empty-reason detail mentioning name", commongrpc.WithCode(codes.InvalidArgument, "", "display name of the owner"),
+			http.StatusBadRequest, errcode.ValidationFailed},
+
+		// auth-service's profile-name failure sends no detail: unchanged.
+		{"auth profile name, no detail", status.Error(codes.InvalidArgument, "display name must not be empty"),
+			http.StatusBadRequest, errcode.ProfileNameEmpty},
+
+		// New class fallbacks (no detail).
+		{"ResourceExhausted, no detail", status.Error(codes.ResourceExhausted, "x"),
+			http.StatusTooManyRequests, errcode.Internal},
+		{"FailedPrecondition, no detail", status.Error(codes.FailedPrecondition, "x"),
+			http.StatusBadRequest, errcode.ValidationFailed},
+
+		// Existing class mappings, unchanged.
+		{"NotFound", status.Error(codes.NotFound, "x"), http.StatusNotFound, errcode.NotFound},
+		{"AlreadyExists", status.Error(codes.AlreadyExists, "x"), http.StatusConflict, errcode.AlreadyExists},
+		{"InvalidArgument", status.Error(codes.InvalidArgument, "x"), http.StatusBadRequest, errcode.ValidationFailed},
+		{"Unauthenticated", status.Error(codes.Unauthenticated, "x"), http.StatusUnauthorized, errcode.Unauthenticated},
+		{"PermissionDenied", status.Error(codes.PermissionDenied, "x"), http.StatusForbidden, errcode.Forbidden},
+		{"Unavailable", status.Error(codes.Unavailable, "x"), http.StatusServiceUnavailable, errcode.ServiceUnavailable},
+		{"Unknown", status.Error(codes.Unknown, "x"), http.StatusInternalServerError, errcode.Internal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := ProblemFor("op", tt.err)
+
+			if p.Status != tt.wantStatus {
+				t.Errorf("Problem.Status = %d, want %d", p.Status, tt.wantStatus)
+			}
+			if p.Code != tt.wantCode {
+				t.Errorf("Problem.Code = %q, want %q", p.Code, tt.wantCode)
+			}
+		})
 	}
 }

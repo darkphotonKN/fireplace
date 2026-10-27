@@ -16,7 +16,8 @@ checklists, members, notes, calendar, insights). Fails closed: no answer or no c
 access (ADR-0015 §3).
 
 **Owner-only** / **owner-or-member** — the two requirements (`Need`) an operation can place on a
-relation. Owner-only: update plan, toggle daily reset, delete plan, add or remove member.
+relation. Owner-only: update plan, delete plan, add or remove member. (Toggle daily reset was
+owner-only too, until FS-02JBZ removed the operation with the daily scope.)
 Everything else plan-scoped is owner-or-member (`NeedMember`, despite the name it admits the
 owner too).
 

@@ -45,12 +45,10 @@ vi.mock('@/services/api', () => ({
 
 vi.mock('@/api/insights', () => ({
   getChecklistSuggestion: vi.fn(async () => ''),
-  getDailyInsights: vi.fn(async () => []),
 }));
 
 vi.mock('@/api/plans', () => ({
   getPlan: (...a: unknown[]) => getPlan(...a),
-  toggleDailyReset: vi.fn(),
 }));
 
 const DAILY_ITEM = {

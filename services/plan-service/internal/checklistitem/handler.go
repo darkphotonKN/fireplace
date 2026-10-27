@@ -3,7 +3,6 @@ package checklistitem
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
 
 	pb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
@@ -28,7 +27,6 @@ type Service interface {
 	UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, error)
 	Archive(ctx context.Context, planID, id uuid.UUID, archived bool) (*Item, error)
 	Delete(ctx context.Context, planID, id uuid.UUID) error
-	DailyReset(ctx context.Context) (int64, error)
 }
 
 type Handler struct {
@@ -319,15 +317,6 @@ func (h *Handler) DeleteItem(ctx context.Context, req *pb.DeleteItemRequest) (*e
 		return nil, commongrpc.Fail(ctx, "checklistitem: delete", err)
 	}
 	return &emptypb.Empty{}, nil
-}
-
-func (h *Handler) DailyReset(ctx context.Context, _ *pb.DailyResetRequest) (*pb.DailyResetResponse, error) {
-	n, err := h.service.DailyReset(ctx)
-	if err != nil {
-		return nil, commongrpc.Fail(ctx, "checklistitem: daily reset", err)
-	}
-	slog.InfoContext(ctx, "checklistitem: daily reset complete", "rows", n)
-	return &pb.DailyResetResponse{ResetCount: int32(n)}, nil
 }
 
 // --- helpers ---

@@ -58,11 +58,6 @@ func (r *recordingPlans) UpdatePlan(ctx context.Context, id, userID uuid.UUID, r
 	return r.plan(id), nil
 }
 
-func (r *recordingPlans) ToggleDailyReset(ctx context.Context, id, userID uuid.UUID) (*PlanResp, error) {
-	r.calls = append(r.calls, "toggle")
-	return r.plan(id), nil
-}
-
 func (r *recordingPlans) DeletePlan(ctx context.Context, id, userID uuid.UUID) error {
 	r.calls = append(r.calls, "delete")
 	return nil
@@ -90,14 +85,11 @@ var (
 	patchPlanCall = planCall{"PATCH", func(api humatest.TestAPI, u string) *httptest.ResponseRecorder {
 		return api.Patch(u, map[string]any{"name": "renamed"})
 	}}
-	togglePlanCall = planCall{"PATCH toggle", func(api humatest.TestAPI, u string) *httptest.ResponseRecorder {
-		return api.Patch(u + "/toggle-daily-reset")
-	}}
 	deletePlanCall = planCall{"DELETE", func(api humatest.TestAPI, u string) *httptest.ResponseRecorder {
 		return api.Delete(u)
 	}}
-	ownerOnlyPlanCalls = []planCall{patchPlanCall, togglePlanCall, deletePlanCall}
-	allPlanCalls       = []planCall{getPlanCall, patchPlanCall, togglePlanCall, deletePlanCall}
+	ownerOnlyPlanCalls = []planCall{patchPlanCall, deletePlanCall}
+	allPlanCalls       = []planCall{getPlanCall, patchPlanCall, deletePlanCall}
 )
 
 func problemCode(t *testing.T, resp *httptest.ResponseRecorder) string {
@@ -207,7 +199,6 @@ func TestPlanOperations_Owner_Succeed(t *testing.T) {
 	}{
 		{getPlanCall, http.StatusOK, true},
 		{patchPlanCall, http.StatusOK, true},
-		{togglePlanCall, http.StatusOK, true},
 		{deletePlanCall, http.StatusNoContent, false},
 	}
 	for _, tc := range cases {

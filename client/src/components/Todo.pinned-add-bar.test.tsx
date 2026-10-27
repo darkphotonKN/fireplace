@@ -37,12 +37,10 @@ vi.mock('@/services/api', () => ({
 
 vi.mock('@/api/insights', () => ({
   getChecklistSuggestion: vi.fn(async () => ''),
-  getDailyInsights: vi.fn(async () => []),
 }));
 
 vi.mock('@/api/plans', () => ({
   getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-  toggleDailyReset: vi.fn(),
 }));
 
 const item = (id: string, scope: 'daily' | 'longterm' = 'longterm') => ({
@@ -146,17 +144,6 @@ describe('Todo pinned add bar (FS-0008 R13–R14)', () => {
 
   it.each([
     [
-      'the daily side is AI-only',
-      async () => {
-        fetchChecklist.mockImplementation(async () =>
-          LONG.map((i) => ({ ...i, scope: 'daily' }))
-        );
-        const Todo = (await import('./Todo')).default;
-        render(<Todo fixedTaskType="daily" dailyAIOnly />);
-        await screen.findByText('item L0');
-      },
-    ],
-    [
       'the archived view is open',
       async () => {
         fetchChecklist.mockImplementation(async () => LONG);
@@ -202,18 +189,5 @@ describe('Todo pinned add bar (FS-0008 R13–R14)', () => {
     // cap applies, for the one-huge-family case.
     expect(listArea().className).not.toMatch(/\bh-\[min\(/);
     expect(listArea().className).toMatch(/\bmax-h-\[70vh\]/);
-  });
-
-  it('should not box in a bar-less list that fits on one page', async () => {
-    // No add bar and nothing to page: there is nothing to keep still, so the
-    // section is left to hug its content as it always did.
-    fetchChecklist.mockImplementation(async () =>
-      LONG.slice(0, 5).map((i) => ({ ...i, scope: 'daily' }))
-    );
-    const Todo = (await import('./Todo')).default;
-    render(<Todo fixedTaskType="daily" dailyAIOnly />);
-    await screen.findByText('item L0');
-
-    expect(document.querySelector('.overflow-y-auto')).toBeNull();
   });
 });

@@ -1,0 +1,11 @@
+-- The plan-state hash of the tree each brief was drawn from (FS-DF4ZB R18,
+-- R19). The rule gate compares it with the hash of the current tree: equal
+-- means the model would see the same plan, so the brief is served again with no
+-- generation.
+--
+-- Nullable: a brief stored before this column existed has no hash, and a NULL
+-- never satisfies the gate, so such a brief is simply redrawn once.
+--
+-- No new index: the gate reads the user's latest brief for a plan, which the
+-- daily_briefs_key unique index (plan_id, user_id, brief_date) already serves.
+ALTER TABLE daily_briefs ADD COLUMN plan_state_hash TEXT;

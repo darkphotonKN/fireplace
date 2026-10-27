@@ -36,6 +36,12 @@ The api-gateway is the **only HTTP surface** in the Fireplace platform — the e
 - [ ] Per-user authorization on plan-scoped resources → FS-0005
 - [x] Plan access for owners and members → FS-12ZMF
 
+## Insights
+
+- [x] Suggestion endpoints proxied to insights-service → FS-none
+- [ ] Guided-suggestion and feedback endpoints → FS-DF4ZB
+- [ ] Day plan endpoints → FS-02JBZ
+
 <!--
 LEGACY BELOW: every section from here down predates the thin format and still carries
 FS-level detail inline. Per migrate-only-what-you-touch, they are left as found rather
@@ -60,7 +66,6 @@ Full REST catalog exposed by the gateway. All routes are under base path `/api`.
 | GET | `/api/plans/:id` | JWT | plan-service | Plan by id |
 | POST | `/api/plans` | JWT | plan-service | Create plan |
 | PATCH | `/api/plans/:id` | JWT | plan-service | Update plan |
-| PATCH | `/api/plans/:id/toggle-daily-reset` | JWT | plan-service | Toggle daily-reset flag |
 | DELETE | `/api/plans/:id` | JWT | plan-service | Delete plan |
 | GET | `/api/plans/:id/checklists` | JWT | plan-service | List checklist items |
 | GET | `/api/plans/:id/checklists/archived` | JWT | plan-service | Archived items |
@@ -218,8 +223,7 @@ Per-user daily productivity metrics (`internal/useranalytics`), backed by the `u
 
 ## Background Jobs
 
-- **Nightly daily-reset trigger** (`internal/jobs/daily_reset_job.go` + `manager.go`): a cron job scheduled at `0 0 14 * * *` (14:00 UTC daily) calls the plan adapter's `ResetDailyItems`, which invokes plan-service's `ChecklistService.DailyReset` over gRPC. The gateway is only the **scheduler/trigger** — the reset *logic* (which daily items to reset and how) lives in plan-service.
-- No other scheduled jobs are registered (the old scheduled-items/reminder job is not present here).
+- None. The nightly daily-reset trigger (`internal/jobs/`) was removed with the daily scope (FS-02JBZ R53).
 
 ## Data Model
 
@@ -255,6 +259,6 @@ Per-user daily productivity metrics (`internal/useranalytics`), backed by the `u
 
 ## Owned elsewhere (cross-refs)
 
-- **Plans, checklist items, daily-reset logic, Gantt/search data** → plan-service.
+- **Plans, checklist items, Gantt/search data** → plan-service.
 - **AI insights / video suggestions** → insights-service. The `/api/insights/*` routes remain here because the gateway is the only HTTP surface, but they now proxy to insights-service over gRPC via `internal/gateway/insights`. The in-process implementation (`internal/insights` service + repository, `internal/discovery`, `internal/concepts`, and the checklist/search-term generators) was **deleted** when the routes were repointed — the strangler cleanup is done. What remains under `internal/insights` is the gateway's own typed HTTP transport layer, and `internal/ai` now serves **Notes only**.
 - **Landing page + all UI** → client (React/Next.js).

@@ -7,20 +7,28 @@ import userEvent from '@testing-library/user-event';
  * FS-KSJFR slice 2 (I-KSJFR-2): the dashboard shell and the capped fan-out.
  *
  * The load-bearing assertions here are about *request shape*, because that is
- * what ADR-0013 decided: four requests whatever the account holds, the three
- * item fetches in parallel, and one of them failing does not blank the page.
+ * what ADR-0013 decided: a fixed request count whatever the account holds —
+ * seven since FS-02JBZ R90 added one cached day-plan read per focused plan —
+ * the per-plan fetches in parallel, and one of them failing does not blank
+ * the page. Home never calls `planMyDay` (ADR-0019).
  * The rest — progress, partial failure, the retry — are what the user sees when
  * that shape holds or breaks.
  */
 
 const listPlans = vi.fn();
 const listChecklists = vi.fn();
+const getDayPlan = vi.fn();
+const planMyDay = vi.fn();
 
 vi.mock('@/api/plans', () => ({
   listPlans: (...a: unknown[]) => listPlans(...a),
 }));
 vi.mock('@/api/checklists', () => ({
   listChecklists: (...a: unknown[]) => listChecklists(...a),
+}));
+vi.mock('@/api/insights', () => ({
+  getDayPlan: (...a: unknown[]) => getDayPlan(...a),
+  planMyDay: (...a: unknown[]) => planMyDay(...a),
 }));
 
 import Dashboard from './Dashboard';
@@ -105,39 +113,74 @@ const plansAged = (count: number) =>
     plan(`p${i}`, `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00Z`),
   );
 
+/** What `GET /api/insights/day-plan` returns for a day nobody has planned. */
+const notPlanned = (planId: string) => ({
+  planId,
+  date: format(new Date(), 'yyyy-MM-dd'),
+  status: 'not_planned',
+  groups: [],
+  refreshesRemaining: 3,
+});
+
 beforeEach(() => {
   listPlans.mockReset();
   listChecklists.mockReset();
   listChecklists.mockResolvedValue([]);
+  getDayPlan.mockReset();
+  getDayPlan.mockImplementation((planId: string) => Promise.resolve(notPlanned(planId)));
+  planMyDay.mockReset();
 });
 
 describe('Dashboard — the capped fan-out (ADR-0013)', () => {
+  // FS-02JBZ R90: the bound rose from 4 to 7 with the day plan roll-up — one
+  // cached day-plan read per focused plan — while ADR-0013's decision holds.
   it.each([
-    { plans: 1, requests: 2 },
-    { plans: 3, requests: 4 },
-    { plans: 4, requests: 4 },
-    { plans: 12, requests: 4 },
+    { plans: 1, requests: 3 },
+    { plans: 3, requests: 7 },
+    { plans: 4, requests: 7 },
+    { plans: 12, requests: 7 },
   ])(
     'should issue $requests requests for an account with $plans plans',
     async ({ plans, requests }) => {
       listPlans.mockResolvedValue(plansAged(plans));
+      const focused = Math.min(plans, 3);
 
       render(<Home />);
       await screen.findByRole('heading', { name: /continue where you left off/i });
-      await waitFor(() =>
-        expect(listChecklists).toHaveBeenCalledTimes(requests - 1),
-      );
+      await waitFor(() => expect(listChecklists).toHaveBeenCalledTimes(focused));
+      await waitFor(() => expect(getDayPlan).toHaveBeenCalledTimes(focused));
       // The budget is a ceiling as much as a floor, so nothing is asserted
       // until every request this render could still issue has been issued.
       await settle();
 
       expect(listPlans).toHaveBeenCalledTimes(1);
-      expect(listChecklists).toHaveBeenCalledTimes(requests - 1);
-      expect(listChecklists.mock.calls.length + listPlans.mock.calls.length).toBe(
-        requests,
-      );
+      expect(listChecklists).toHaveBeenCalledTimes(focused);
+      expect(getDayPlan).toHaveBeenCalledTimes(focused);
+      expect(planMyDay).not.toHaveBeenCalled();
+      expect(
+        listChecklists.mock.calls.length +
+          listPlans.mock.calls.length +
+          getDayPlan.mock.calls.length,
+      ).toBe(requests);
     },
   );
+
+  it('should read the day plans of the three focused plans for the local date, in parallel', async () => {
+    const pending = [deferred<unknown>(), deferred<unknown>(), deferred<unknown>()];
+    let next = 0;
+    listPlans.mockResolvedValue(plansAged(12));
+    getDayPlan.mockImplementation(() => pending[next++].promise);
+
+    render(<Home />);
+
+    await waitFor(() => expect(getDayPlan).toHaveBeenCalledTimes(3));
+    const today = format(new Date(), 'yyyy-MM-dd');
+    expect(getDayPlan.mock.calls.map((c) => c[0]).sort()).toEqual(['p10', 'p11', 'p9']);
+    expect(getDayPlan.mock.calls.every((c) => c[1] === today)).toBe(true);
+    pending.forEach((p, i) => p.resolve(notPlanned(`p${9 + i}`)));
+    await settle();
+    expect(planMyDay).not.toHaveBeenCalled();
+  });
 
   it('should fetch items for the three most recently updated plans only', async () => {
     // 12 plans, oldest first: p11 / p10 / p9 are the three most recent.
@@ -504,7 +547,7 @@ describe('Dashboard — shared plans (FS-12ZMF R26)', () => {
     expect(within(owned).queryByText('shared')).toBeNull();
   });
 
-  it('should count shared plans toward the same four-request cap (ADR-0013)', async () => {
+  it('should count shared plans toward the same seven-request cap (ADR-0013, FS-02JBZ R90)', async () => {
     listPlans.mockResolvedValue(
       plansAged(6).map((p, i): Plan => ({ ...p, relation: i % 2 ? 'member' : 'owner' })),
     );
@@ -512,9 +555,123 @@ describe('Dashboard — shared plans (FS-12ZMF R26)', () => {
     render(<Home />);
     await screen.findByRole('heading', { name: /continue where you left off/i });
     await waitFor(() => expect(listChecklists).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(getDayPlan).toHaveBeenCalledTimes(3));
     await settle();
 
     expect(listPlans).toHaveBeenCalledTimes(1);
     expect(listChecklists).toHaveBeenCalledTimes(3);
+    expect(getDayPlan).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('Dashboard — Day plan roll-up (FS-02JBZ R85–R89)', () => {
+  const step = (id: string, parentId: string | undefined, extra: Partial<ChecklistItem> = {}) =>
+    ({ ...item(id, false), description: `Do ${id}`, parentId, ...extra }) as ChecklistItem;
+
+  const stored = (planId: string, entries: { id: string; itemId: string; ticked?: boolean }[]) => ({
+    ...notPlanned(planId),
+    status: 'planned',
+    source: 'ai',
+    generatedAt: '2026-10-25T08:00:00Z',
+    groups: [
+      {
+        label: 'Today',
+        entries: entries.map((e) => ({
+          id: e.id,
+          kind: 'existing_item',
+          itemId: e.itemId,
+          text: `drawn ${e.itemId}`,
+          reason: 'why',
+          ticked: e.ticked ?? false,
+        })),
+      },
+    ],
+  });
+
+  const block = () => screen.getByRole('region', { name: 'Day plan' });
+  const rows = () => within(block()).getAllByRole('listitem');
+
+  it('should take two rows from each focused plan: stored entries, then basic picks for not planned and failed reads', async () => {
+    // p2 / p1 / p0, most recent first.
+    listPlans.mockResolvedValue(plansAged(3));
+    const itemsOf: Record<string, ChecklistItem[]> = {
+      p2: [step('a1', undefined), step('a2', undefined), step('a3', undefined)],
+      p1: [step('b1', undefined), step('b2', 'b1')],
+      p0: [step('c1', undefined, { dueDate: '2020-01-01T00:00:00Z' }), step('c2', undefined)],
+    };
+    listChecklists.mockImplementation((id: string) => Promise.resolve(itemsOf[id]));
+    getDayPlan.mockImplementation((id: string) =>
+      id === 'p2'
+        ? Promise.resolve(stored('p2', [{ id: 'e1', itemId: 'a2', ticked: true }, { id: 'e2', itemId: 'a3' }, { id: 'e3', itemId: 'a1' }]))
+        : id === 'p1'
+          ? Promise.resolve(notPlanned('p1'))
+          : Promise.reject(new Error('503')),
+    );
+
+    render(<Home />);
+    await screen.findByRole('heading', { name: 'Day plan' });
+
+    // The row's own text leads; a step's milestone name follows in the meta line.
+    expect(rows().map((r) => within(r).getAllByText(/^Do /)[0].firstChild?.textContent)).toEqual([
+      'Do a2',
+      'Do a3',
+      'Do b2',
+      'Do c1',
+      'Do c2',
+    ]);
+    const basic = rows().map((r) => within(r).queryByText('basic') !== null);
+    expect(basic).toEqual([false, false, true, true, true]);
+    // The ticked entry reads ticked; nothing on the block can be ticked.
+    expect(within(rows()[0]).getByText(/done for today/i)).toBeInTheDocument();
+    expect(within(rows()[1]).queryByText(/done for today/i)).toBeNull();
+    expect(within(block()).queryByRole('checkbox')).toBeNull();
+    expect(within(block()).queryByRole('button')).toBeNull();
+    // Each row links to its plan.
+    expect(rows().map((r) => within(r).getByRole('link').getAttribute('href'))).toEqual([
+      '/plan/p2',
+      '/plan/p2',
+      '/plan/p1',
+      '/plan/p0',
+      '/plan/p0',
+    ]);
+    expect(planMyDay).not.toHaveBeenCalled();
+  });
+
+  it('should let a single focused plan fill the block, up to six rows', async () => {
+    listPlans.mockResolvedValue(plansAged(1));
+    const items = Array.from({ length: 8 }, (_, i) => step(`m${i}`, undefined));
+    listChecklists.mockResolvedValue(items);
+    getDayPlan.mockResolvedValue(
+      stored('p0', items.map((it, i) => ({ id: `e${i}`, itemId: it.id }))),
+    );
+
+    render(<Home />);
+    await screen.findByRole('heading', { name: 'Day plan' });
+
+    expect(rows()).toHaveLength(6);
+  });
+
+  it('should sit above the Today block', async () => {
+    listPlans.mockResolvedValue(plansAged(1));
+    listChecklists.mockResolvedValue([step('x', undefined)]);
+
+    render(<Home />);
+    const dayPlan = await screen.findByRole('heading', { name: 'Day plan' });
+    const today = await screen.findByRole('heading', { name: /today|next up/i });
+
+    expect(
+      dayPlan.compareDocumentPosition(today) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('should render no block when no plan has anything to show', async () => {
+    listPlans.mockResolvedValue(plansAged(3));
+
+    render(<Home />);
+    await screen.findByRole('heading', { name: /continue where you left off/i });
+    await waitFor(() => expect(getDayPlan).toHaveBeenCalledTimes(3));
+    await settle();
+
+    expect(screen.queryByRole('heading', { name: 'Day plan' })).toBeNull();
   });
 });

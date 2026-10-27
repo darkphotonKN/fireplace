@@ -9,6 +9,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import AuthGuard from "./AuthGuard";
 import ThemeToggle from "./ThemeToggle";
+import HomeButton from "./HomeButton";
 import { toast } from "@/components/ui/use-toast";
 import { getSidebarState } from "@/lib/sidebarState";
 
@@ -121,6 +122,7 @@ export default function LayoutContent({ children }: LayoutContentProps) {
             </Link>
           </div>
           <div className="flex items-center gap-3">
+            <HomeButton />
             <ThemeToggle />
             <UserProfile />
           </div>

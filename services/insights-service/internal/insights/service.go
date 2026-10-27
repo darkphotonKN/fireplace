@@ -9,18 +9,21 @@ import (
 
 	commonconstants "github.com/darkphotonKN/fireplace/common/constants"
 	commonhelpers "github.com/darkphotonKN/fireplace/common/utils"
+	"github.com/darkphotonKN/fireplace/services/insights-service/internal/ai"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
-// dailySuggestionCount is how many daily suggestions GenerateDailySuggestions
-// requests from the LLM. Ported from the gateway behaviour.
-const dailySuggestionCount = 3
+// searchTermCount is how many video search terms buildVideoSearchPrompt asks
+// for; it sizes the parsed slice.
+const searchTermCount = 3
 
 // ContentGenerator is the LLM seam: anything that turns a prompt into text.
-// Implemented by ai.Generator, which pairs a fixed system prompt with a client.
+// Implemented by ai.Generator, which pairs a fixed system prompt with a client
+// and is metered: it refuses with ai.ErrBudgetExhausted over the global token
+// budget and records each attempt's usage under call (FS-02JBZ R31–R33).
 type ContentGenerator interface {
-	Generate(prompt string) (string, error)
+	Generate(ctx context.Context, call ai.Call, prompt string) (string, error)
 }
 
 // VideoFinder resolves generated search terms into concrete videos. Implemented
@@ -182,37 +185,12 @@ func (s *Service) GenerateSuggestion(ctx context.Context, planID, userID uuid.UU
 		return "", fmt.Errorf("insights: generate suggestion: %w", err)
 	}
 
-	res, err := s.checklistGen.Generate(buildChecklistPrompt(pc, ""))
+	call := ai.Call{Kind: ai.KindChecklistSuggestion, PlanID: planID, UserID: userID}
+	res, err := s.checklistGen.Generate(ctx, call, buildChecklistPrompt(pc, ""))
 	if err != nil {
 		return "", fmt.Errorf("insights: generate suggestion: %w", err)
 	}
 	return res, nil
-}
-
-// GenerateDailySuggestions returns dailySuggestionCount daily focus suggestions
-// derived from the plan's longterm checklist items + focus, nudging each draw
-// away from the previous so they don't collide.
-func (s *Service) GenerateDailySuggestions(ctx context.Context, planID, userID uuid.UUID) ([]string, error) {
-	pc, err := s.plans.GetPlanContext(ctx, planID, userID)
-	if err != nil {
-		return nil, fmt.Errorf("insights: generate daily suggestions: %w", err)
-	}
-
-	base := buildChecklistPrompt(pc, `Focus on tasks that are marked as "longterm" and break them down when you make your suggestions.`)
-
-	suggestions := make([]string, 0, dailySuggestionCount)
-	for i := 0; i < dailySuggestionCount; i++ {
-		prompt := base
-		if i > 0 {
-			prompt = fmt.Sprintf("%s\nAlso, don't choose one closely related to this, as it has already been added: %s", base, suggestions[i-1])
-		}
-		res, err := s.checklistGen.Generate(prompt)
-		if err != nil {
-			return nil, fmt.Errorf("insights: generate daily suggestions: %w", err)
-		}
-		suggestions = append(suggestions, res)
-	}
-	return suggestions, nil
 }
 
 // SuggestVideos uses the plan focus + checklist to ask the LLM for search terms,
@@ -227,7 +205,8 @@ func (s *Service) SuggestVideos(ctx context.Context, planID, userID uuid.UUID) (
 		return nil, fmt.Errorf("insights: suggest videos: %w", err)
 	}
 
-	raw, err := s.searchTermGen.Generate(buildVideoSearchPrompt(pc))
+	call := ai.Call{Kind: ai.KindVideoTerms, PlanID: planID, UserID: userID}
+	raw, err := s.searchTermGen.Generate(ctx, call, buildVideoSearchPrompt(pc))
 	if err != nil {
 		return nil, fmt.Errorf("insights: suggest videos: generate search terms: %w", err)
 	}
@@ -235,7 +214,7 @@ func (s *Service) SuggestVideos(ctx context.Context, planID, userID uuid.UUID) (
 	// The prompt asks for one search term per line. Blank lines are dropped: a
 	// trailing newline is common in LLM output and an empty term would otherwise
 	// become an empty search query whose results are returned as recommendations.
-	searchTerms := make([]string, 0, dailySuggestionCount)
+	searchTerms := make([]string, 0, searchTermCount)
 	for _, term := range strings.Split(raw, "\n") {
 		if t := strings.TrimSpace(term); t != "" {
 			searchTerms = append(searchTerms, t)

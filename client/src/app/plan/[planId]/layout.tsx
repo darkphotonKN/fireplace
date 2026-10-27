@@ -1,7 +1,7 @@
 "use client";
 
 import { Card } from "@/components/ui/card";
-import Todo from "@/components/Todo";
+import DayPlanSection from "@/components/DayPlanSection";
 import { CalendarCard } from "@/components/calendar/CalendarCard";
 import { getSuggestedVideos, type VideoSuggestion } from "@/api/insights";
 import { useEffect, useState, type ReactNode } from "react";
@@ -21,7 +21,7 @@ const getYouTubeThumbnail = (url: string) => {
 
 /**
  * Everything on a plan's page but its middle card (FS-043WP R2, G1): the title
- * card and Daily above, the Calendar and Recommended videos below. The middle
+ * card and the Day plan above, the Calendar and Recommended videos below. The middle
  * card holds the route: the long-term Items at `/plan/<id>`, a milestone's
  * page at `/plan/<id>/m/<milestoneId>`. A layout persists across its routes,
  * so moving between them swaps only the middle; nothing here refetches or
@@ -95,9 +95,10 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
     <main className="min-h-screen p-8">
       <div className="relative max-w-7xl mx-auto space-y-8">
         {/* Title Section. `relative z-10` lifts this card's stacking context
-            (backdrop-blur creates one) above the later-in-DOM Daily card, which
-            is its own stacking context too; without it the focus tooltip that
-            opens downward is painted under Daily whatever its own z-index. */}
+            (backdrop-blur creates one) above the later-in-DOM Day plan card,
+            which is its own stacking context too; without it the focus tooltip
+            that opens downward is painted under the Day plan whatever its own
+            z-index. Keep it above the Day plan card's z-[5]. */}
         <div className="relative z-10 backdrop-blur-sm rounded-2xl p-8 shadow-lg bg-white/5 dark:bg-gray-900/10">
           <h1 className="text-4xl font-bold mb-2">
             {isLoading ? "Loading..." : plan?.name || "Plan Details"}
@@ -143,17 +144,18 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
 
         {/* Main Grid - Flexible Layout */}
         <div className="grid grid-cols-1 gap-6">
-          {/* Daily — warm "reminder" strip pinned to the top of the stack. The
-              accent border + tint set it apart from the neutral core blocks
-              below; Todo renders its own "Daily" header internally so no extra
-              title is needed here. */}
-          <Card className="relative overflow-hidden backdrop-blur-sm shadow-sm border-0 border-l-4 border-l-amber-500/50 bg-gradient-to-br from-amber-500/[0.07] to-orange-500/[0.02] ring-1 ring-amber-500/10">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -top-10 -right-10 w-40 h-40 rounded-full bg-amber-400/10 blur-3xl"
-            />
-            <div className="relative p-6">
-              <Todo fixedTaskType="daily" dailyAIOnly />
+          {/* Day plan (FS-02JBZ R62), where the Daily card was. The same
+              neutral card as the Items card below, so the page reads as one
+              set of sections; the section itself carries the ember accents.
+              Stacking: backdrop-blur makes this card a stacking context, as it
+              does the later-in-DOM middle card. `relative z-[5]` lifts it above
+              the middle card so the section's "i" tooltip, which opens
+              downward, can spill past a short card; 5 stays under the title
+              card's z-10 so the focus tooltip still paints over this card.
+              The card doesn't clip, which would cut the tooltip off. */}
+          <Card className="relative z-[5] backdrop-blur-sm shadow-sm border-0">
+            <div className="p-6">
+              <DayPlanSection planId={planId} />
             </div>
           </Card>
 
@@ -241,7 +243,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
  * deleted, it was never yours, or you were removed from it. The page doesn't
  * say which, because the 404 doesn't either (a stranger learns nothing). It
  * replaces the whole plan view, not just the middle card: there is no title,
- * Daily or calendar to show around it.
+ * Day plan or calendar to show around it.
  */
 function PlanNotHere() {
   return (

@@ -317,6 +317,7 @@ describe('TodayBlock — over what the fan-out actually returns', () => {
       item('parent'),
       item('call them back', { parentId: 'parent', dueDate: '2026-03-16T00:00:00Z' }),
       item('overdue thing', { dueDate: '2026-03-15T00:00:00Z' }),
+      // FS-02JBZ R91: an undated leftover daily row is not Today's.
       item('a habit', { scope: 'daily' }),
       item('a note', { dueDate: '2026-03-16T00:00:00Z', type: 'note' }),
       item('done already', { dueDate: '2026-03-16T00:00:00Z', done: true }),
@@ -329,15 +330,15 @@ describe('TodayBlock — over what the fan-out actually returns', () => {
     render(<Block work={composed} />);
 
     expect(screen.getByRole('heading', { name: 'Today' })).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(3);
-    for (const shown of ['call them back', 'overdue thing', 'a habit']) {
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    for (const shown of ['call them back', 'overdue thing']) {
       expect(screen.getByText(shown)).toBeInTheDocument();
     }
-    for (const hidden of ['a note', 'done already', 'next month']) {
+    for (const hidden of ['a habit', 'a note', 'done already', 'next month']) {
       expect(screen.queryByText(hidden)).toBeNull();
     }
     // The dated child came through with its parent as context, and the parent
-    // itself — undated and not daily — did not become a row of its own.
+    // itself, undated, did not become a row of its own.
     expect(screen.getByText(/in parent/)).toBeInTheDocument();
   });
 });

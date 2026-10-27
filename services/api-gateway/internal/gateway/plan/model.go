@@ -60,8 +60,10 @@ type SearchParam struct {
 type CreateChecklistReq struct {
 	// Free-text item description.
 	Description string `json:"description" example:"Write the integration test plan"`
-	// Item scope. Optional; plan-service defaults it to "longterm".
-	Scope *string `json:"scope,omitempty" enums:"daily,longterm" example:"daily"`
+	// Item scope. Optional; plan-service defaults it to "longterm". "daily" is
+	// retired (FS-02JBZ R51): still a legal value, refused downstream with
+	// 400 DAILY_SCOPE_RETIRED.
+	Scope *string `json:"scope,omitempty" enums:"daily,longterm" example:"longterm"`
 	// Item type. Optional; plan-service defaults it to "task".
 	Type *string `json:"type,omitempty" enums:"task,note" example:"task"`
 	// Optional parent item id for nesting. Must reference a top-level item in the

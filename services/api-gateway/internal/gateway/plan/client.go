@@ -179,18 +179,6 @@ func (c *Client) UpdatePlan(ctx context.Context, id, userID uuid.UUID, req Updat
 	return planFromProto(resp), nil
 }
 
-func (c *Client) ToggleDailyReset(ctx context.Context, id, userID uuid.UUID) (*PlanResp, error) {
-	plans, err := c.planClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := plans.ToggleDailyReset(ctx, &pb.ToggleDailyResetRequest{Id: id.String(), UserId: userID.String()})
-	if err != nil {
-		return nil, err
-	}
-	return planFromProto(resp), nil
-}
-
 func (c *Client) DeletePlan(ctx context.Context, id, userID uuid.UUID) error {
 	plans, err := c.planClient(ctx)
 	if err != nil {
@@ -538,8 +526,6 @@ func (c *Client) DeleteChecklist(ctx context.Context, planID, id, userID uuid.UU
 	return err
 }
 
-// DailyReset triggers the cross-plan daily uncomplete sweep on plan-service.
-// Called from the gateway's nightly job in 4c.
 // ListItemsInDateWindow returns checklist items for the plan whose date range
 // intersects [windowStart, windowEnd].
 //
@@ -562,18 +548,6 @@ func (c *Client) ListItemsInDateWindow(ctx context.Context, planID, userID uuid.
 		return nil, err
 	}
 	return resp.Items, nil
-}
-
-func (c *Client) DailyReset(ctx context.Context) (int, error) {
-	items, err := c.checklistClient(ctx)
-	if err != nil {
-		return 0, err
-	}
-	resp, err := items.DailyReset(ctx, &pb.DailyResetRequest{})
-	if err != nil {
-		return 0, err
-	}
-	return int(resp.ResetCount), nil
 }
 
 // --- proto → HTTP response converters ---

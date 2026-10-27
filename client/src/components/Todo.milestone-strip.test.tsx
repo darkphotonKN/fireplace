@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within, act } from '@testing-library/react';
+import { render, screen, fireEvent, within, act, waitFor } from '@testing-library/react';
 
 /**
  * The plan header's progress strip (FS-FSFEC R15–R22). It reads the whole
@@ -35,12 +35,10 @@ vi.mock('@/services/api', () => ({
 
 vi.mock('@/api/insights', () => ({
   getChecklistSuggestion: vi.fn(async () => ''),
-  getDailyInsights: vi.fn(async () => []),
 }));
 
 vi.mock('@/api/plans', () => ({
   getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-  toggleDailyReset: vi.fn(),
 }));
 
 const item = (
@@ -89,6 +87,26 @@ async function renderTodo(items: unknown[] = PLAN, taskType = 'longterm') {
 }
 
 describe('Todo milestone strip', () => {
+  // The Day plan section writes items behind this card's back (FS-02JBZ
+  // R77): it announces, and the card re-reads so the strip moves.
+  it('should re-read and move the strip when another part of the page changes this plan', async () => {
+    await renderTodo();
+    expect(fillOf('item P0')).toBe('50%');
+    const { announcePlanItemsChanged } = await import('@/lib/planItemsChanged');
+    fetchChecklist.mockClear();
+
+    act(() => announcePlanItemsChanged('plan-2'));
+    expect(fetchChecklist).not.toHaveBeenCalled();
+
+    fetchChecklist.mockImplementation(async () =>
+      PLAN.map((i) => (i.id === 'C1' ? { ...i, done: true } : i))
+    );
+    await act(async () => announcePlanItemsChanged('plan-1'));
+
+    expect(fetchChecklist).toHaveBeenCalledWith('plan-1', 'longterm');
+    await waitFor(() => expect(fillOf('item P0')).toBe('100%'));
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();

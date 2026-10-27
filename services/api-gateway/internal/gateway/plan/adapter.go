@@ -64,12 +64,6 @@ func (a *Adapter) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*models.
 	return checklistRespToModelSlice(items), nil
 }
 
-// ResetDailyItems satisfies jobs.ChecklistDailyResetService.
-func (a *Adapter) ResetDailyItems(ctx context.Context) error {
-	_, err := a.client.DailyReset(ctx)
-	return err
-}
-
 // --- DTO conversions: gateway's PlanResp/ChecklistResp → monolith's
 // models.Plan/models.ChecklistItem (still used by the cross-domain consumers'
 // internal signatures). ---

@@ -33,7 +33,6 @@ const (
 	ChecklistService_UpdateItemDates_FullMethodName       = "/plan.ChecklistService/UpdateItemDates"
 	ChecklistService_ArchiveItem_FullMethodName           = "/plan.ChecklistService/ArchiveItem"
 	ChecklistService_DeleteItem_FullMethodName            = "/plan.ChecklistService/DeleteItem"
-	ChecklistService_DailyReset_FullMethodName            = "/plan.ChecklistService/DailyReset"
 )
 
 // ChecklistServiceClient is the client API for ChecklistService service.
@@ -69,9 +68,6 @@ type ChecklistServiceClient interface {
 	UpdateItemDates(ctx context.Context, in *UpdateItemDatesRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
 	ArchiveItem(ctx context.Context, in *ArchiveItemRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
 	DeleteItem(ctx context.Context, in *DeleteItemRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	// DailyReset un-completes all daily-scope items across all plans (job-scheduled,
-	// called from the gateway's nightly job in 4c).
-	DailyReset(ctx context.Context, in *DailyResetRequest, opts ...grpc.CallOption) (*DailyResetResponse, error)
 }
 
 type checklistServiceClient struct {
@@ -212,16 +208,6 @@ func (c *checklistServiceClient) DeleteItem(ctx context.Context, in *DeleteItemR
 	return out, nil
 }
 
-func (c *checklistServiceClient) DailyReset(ctx context.Context, in *DailyResetRequest, opts ...grpc.CallOption) (*DailyResetResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DailyResetResponse)
-	err := c.cc.Invoke(ctx, ChecklistService_DailyReset_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // ChecklistServiceServer is the server API for ChecklistService service.
 // All implementations must embed UnimplementedChecklistServiceServer
 // for forward compatibility.
@@ -255,9 +241,6 @@ type ChecklistServiceServer interface {
 	UpdateItemDates(context.Context, *UpdateItemDatesRequest) (*ChecklistItem, error)
 	ArchiveItem(context.Context, *ArchiveItemRequest) (*ChecklistItem, error)
 	DeleteItem(context.Context, *DeleteItemRequest) (*emptypb.Empty, error)
-	// DailyReset un-completes all daily-scope items across all plans (job-scheduled,
-	// called from the gateway's nightly job in 4c).
-	DailyReset(context.Context, *DailyResetRequest) (*DailyResetResponse, error)
 	mustEmbedUnimplementedChecklistServiceServer()
 }
 
@@ -306,9 +289,6 @@ func (UnimplementedChecklistServiceServer) ArchiveItem(context.Context, *Archive
 }
 func (UnimplementedChecklistServiceServer) DeleteItem(context.Context, *DeleteItemRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteItem not implemented")
-}
-func (UnimplementedChecklistServiceServer) DailyReset(context.Context, *DailyResetRequest) (*DailyResetResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DailyReset not implemented")
 }
 func (UnimplementedChecklistServiceServer) mustEmbedUnimplementedChecklistServiceServer() {}
 func (UnimplementedChecklistServiceServer) testEmbeddedByValue()                          {}
@@ -565,24 +545,6 @@ func _ChecklistService_DeleteItem_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ChecklistService_DailyReset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DailyResetRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ChecklistServiceServer).DailyReset(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ChecklistService_DailyReset_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ChecklistServiceServer).DailyReset(ctx, req.(*DailyResetRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // ChecklistService_ServiceDesc is the grpc.ServiceDesc for ChecklistService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -641,10 +603,6 @@ var ChecklistService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteItem",
 			Handler:    _ChecklistService_DeleteItem_Handler,
-		},
-		{
-			MethodName: "DailyReset",
-			Handler:    _ChecklistService_DailyReset_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -83,6 +83,10 @@ const ok = (data: unknown) => ({
   response: { status: 200 },
 });
 
+/** The day plan roll-up's read (FS-02JBZ R85): a day nobody has planned. */
+const DAY_PLAN_PATH = '/api/insights/day-plan';
+const notPlanned = ok({ status: 'not_planned', groups: [], refreshesRemaining: 3 });
+
 /** A promise the test settles by hand, so "in flight" is observable. */
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -122,7 +126,9 @@ beforeEach(() => {
   api.GET.mockReset();
   api.PATCH.mockReset();
   api.GET.mockImplementation((path: string) =>
-    Promise.resolve(path === '/api/plans' ? ok([plan]) : ok(ITEMS)),
+    Promise.resolve(
+      path === '/api/plans' ? ok([plan]) : path === DAY_PLAN_PATH ? notPlanned : ok(ITEMS),
+    ),
   );
   api.PATCH.mockResolvedValue(ok({ ...ITEMS[0], done: true }));
 });
@@ -314,6 +320,7 @@ describe('Dashboard — every row ticked (R35)', () => {
   beforeEach(() => {
     api.GET.mockImplementation((path: string, opts?: { params?: { path?: { id?: string } } }) => {
       if (path === '/api/plans') return Promise.resolve(ok([plan, second]));
+      if (path === DAY_PLAN_PATH) return Promise.resolve(notPlanned);
       return Promise.resolve(ok(opts?.params?.path?.id === 'p2' ? [waiting] : ITEMS));
     });
   });
