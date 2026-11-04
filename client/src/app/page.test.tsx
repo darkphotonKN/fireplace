@@ -66,7 +66,7 @@ describe('Home', () => {
   it('should paint the hero while auth is still resolving', () => {
     render(<Home />);
 
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Fireplace');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Start your plan now. Sit down by the fire.');
     expect(screen.queryByText(/loading/i)).toBeNull();
   });
 
@@ -74,7 +74,7 @@ describe('Home', () => {
     auth.isAuthenticated = false;
     auth.isLoading = false;
     const { rerender } = render(<Home />);
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Fireplace');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Start your plan now. Sit down by the fire.');
 
     auth.isAuthenticated = true;
     auth.user = { name: 'Kranti' };
@@ -258,7 +258,7 @@ describe('Home', () => {
 
       render(<Home />);
 
-      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Fireplace');
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Start your plan now. Sit down by the fire.');
       expect(window.localStorage.getItem(GATE_KEY)).toBeNull();
     });
   });

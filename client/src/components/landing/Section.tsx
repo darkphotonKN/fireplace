@@ -14,13 +14,6 @@ interface SectionProps {
   backdrop?: ReactNode;
   className?: string;
   contentClassName?: string;
-  /**
-   * `compact` gives a section noticeably less vertical room. NUDGE uses it so
-   * the beat lands as a grace note rather than padding — the proportion between
-   * it and REVIEW is a requirement, not a styling whim, so it lives in the
-   * shared wrapper where it can be asserted.
-   */
-  size?: 'default' | 'compact';
 }
 
 /**
@@ -32,20 +25,17 @@ export default function Section({
   backdrop,
   className,
   contentClassName,
-  size = 'default',
 }: SectionProps) {
   return (
     <section
-      data-section-size={size}
       className={cn(
         'relative w-full px-6',
-        // Clip ONLY when there is a backdrop to contain. Clipping unconditionally
-        // meant a 0.6x art layer (up to ±80px) could be cut off against a
-        // section's own edge — which the compact section, at py-12, would have
-        // done. Transforms are vertical-only, so not clipping cannot introduce
-        // horizontal overflow.
+        // Clip ONLY when there is a backdrop to contain: the glow is wider than
+        // the viewport. Nothing else here is translated, so not clipping cannot
+        // introduce horizontal overflow, and an unclipped grid keeps its tiles'
+        // focus rings.
         backdrop && 'overflow-hidden',
-        size === 'compact' ? 'py-12 md:py-16' : 'py-24 md:py-32',
+        'py-24 md:py-32',
         className
       )}
     >
