@@ -20,11 +20,11 @@ export default function HomeButton() {
       aria-current={isHome ? 'page' : undefined}
       title="Home"
       className={cn(
-        'group flex h-8 items-center gap-1.5 rounded-md px-2 text-sm transition-colors',
+        'group flex h-8 items-center gap-1.5 rounded-control px-2 text-sm transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         isHome
           ? 'font-medium text-primary'
-          : 'text-foreground/70 hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
+          : 'text-foreground/70 hover:bg-muted hover:text-foreground dark:hover:bg-white/10',
       )}
     >
       <House

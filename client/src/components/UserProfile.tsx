@@ -68,7 +68,7 @@ export default function UserProfile() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-[#ebe8d8] dark:bg-[#2a2a2a] backdrop-blur-sm border border-foreground/10">
+        <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-popover dark:bg-[#2a2a2a] backdrop-blur-sm border border-foreground/10">
           <div className="py-1" role="menu" aria-orientation="vertical">
             <Link
               href="/profile"

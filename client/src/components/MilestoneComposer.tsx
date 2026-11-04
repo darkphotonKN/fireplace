@@ -327,7 +327,7 @@ export default function MilestoneComposer({
           className={cn(
             'ml-3 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-60',
             text.trim()
-              ? 'bg-primary text-primary-foreground shadow-[0_2px_14px_-3px_rgba(247,111,83,0.6)] hover:bg-primary/90'
+              ? 'bg-action text-action-foreground shadow-[0_2px_14px_-3px_hsl(var(--action)/0.6)] hover:bg-action/90'
               : 'text-foreground/40 hover:bg-primary/10 hover:text-primary'
           )}
         >

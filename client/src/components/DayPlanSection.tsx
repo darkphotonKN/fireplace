@@ -780,7 +780,7 @@ function EntryRow({
             onClick={onAdd}
             disabled={adding}
             aria-label={`Add ${entry.text}`}
-            className="-my-0.5 shrink-0 rounded-md px-2 py-0.5 text-sm leading-6 text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+            className="-my-0.5 shrink-0 rounded-control px-2 py-0.5 text-sm leading-6 text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
           >
             Add
           </button>
@@ -927,7 +927,7 @@ function PlanBar({
         // Retired at zero (R68): the count is on the day plan, so no request
         // is needed to find out.
         disabled={planning || remaining <= 0}
-        className="shrink-0 rounded-md px-2.5 py-1 tabular-nums transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-foreground/45"
+        className="shrink-0 rounded-control px-2.5 py-1 tabular-nums transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-foreground/45"
       >
         {planning ? 'Planning…' : label} · {remaining} left
       </button>
@@ -956,7 +956,7 @@ function DayPlanSkeleton({ label }: { label: string }) {
 
 /** The primary action, in the ember the rest of the plan page uses. */
 const PRIMARY_ACTION =
-  'shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/15 disabled:opacity-50 disabled:hover:bg-primary/10';
+  'shrink-0 rounded-control bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/15 disabled:opacity-50 disabled:hover:bg-primary/10';
 
 /**
  * Today's date and how much of the day is ticked: the day plan's answer to

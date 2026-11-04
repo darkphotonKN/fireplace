@@ -99,7 +99,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
             which is its own stacking context too; without it the focus tooltip
             that opens downward is painted under the Day plan whatever its own
             z-index. Keep it above the Day plan card's z-[5]. */}
-        <div className="relative z-10 backdrop-blur-sm rounded-2xl p-8 shadow-lg bg-white/5 dark:bg-gray-900/10">
+        <div className="relative z-10 backdrop-blur-sm rounded-2xl p-8 bg-card shadow-tile dark:shadow-lg dark:bg-gray-900/10">
           <h1 className="text-4xl font-bold mb-2">
             {isLoading ? "Loading..." : plan?.name || "Plan Details"}
           </h1>
@@ -153,7 +153,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
               downward, can spill past a short card; 5 stays under the title
               card's z-10 so the focus tooltip still paints over this card.
               The card doesn't clip, which would cut the tooltip off. */}
-          <Card className="relative z-[5] backdrop-blur-sm shadow-sm border-0">
+          <Card className="relative z-[5] backdrop-blur-sm border-0">
             <div className="p-6">
               <DayPlanSection planId={planId} />
             </div>
@@ -162,7 +162,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
           {/* PRIMARY — the middle card, full width: the plan's long-term Items,
               or one milestone's page. Only what is inside it changes with the
               route; the card itself stays put. */}
-          <Card className="backdrop-blur-sm shadow-sm border-0">
+          <Card className="backdrop-blur-sm border-0">
             <div className="p-6">{children}</div>
           </Card>
 
@@ -170,7 +170,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
           <CalendarCard planId={planId} />
 
           {/* Recommended Videos */}
-          <Card className="backdrop-blur-sm shadow-sm border-0">
+          <Card className="backdrop-blur-sm border-0">
             <h2 className="text-xl font-semibold p-6 pb-4">
               Recommended Videos
             </h2>
@@ -189,7 +189,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
                       href={video.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="group bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg overflow-hidden hover:bg-white/10 transition-all duration-200"
+                      className="group bg-background backdrop-blur-sm border border-border rounded-lg overflow-hidden hover:bg-muted transition-all duration-200 dark:bg-white/5 dark:border-white/10 dark:hover:bg-white/10"
                     >
                       <div className="relative aspect-video">
                         <img
@@ -216,7 +216,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
                         <h4 className="text-sm font-medium mb-1 line-clamp-2">
                           {video.title}
                         </h4>
-                        <p className="text-xs text-gray-400 line-clamp-2">
+                        <p className="text-xs text-muted-foreground line-clamp-2 dark:text-gray-400">
                           {video.description}
                         </p>
                       </div>

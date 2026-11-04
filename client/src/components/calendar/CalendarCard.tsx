@@ -12,7 +12,7 @@ interface CalendarCardProps {
 
 export function CalendarCard({ planId, className = '' }: CalendarCardProps) {
   return (
-    <Card className={`backdrop-blur-sm shadow-sm border-0 ${className}`}>
+    <Card className={`backdrop-blur-sm border-0 ${className}`}>
       <div className="flex items-center justify-between p-6 pb-4">
         <h2 className="text-xl font-semibold flex items-center gap-2">
           <CalendarIcon className="w-5 h-5" />

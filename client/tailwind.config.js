@@ -47,6 +47,10 @@ module.exports = {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',
         },
+        action: {
+          DEFAULT: 'hsl(var(--action))',
+          foreground: 'hsl(var(--action-foreground))',
+        },
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
           foreground: 'hsl(var(--secondary-foreground))',
@@ -76,6 +80,15 @@ module.exports = {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        // Theme-dependent shape (globals.css): pills and 16px tiles in light,
+        // the old rounded-md / rounded-lg in dark.
+        control: 'var(--fp-radius-control)',
+        tile: 'var(--fp-radius-tile)',
+      },
+      boxShadow: {
+        // A tile's lift: none in light (x.ai's tiles sit flat on the page),
+        // shadow-sm in dark as before.
+        tile: 'var(--fp-shadow-tile)',
       },
       keyframes: {
         'accordion-down': {
