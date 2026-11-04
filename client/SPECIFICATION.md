@@ -9,6 +9,7 @@
 
 - [x] Logged-out landing page → FS-none
 - [x] Product tour on the logged-out landing → FS-0003
+- [ ] Feature showcase on the logged-out landing → FS-XCTMG
 
 ## Home
 
