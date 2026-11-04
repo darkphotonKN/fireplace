@@ -165,7 +165,7 @@ export default function ProfilePage() {
                     onKeyDown={handleKeyDown}
                     placeholder={field.placeholder}
                     disabled={saving}
-                    className="bg-[#e5e2d3] dark:bg-gray-800/50 border-[#d4c9b0] dark:border-gray-700 text-foreground focus-visible:ring-[rgb(247,111,83)]/40"
+                    className="bg-muted dark:bg-gray-800/50 border-border dark:border-gray-700 text-foreground focus-visible:ring-[rgb(247,111,83)]/40"
                   />
                 )}
                 <div className="flex items-center gap-2">

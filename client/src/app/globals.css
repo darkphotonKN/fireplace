@@ -2,10 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Light mode borrows x.ai's marketing light theme (read from its computed
+ * styles): a white page, ivory tiles sitting on it, near-black ("jet") text and
+ * buttons, a warm light-grey for secondary fills, and hairlines rather than
+ * rules. The coral --primary and Lora stay; that is what keeps it Fireplace.
+ */
 :root {
   /* base colors - light mode */
-  --background: 55 43% 92%; /* rgb(242, 240, 227) */
-  --foreground: 0 0% 18%; /* rgb(46, 46, 46) */
+  --background: 0 0% 100%; /* #ffffff, x.ai's page */
+  --foreground: 0 0% 4%; /* #0a0a0a, x.ai's "jet" */
   --primary: 12 92% 65%; /* rgb(247, 111, 83) */
   /*
    * On-coral text. Warm dark rather than the cream the design guideline
@@ -16,24 +22,44 @@
    */
   --primary-foreground: 0 0% 18%; /* rgb(46, 46, 46) */
 
+  /*
+   * The solid call-to-action fill, kept apart from --primary so the brand
+   * coral (headings, rings, the active plan) can stay while the button that
+   * says "go" takes its own colour. Coral in both themes for now.
+   */
+  --action: 12 92% 65%;
+  --action-foreground: 0 0% 18%;
+
   /* shadcn component variables */
-  --card: 55 43% 92%;
-  --card-foreground: 0 0% 18%;
-  --popover: 55 43% 92%;
-  --popover-foreground: 0 0% 18%;
-  --secondary: 0 0% 18%; /* rgb(46, 46, 46) */
+  --card: 40 18% 97%; /* #f9f8f6, x.ai's "ivory" tile */
+  --card-foreground: 0 0% 4%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 4%;
+  --secondary: 0 0% 4%; /* jet: the solid near-black button */
   --secondary-foreground: 0 0% 100%;
-  --muted: 55 33% 87%;
+  --muted: 40 9% 94%; /* #f2f1ef, x.ai's light-grey pill ("Contact Sales") */
+  /* Not x.ai's fog (3.9:1 on white); this keeps small text at AA (5.7:1). */
   --muted-foreground: 0 0% 40%;
-  --accent: 55 33% 87%;
-  --accent-foreground: 0 0% 18%;
+  --accent: 40 9% 94%;
+  --accent-foreground: 0 0% 4%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --border: 12 30% 75%; /* Softer border with a hint of our primary color */
-  --input: 55 33% 82%;
+  /* A hairline: jet at ~9% on white, a touch warm so it sits with the ivory. */
+  --border: 30 6% 91%;
+  --input: 30 6% 88%;
   --ring: 12 92% 65%;
 
   --radius: 0.5rem;
+
+  /*
+   * Shape, per theme. Light takes x.ai's fully round controls and 16px tiles;
+   * dark keeps the corners it had (rounded-md controls, rounded-lg tiles).
+   * Use as `rounded-control` and `rounded-tile`. Tiles sit flat in light
+   * (`shadow-tile`); dark keeps its shadow-sm.
+   */
+  --fp-radius-control: 9999px;
+  --fp-radius-tile: 1rem;
+  --fp-shadow-tile: 0 0 #0000;
 }
 
 /* dark mode colors via .dark class */
@@ -54,6 +80,12 @@
   --accent-foreground: 43 10% 90%;
   /* --primary is identical in dark, so its text pair is too. */
   --primary-foreground: 0 0% 18%;
+  --action: 12 92% 65%;
+  --action-foreground: 0 0% 18%;
+
+  --fp-radius-control: calc(var(--radius) - 2px);
+  --fp-radius-tile: var(--radius);
+  --fp-shadow-tile: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 /*
@@ -167,13 +199,9 @@ html[data-sidebar-ready][data-sidebar='hidden']
   }
 }
 
-/* apply background color based on light/dark mode */
+/* The app's page surface: the theme's --background (dark's is #1f1f1f). */
 .bg-layout {
-  background-color: rgb(242, 240, 227); /* light mode background */
-}
-
-.dark .bg-layout {
-  background-color: #1f1f1f; /* dark mode background */
+  background-color: hsl(var(--background));
 }
 
 /*

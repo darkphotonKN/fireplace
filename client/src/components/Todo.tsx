@@ -1365,7 +1365,7 @@ export default function Todo({
               setShowSettings(false);
             }
           }}
-          className="flex items-center text-base text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300 mb-4"
+          className="flex items-center text-base text-muted-foreground hover:text-foreground dark:hover:text-gray-300 mb-4"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -1414,10 +1414,10 @@ export default function Todo({
                         setNewTodoType(value);
                       setListTypeFilter(value);
                     }}
-                    className={`px-2 py-1 rounded transition-colors ${
+                    className={`px-2.5 py-1 rounded-control transition-colors ${
                       listTypeFilter === value
-                        ? 'bg-amber-500/20 text-amber-400'
-                        : 'opacity-60 hover:opacity-100 hover:bg-white/5'
+                        ? 'bg-muted font-medium text-foreground dark:bg-amber-500/20 dark:font-normal dark:text-amber-400'
+                        : 'opacity-60 hover:opacity-100 hover:bg-muted dark:hover:bg-white/5'
                     }`}
                     aria-pressed={listTypeFilter === value}
                   >
@@ -1480,7 +1480,7 @@ export default function Todo({
             )}
             <button
               onClick={() => setShowSettings(true)}
-              className="ml-2 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="ml-2 p-1.5 rounded-full hover:bg-muted dark:hover:bg-gray-800 transition-colors"
               title="Settings"
             >
               <svg
@@ -1513,7 +1513,7 @@ export default function Todo({
 
           <button
             onClick={() => setShowArchived(true)}
-            className="w-full p-4 text-left bg-white/5 dark:bg-gray-800/20 rounded-lg hover:bg-white/10 dark:hover:bg-gray-800/30 transition-colors"
+            className="w-full p-4 text-left bg-background dark:bg-gray-800/20 rounded-tile hover:bg-muted dark:hover:bg-gray-800/30 transition-colors"
           >
             <h3 className="text-base font-medium mb-1">View archived tasks</h3>
             <p className="text-sm text-muted-foreground">
@@ -1574,14 +1574,14 @@ export default function Todo({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleMoveItem(todo.id, 'up' as ScopeEnum)}
-                      className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                      className="p-1 hover:bg-muted dark:hover:bg-gray-800 rounded"
                       disabled={index === 0}
                     >
                       <ChevronUp className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleMoveItem(todo.id, 'down' as ScopeEnum)}
-                      className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                      className="p-1 hover:bg-muted dark:hover:bg-gray-800 rounded"
                       disabled={index === archivedTodos.length - 1}
                     >
                       <ChevronDown className="h-4 w-4" />
@@ -1590,7 +1590,7 @@ export default function Todo({
                   <button
                     onClick={() => confirmDeleteTodo(todo)}
                     title="Delete task permanently"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-muted dark:hover:bg-gray-800"
                     style={{ color: 'rgb(247, 111, 83)' }}
                   >
                     <svg
@@ -1845,7 +1845,7 @@ export default function Todo({
                         />
                         <button
                           onClick={() => updateTodoDescription(todo.id)}
-                          className="px-2 py-1 text-sm rounded bg-white/5"
+                          className="px-3 py-1 text-sm rounded-control bg-primary/10 dark:px-2 dark:bg-white/5"
                           style={{ color: 'rgb(247, 111, 83)' }}
                           disabled={isUpdating}
                         >
@@ -1853,7 +1853,7 @@ export default function Todo({
                         </button>
                         <button
                           onClick={cancelEditing}
-                          className="px-2 py-1 text-sm rounded bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900/80 border border-gray-200 dark:border-gray-700"
+                          className="px-3 py-1 text-sm rounded-control bg-muted border border-border dark:px-2 dark:bg-transparent dark:bg-gradient-to-br dark:from-gray-800 dark:to-gray-900/80 dark:border-gray-700"
                           disabled={isUpdating}
                         >
                           Cancel
@@ -2121,7 +2121,7 @@ export default function Todo({
                     className={cn(
                       'ml-3 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-60',
                       newTodo.trim()
-                        ? 'bg-primary text-primary-foreground shadow-[0_2px_14px_-3px_rgba(247,111,83,0.6)] hover:bg-primary/90'
+                        ? 'bg-action text-action-foreground shadow-[0_2px_14px_-3px_hsl(var(--action)/0.6)] hover:bg-action/90'
                         : 'text-foreground/40 hover:bg-primary/10 hover:text-primary'
                     )}
                     disabled={isSubmitting || isTyping}

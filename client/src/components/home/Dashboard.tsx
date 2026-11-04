@@ -105,7 +105,7 @@ function PlansUnavailable({ onRetry }: { onRetry: () => void }) {
       <button
         type="button"
         onClick={onRetry}
-        className="rounded-md border border-border px-4 py-2 text-base transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="rounded-control border border-border px-4 py-2 text-base transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         Try again
       </button>
@@ -171,7 +171,7 @@ function ContinueCard({
     <li>
       <Link
         href={`/plan/${plan.id}`}
-        className="flex h-full flex-col rounded-lg border border-border bg-card p-6 text-card-foreground shadow-sm transition-colors hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex h-full flex-col rounded-tile border border-border bg-card p-6 text-card-foreground shadow-tile transition-colors hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="flex items-baseline gap-2">
           <span className="text-lg font-bold">{plan.name}</span>

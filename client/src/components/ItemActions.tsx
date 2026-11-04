@@ -325,7 +325,7 @@ export default function ItemActions({
                     type="button"
                     onClick={saveDates}
                     disabled={!range[0]}
-                    className="rounded-full bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground shadow-[0_2px_14px_-3px_rgba(247,111,83,0.6)] transition-all duration-300 hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40"
+                    className="rounded-full bg-action px-3.5 py-1.5 text-sm font-medium text-action-foreground shadow-[0_2px_14px_-3px_hsl(var(--action)/0.6)] transition-all duration-300 hover:bg-action/90 disabled:pointer-events-none disabled:opacity-40"
                   >
                     Save
                   </button>

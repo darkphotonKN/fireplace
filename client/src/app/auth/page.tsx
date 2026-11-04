@@ -118,7 +118,7 @@ function AuthPageContent() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-layout">
-        <div className="text-base text-[#2e2e2e]/50 dark:text-[#d1cfc0]/50">Loading...</div>
+        <div className="text-base text-foreground/50 dark:text-[#d1cfc0]/50">Loading...</div>
       </div>
     );
   }
@@ -135,7 +135,7 @@ function AuthPageContent() {
           <Logo />
           Fireplace
         </h1>
-        <p className="text-center mb-8 text-base text-[#2e2e2e]/50 dark:text-[#d1cfc0]/50">
+        <p className="text-center mb-8 text-base text-foreground/50 dark:text-[#d1cfc0]/50">
           Your learning &amp; development hub
         </p>
 
@@ -154,7 +154,7 @@ function AuthPageContent() {
           <TabsContent value="signin">
             <form onSubmit={handleSignIn} className="space-y-5 mt-6">
               <div>
-                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-[#2e2e2e]/40 dark:text-[#d1cfc0]/40">
+                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-foreground/40 dark:text-[#d1cfc0]/40">
                   Email
                 </label>
                 <Input
@@ -162,14 +162,14 @@ function AuthPageContent() {
                   value={signInEmail}
                   onChange={(e) => setSignInEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="bg-[#e5e2d3] dark:bg-[#2a2a2a] border-[#d4c9b0] dark:border-[#3a3530] text-[#2e2e2e] dark:text-[#d1cfc0] placeholder:text-[#2e2e2e]/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
+                  className="bg-muted dark:bg-[#2a2a2a] border-border dark:border-[#3a3530] text-foreground dark:text-[#d1cfc0] placeholder:text-foreground/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
                   disabled={loading}
                 />
                 {errors.email && <p className="text-red-400 text-sm mt-1">{errors.email}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-[#2e2e2e]/40 dark:text-[#d1cfc0]/40">
+                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-foreground/40 dark:text-[#d1cfc0]/40">
                   Password
                 </label>
                 <Input
@@ -177,7 +177,7 @@ function AuthPageContent() {
                   value={signInPassword}
                   onChange={(e) => setSignInPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="bg-[#e5e2d3] dark:bg-[#2a2a2a] border-[#d4c9b0] dark:border-[#3a3530] text-[#2e2e2e] dark:text-[#d1cfc0] placeholder:text-[#2e2e2e]/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
+                  className="bg-muted dark:bg-[#2a2a2a] border-border dark:border-[#3a3530] text-foreground dark:text-[#d1cfc0] placeholder:text-foreground/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
                   disabled={loading}
                 />
                 {errors.password && <p className="text-red-400 text-sm mt-1">{errors.password}</p>}
@@ -196,7 +196,7 @@ function AuthPageContent() {
           <TabsContent value="signup">
             <form onSubmit={handleSignUp} className="space-y-5 mt-6">
               <div>
-                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-[#2e2e2e]/40 dark:text-[#d1cfc0]/40">
+                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-foreground/40 dark:text-[#d1cfc0]/40">
                   Name
                 </label>
                 <Input
@@ -204,14 +204,14 @@ function AuthPageContent() {
                   value={signUpName}
                   onChange={(e) => setSignUpName(e.target.value)}
                   placeholder="Your name"
-                  className="bg-[#e5e2d3] dark:bg-[#2a2a2a] border-[#d4c9b0] dark:border-[#3a3530] text-[#2e2e2e] dark:text-[#d1cfc0] placeholder:text-[#2e2e2e]/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
+                  className="bg-muted dark:bg-[#2a2a2a] border-border dark:border-[#3a3530] text-foreground dark:text-[#d1cfc0] placeholder:text-foreground/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
                   disabled={loading}
                 />
                 {errors.name && <p className="text-red-400 text-sm mt-1">{errors.name}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-[#2e2e2e]/40 dark:text-[#d1cfc0]/40">
+                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-foreground/40 dark:text-[#d1cfc0]/40">
                   Email
                 </label>
                 <Input
@@ -219,14 +219,14 @@ function AuthPageContent() {
                   value={signUpEmail}
                   onChange={(e) => setSignUpEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="bg-[#e5e2d3] dark:bg-[#2a2a2a] border-[#d4c9b0] dark:border-[#3a3530] text-[#2e2e2e] dark:text-[#d1cfc0] placeholder:text-[#2e2e2e]/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
+                  className="bg-muted dark:bg-[#2a2a2a] border-border dark:border-[#3a3530] text-foreground dark:text-[#d1cfc0] placeholder:text-foreground/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
                   disabled={loading}
                 />
                 {errors.email && <p className="text-red-400 text-sm mt-1">{errors.email}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-[#2e2e2e]/40 dark:text-[#d1cfc0]/40">
+                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-foreground/40 dark:text-[#d1cfc0]/40">
                   Password
                 </label>
                 <Input
@@ -234,14 +234,14 @@ function AuthPageContent() {
                   value={signUpPassword}
                   onChange={(e) => setSignUpPassword(e.target.value)}
                   placeholder="Min 6 characters"
-                  className="bg-[#e5e2d3] dark:bg-[#2a2a2a] border-[#d4c9b0] dark:border-[#3a3530] text-[#2e2e2e] dark:text-[#d1cfc0] placeholder:text-[#2e2e2e]/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
+                  className="bg-muted dark:bg-[#2a2a2a] border-border dark:border-[#3a3530] text-foreground dark:text-[#d1cfc0] placeholder:text-foreground/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
                   disabled={loading}
                 />
                 {errors.password && <p className="text-red-400 text-sm mt-1">{errors.password}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-[#2e2e2e]/40 dark:text-[#d1cfc0]/40">
+                <label className="block text-sm font-medium uppercase tracking-wider mb-1.5 text-foreground/40 dark:text-[#d1cfc0]/40">
                   Confirm Password
                 </label>
                 <Input
@@ -249,7 +249,7 @@ function AuthPageContent() {
                   value={signUpConfirm}
                   onChange={(e) => setSignUpConfirm(e.target.value)}
                   placeholder="••••••••"
-                  className="bg-[#e5e2d3] dark:bg-[#2a2a2a] border-[#d4c9b0] dark:border-[#3a3530] text-[#2e2e2e] dark:text-[#d1cfc0] placeholder:text-[#2e2e2e]/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
+                  className="bg-muted dark:bg-[#2a2a2a] border-border dark:border-[#3a3530] text-foreground dark:text-[#d1cfc0] placeholder:text-foreground/30 dark:placeholder:text-[#d1cfc0]/30 focus-visible:ring-[rgb(247,111,83)]/40"
                   disabled={loading}
                 />
                 {errors.confirmPassword && (
