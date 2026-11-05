@@ -1,13 +1,16 @@
 import createClient from "openapi-fetch";
 import { config } from "@/config/environment";
 import type { paths, components } from "./generated/schema";
+import { sessionFetch } from "./session";
 
 /**
  * The typed client for the SERIALIZED gateway surface (ADR-0002).
  *
  * This is the ONLY import path allowed for endpoints that appear in
- * openapi.yaml. Hand-written fetch against a serialized endpoint is a HIGH
- * code-review finding. Endpoints NOT yet serialized keep using
+ * openapi.yaml, with one stated exception: `session.ts` holds its own generated
+ * client for `POST /api/users/refresh`, because that call must not pass through
+ * `sessionFetch` (FS-ZESEF R18). Hand-written fetch against a serialized endpoint
+ * is a HIGH code-review finding. Endpoints NOT yet serialized keep using
  * `services/api.ts` and the legacy `{statusCode, message, result}` envelope —
  * that is the grandfather clause, not an inconsistency to clean up.
  *
@@ -32,25 +35,9 @@ import type { paths, components } from "./generated/schema";
  */
 export const api = createClient<paths>({
   baseUrl: config.apiBaseUrl,
-});
-
-// Attach the bearer token and mirror the legacy 401 handling so serialized and
-// legacy calls behave identically from the user's point of view.
-api.use({
-  onRequest({ request }) {
-    const token = localStorage.getItem("accessToken");
-    if (token) request.headers.set("Authorization", `Bearer ${token}`);
-    return request;
-  },
-  onResponse({ response }) {
-    if (response.status === 401) {
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("refreshToken");
-      localStorage.removeItem("user");
-      window.location.href = "/auth";
-    }
-    return response;
-  },
+  // Attaching the bearer, renewing an expired token and signing out all live in
+  // `session.ts`, which `authFetch` shares, so the two paths cannot drift apart.
+  fetch: sessionFetch,
 });
 
 /** RFC 9457 problem, exactly as the contract publishes it. */

@@ -92,6 +92,14 @@ func (c *LocalClient) SignInProto(ctx context.Context, req SigninRequest) (*pb.A
 	return tokensToProto(tokens), nil
 }
 
+func (c *LocalClient) RefreshProto(ctx context.Context, req RefreshRequest) (*pb.AuthResponse, error) {
+	tokens, err := c.svc.Refresh(ctx, req.RefreshToken)
+	if err != nil {
+		return nil, err
+	}
+	return tokensToProto(tokens), nil
+}
+
 func (c *LocalClient) UpdateProfileProto(ctx context.Context, id uuid.UUID, req UpdateProfileRequest) (*pb.User, error) {
 	u, err := c.svc.UpdateProfile(ctx, &UpdateProfileParams{
 		ID:          id,

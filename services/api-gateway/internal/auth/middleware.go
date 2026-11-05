@@ -40,14 +40,11 @@ func authenticate(c *gin.Context) (uuid.UUID, string, error) {
 		return uuid.Nil, "malformed authorization header", nil
 	}
 
-	claims, err := commonauth.ParseToken(parts[1], os.Getenv("JWT_SECRET"))
+	// Access tokens only (FS-ZESEF R7). The caller logs err, which says whether
+	// the token was expired, of the wrong type or carried a bad user id.
+	userID, err := commonauth.ValidateAccessToken(parts[1], os.Getenv("JWT_SECRET"))
 	if err != nil {
-		return uuid.Nil, "invalid or expired token", err
-	}
-
-	userID, err := commonauth.UserIDFromClaims(claims)
-	if err != nil {
-		return uuid.Nil, "invalid user id in token", err
+		return uuid.Nil, "invalid access token", err
 	}
 
 	return userID, "", nil
