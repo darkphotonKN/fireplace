@@ -41,11 +41,16 @@ function storedUserId(): string | undefined {
   }
 }
 
+/** Past this, a stalled refresh counts as a failed one, so it cannot hold `inFlight` forever. */
+const REFRESH_DEADLINE_MS = 10_000;
+
 async function exchange(refreshToken: string): Promise<Recovery> {
   try {
-    // No caller's signal: the exchange belongs to everyone sharing it (R21).
+    // Its own deadline and no caller's signal: the exchange belongs to everyone
+    // sharing it (R21).
     const { data, response } = await refreshClient.POST("/api/users/refresh", {
       body: { refreshToken },
+      signal: AbortSignal.timeout(REFRESH_DEADLINE_MS),
     });
     if (data) {
       // The user signed out or switched account while this was in flight (R28).
@@ -59,7 +64,7 @@ async function exchange(refreshToken: string): Promise<Recovery> {
     const stillCurrent = localStorage.getItem("refreshToken") === refreshToken;
     return response.status === 401 && stillCurrent ? { kind: "rejected" } : { kind: "kept" };
   } catch {
-    // A network error, or a 200 whose body is not JSON (R24).
+    // A network error, the deadline, or a 200 whose body is not JSON (R24).
     return { kind: "kept" };
   }
 }
@@ -115,6 +120,7 @@ async function run(
   // Taken before the first send consumes the body, so the retry can resend it (R17).
   const retry = request.clone();
   const bearer = localStorage.getItem("accessToken");
+  const sentFor = storedUserId();
 
   const response = await send(request, bearer);
   if (response.status !== 401) return { response, signedOut: false };
@@ -123,6 +129,11 @@ async function run(
     signOut();
     return { response, signedOut: true };
   }
+
+  // This request belongs to whoever was signed in when it left. Resending it now
+  // could land their write in another account, and its 401 says nothing about
+  // the session that has replaced theirs.
+  if (storedUserId() !== sentFor) return { response, signedOut: false };
 
   const recovery = await unlessAborted(recover(bearer), request.signal);
   if (recovery.kind === "kept") return { response, signedOut: false };

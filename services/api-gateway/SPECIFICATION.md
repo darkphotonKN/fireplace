@@ -13,7 +13,7 @@ The api-gateway is the **only HTTP surface** in the Fireplace platform — the e
 - [x] Profile view and edit → FS-none
 - [x] Typed (serialized) profile surface → FS-0002
 - [x] Registration and login with email/password → FS-none
-- [ ] Refresh-token exchange for a new token pair → FS-ZESEF
+- [x] Refresh-token exchange for a new token pair → FS-ZESEF
 - [x] User read and list → FS-none
 - [x] `user.created` / `user.deleted` published on `auth.events` → FS-none
 - [ ] `user.updated` event → FS-none
@@ -33,7 +33,7 @@ The api-gateway is the **only HTTP surface** in the Fireplace platform — the e
 ## Authorization
 
 - [x] Edge authentication on every protected route → FS-none
-- [ ] Bearer accepts access tokens only → FS-ZESEF
+- [x] Bearer accepts access tokens only → FS-ZESEF
 - [ ] Per-user authorization on plan-scoped resources → FS-0005
 - [x] Plan access for owners and members → FS-12ZMF
 

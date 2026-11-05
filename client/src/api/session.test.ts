@@ -39,7 +39,7 @@ function signedIn() {
 
 /** A stand-in gateway: refresh and everything else answer from their own queue. */
 function gateway(routes: {
-  refresh?: () => Response | Promise<Response>;
+  refresh?: (request: Request) => Response | Promise<Response>;
   other: (bearer: string | null) => Response | Promise<Response>;
 }) {
   const refreshCalls: { body: string; authorization: string | null }[] = [];
@@ -53,7 +53,7 @@ function gateway(routes: {
       if (input.url === REFRESH_URL) {
         refreshCalls.push({ body, authorization });
         if (!routes.refresh) throw new Error("unexpected refresh call");
-        return routes.refresh();
+        return routes.refresh(input);
       }
       const bearer = authorization?.replace("Bearer ", "") ?? null;
       otherCalls.push({ method: input.method, bearer, body });
@@ -293,7 +293,7 @@ describe("sessionFetch", () => {
       expect(window.location.href).toBe("http://localhost/plans");
     });
 
-    it("should join the exchange rather than redirect when a 401 lands after sign-out", async () => {
+    it("should not redirect when a second 401 lands after sign-out during the exchange", async () => {
       signedIn();
       const pending = deferred<Response>();
       const late = deferred<Response>();
@@ -329,6 +329,54 @@ describe("sessionFetch", () => {
       expect(localStorage.getItem("accessToken")).toBe("old-access");
       expect(localStorage.getItem("refreshToken")).toBe("old-refresh");
       expect(window.location.href).toBe("http://localhost/plans");
+    });
+  });
+
+  describe("when refresh never answers", () => {
+    /** Answers as a stalled connection does: only the request's own signal ends it. */
+    const stalled = (request: Request) =>
+      new Promise<Response>((_resolve, reject) => {
+        request.signal.addEventListener("abort", () => reject(request.signal.reason));
+      });
+
+    /** The real signal on a 1ms wait, so the deadline fires without slowing the suite. */
+    function shortenDeadline() {
+      const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+      return vi.spyOn(AbortSignal, "timeout").mockImplementation(() => realTimeout(1));
+    }
+
+    it("should give up at the deadline, keep the tokens and hand back the original 401", async () => {
+      signedIn();
+      const deadline = shortenDeadline();
+      gateway({ refresh: stalled, other: unauthorized });
+
+      const response = await sessionFetch(THING_URL);
+
+      expect(deadline).toHaveBeenCalledWith(10_000);
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ code: "UNAUTHENTICATED" });
+      expect(localStorage.getItem("accessToken")).toBe("old-access");
+      expect(localStorage.getItem("refreshToken")).toBe("old-refresh");
+      expect(localStorage.getItem("user")).toBe(JSON.stringify(USER));
+      expect(window.location.href).toBe("http://localhost/plans");
+    });
+
+    it("should let a later 401 start a fresh exchange after the deadline", async () => {
+      signedIn();
+      shortenDeadline();
+      let answer = stalled;
+      const { refreshCalls } = gateway({
+        refresh: (request) => answer(request),
+        other: okIfNewToken,
+      });
+
+      expect((await sessionFetch(THING_URL)).status).toBe(401);
+      answer = async () => authResponse();
+      const response = await sessionFetch(THING_URL);
+
+      expect(response.status).toBe(200);
+      expect(refreshCalls).toHaveLength(2);
+      expect(localStorage.getItem("accessToken")).toBe("new-access");
     });
   });
 
@@ -472,6 +520,79 @@ describe.each(clientPaths)("through %s", (_name, path) => {
     });
 
     expect(await path.call()).toEqual(OK);
+    expect(refreshCalls).toHaveLength(0);
+  });
+
+  it("should not resend under another user when they signed in while the request was out", async () => {
+    signedIn();
+    const USER_B = JSON.stringify({ id: "user-2", name: "Bea" });
+    const { refreshCalls, otherCalls } = gateway({
+      refresh: () => authResponse(),
+      other: (bearer) => {
+        localStorage.setItem("accessToken", "b-access");
+        localStorage.setItem("refreshToken", "b-refresh");
+        localStorage.setItem("user", USER_B);
+        return bearer === "b-access" ? json(200, { ok: true }) : unauthorized();
+      },
+    });
+
+    expect(await path.call()).toEqual(ORIGINAL_401);
+    expect(otherCalls.map((c) => c.bearer)).toEqual(["old-access"]);
+    expect(refreshCalls).toHaveLength(0);
+    expect(localStorage.getItem("accessToken")).toBe("b-access");
+    expect(localStorage.getItem("refreshToken")).toBe("b-refresh");
+    expect(localStorage.getItem("user")).toBe(USER_B);
+    expect(window.location.href).toBe("http://localhost/plans");
+  });
+
+  it("should return the 401 untouched when the user signed out while the request was out", async () => {
+    signedIn();
+    const { refreshCalls, otherCalls } = gateway({
+      refresh: () => authResponse(),
+      other: () => {
+        localStorage.clear();
+        return unauthorized();
+      },
+    });
+
+    expect(await path.call()).toEqual(ORIGINAL_401);
+    expect(otherCalls).toHaveLength(1);
+    expect(refreshCalls).toHaveLength(0);
+    expect(localStorage.length).toBe(0);
+    expect(window.location.href).toBe("http://localhost/plans");
+  });
+
+  it("should still retry when only the tokens changed for the same user", async () => {
+    signedIn();
+    const { refreshCalls, otherCalls } = gateway({
+      refresh: () => authResponse(),
+      other: (bearer) => {
+        if (bearer === "old-access") {
+          localStorage.setItem("accessToken", "new-access");
+          localStorage.setItem("refreshToken", "new-refresh");
+        }
+        return okIfNewToken(bearer);
+      },
+    });
+
+    expect(await path.call()).toEqual(OK);
+    expect(otherCalls.map((c) => c.bearer)).toEqual(["old-access", "new-access"]);
+    expect(refreshCalls).toHaveLength(0);
+    expect(localStorage.getItem("user")).toBe(JSON.stringify(USER));
+  });
+
+  it("should keep the no-bearer sign-out when someone signed in while the request was out", async () => {
+    const { refreshCalls, otherCalls } = gateway({
+      other: () => {
+        localStorage.setItem("accessToken", "b-access");
+        localStorage.setItem("refreshToken", "b-refresh");
+        localStorage.setItem("user", JSON.stringify({ id: "user-2" }));
+        return unauthorized();
+      },
+    });
+
+    await expectSignOut(path.call());
+    expect(otherCalls.map((c) => c.bearer)).toEqual([null]);
     expect(refreshCalls).toHaveLength(0);
   });
 
@@ -623,6 +744,8 @@ describe("through a real fetch", () => {
         { ...common, authorization: "Bearer new-access" },
       ]);
     } finally {
+      // `close` alone waits on fetch's keep-alive socket until the test times out.
+      server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
     }
   });

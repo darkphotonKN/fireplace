@@ -1,6 +1,6 @@
 ---
 id: I-ZESEF-2
-status: in-progress
+status: done
 implements: FS-ZESEF
 blocked_by: [I-ZESEF-1]
 labels: [bug]
