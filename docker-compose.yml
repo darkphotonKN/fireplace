@@ -140,8 +140,8 @@ services:
       # Secrets come from the host environment, never the repo (ADR-0012 §5).
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ACCESS_TOKEN_TTL: 24h
-      REFRESH_TOKEN_TTL: 168h
+      ACCESS_TOKEN_TTL: 1h
+      REFRESH_TOKEN_TTL: 720h
     # NOT published here. In production Caddy fronts it (docker-compose.prod.yml);
     # locally docker-compose.override.yml publishes 8080 directly.
     depends_on:

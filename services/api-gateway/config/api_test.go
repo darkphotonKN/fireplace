@@ -67,6 +67,10 @@ func sampleUser() *pb.User {
 // buildEngine mirrors SetupRouter's group structure and calls the same
 // MountSerialized it does — but constructs no infrastructure.
 func buildEngine(c authgw.ProfileClient) *gin.Engine {
+	return buildEngineWithUsers(c, stubUsersClient{})
+}
+
+func buildEngineWithUsers(c authgw.ProfileClient, users authgw.UsersClient) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 
@@ -92,7 +96,7 @@ func buildEngine(c authgw.ProfileClient) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"statusCode": 200, "message": "ok", "result": []string{}})
 	})
 
-	MountSerialized(engine, APIDeps{Profile: c, Users: stubUsersClient{}})
+	MountSerialized(engine, APIDeps{Profile: c, Users: users})
 	return engine
 }
 
@@ -107,6 +111,10 @@ func (stubUsersClient) SignUpProto(context.Context, authgw.SignupRequest) (*pb.A
 }
 
 func (stubUsersClient) SignInProto(context.Context, authgw.SigninRequest) (*pb.AuthResponse, error) {
+	return nil, status.Error(codes.Unavailable, "stub")
+}
+
+func (stubUsersClient) RefreshProto(context.Context, authgw.RefreshRequest) (*pb.AuthResponse, error) {
 	return nil, status.Error(codes.Unavailable, "stub")
 }
 
@@ -198,9 +206,9 @@ func TestMount_PublicSurfacesUnaffected(t *testing.T) {
 	t.Setenv("JWT_SECRET", testSecret)
 	e := buildEngine(fakeProfileClient{user: sampleUser()})
 
-	// signin and signup are the ONLY public operations on the serialized
-	// surface, which is why the users group was retrofitted first — it is the
-	// only group that exercises the public/protected split at all.
+	// signup, signin and refresh are the public operations on the serialized
+	// surface. The users group was retrofitted first because it is the only
+	// group that exercises the public/protected split at all.
 	//
 	// The assertion is "not 401", not "200": the stub client fails every call,
 	// so reaching it at all proves the request was never challenged for a token.
@@ -209,6 +217,7 @@ func TestMount_PublicSurfacesUnaffected(t *testing.T) {
 	for _, op := range []struct{ name, path string }{
 		{"signin is public", "/api/users/signin"},
 		{"signup is public", "/api/users/signup"},
+		{"refresh is public", "/api/users/refresh"},
 	} {
 		t.Run(op.name, func(t *testing.T) {
 			rec := do(t, e, http.MethodPost, op.path, "")

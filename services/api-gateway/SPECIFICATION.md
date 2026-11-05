@@ -13,7 +13,7 @@ The api-gateway is the **only HTTP surface** in the Fireplace platform — the e
 - [x] Profile view and edit → FS-none
 - [x] Typed (serialized) profile surface → FS-0002
 - [x] Registration and login with email/password → FS-none
-- [x] Refresh-token exchange for a new token pair → FS-none
+- [ ] Refresh-token exchange for a new token pair → FS-ZESEF
 - [x] User read and list → FS-none
 - [x] `user.created` / `user.deleted` published on `auth.events` → FS-none
 - [ ] `user.updated` event → FS-none
@@ -33,6 +33,7 @@ The api-gateway is the **only HTTP surface** in the Fireplace platform — the e
 ## Authorization
 
 - [x] Edge authentication on every protected route → FS-none
+- [ ] Bearer accepts access tokens only → FS-ZESEF
 - [ ] Per-user authorization on plan-scoped resources → FS-0005
 - [x] Plan access for owners and members → FS-12ZMF
 
@@ -56,6 +57,7 @@ Full REST catalog exposed by the gateway. All routes are under base path `/api`.
 |---|---|---|---|---|
 | POST | `/api/users/signup` | public | **gateway-local** | Create user |
 | POST | `/api/users/signin` | public | **gateway-local** | Login → access/refresh tokens |
+| POST | `/api/users/refresh` | public | **gateway-local** | Refresh token → new access/refresh pair |
 | GET | `/api/users/profile` | JWT | **gateway-local** | Current user's profile (`sub` claim) |
 | PATCH | `/api/users/profile` | JWT | **gateway-local** | Update name/displayName/bio |
 | GET | `/api/users/:id` | JWT | **gateway-local** | User by id |
@@ -94,7 +96,7 @@ Full REST catalog exposed by the gateway. All routes are under base path `/api`.
 *(Backend only. The landing page and all UI live in the client — see cross-refs.)*
 
 - **Token validation at the edge.** `internal/auth.AuthMiddleware` runs on the protected route group. It reads the `Authorization: Bearer <token>` header, parses/validates the JWT locally against the shared `JWT_SECRET` (no remote call to auth-service, which issues tokens with the same secret), and extracts the user id from the `sub` claim into `gin.Context`. `GetUserID` reads it back for handlers.
-- **401 Unauthorized** on: missing header, malformed header, invalid/expired token, or an unparseable user id. The response is a generic `{"statusCode":401,"message":"unauthorized"}`; the specific reason is logged server-side only.
+- **401 Unauthorized** on: missing header, malformed header, invalid/expired token, a wrong-type token (only an `access` token is a bearer; a `refresh` token or a token with no `tokenType` claim fails), or an unparseable user id. The response is a generic `{"statusCode":401,"message":"unauthorized"}`; the specific reason is logged server-side only.
 - **Ownership / per-user filtering** is enforced by passing the authenticated `userID` down to the domain services on writes and owner-scoped reads (e.g. plan create/update, calendar). Plan-service and calendar-service perform the actual **403 Forbidden** ownership checks (e.g. via `AssertPlanOwnership`); the gateway supplies the caller identity and never trusts a client-supplied user id.
 
 ## Owned Feature: Users & Identity
@@ -114,8 +116,9 @@ store. **`display_name`** — user-chosen presentation name, falling back to `na
 
 - **JWT lifecycle.** Sign-up, sign-in and refresh each issue an `access` + `refresh` pair
   signed with the shared `JWT_SECRET`. TTLs come from env (`ACCESS_TOKEN_TTL` /
-  `REFRESH_TOKEN_TTL`); the deployed `.env` sets access 24h, refresh 168h. Code-const
-  fallbacks when unset or unparseable: access 1h, refresh 168h.
+  `REFRESH_TOKEN_TTL`); `docker-compose.yml` sets access 1h, refresh 720h. Fallbacks when
+  unset or unparseable: the `config/routes.go` defaults and the `service.go` consts behind
+  them both say access 1h, refresh 720h.
 - **bcrypt.** Passwords hashed at `bcrypt.DefaultCost` on sign-up, constant-time compared
   on sign-in. The hash never leaves the process (JSON `-`; the list query blanks it).
 - **Account-enumeration-safe sign-in.** An unknown email and a wrong password return the

@@ -9,37 +9,22 @@ import {
   reorderChecklists as reorderItems,
   type ChecklistItem as ApiChecklistItem,
 } from "@/api/checklists";
+import { sessionFetchOrThrow } from "@/api/session";
 import { config } from "@/config/environment";
 
 // API base URL from environment config
 const API_BASE_URL = config.apiBaseUrl;
 
 /**
- * Authenticated fetch wrapper. Attaches Bearer token from localStorage.
- * On 401: clears tokens and redirects to /auth.
+ * Fetch for endpoints not yet serialized. Token handling lives in `session.ts`;
+ * this adds nothing to it. Throws `Error("Unauthorized")` on a sign-out only: a
+ * 401 that kept the tokens comes back as a response.
  */
 export async function authFetch(
   url: string,
   options: RequestInit = {},
 ): Promise<Response> {
-  const token = localStorage.getItem("accessToken");
-
-  const headers = new Headers(options.headers || {});
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const response = await fetch(url, { ...options, headers });
-
-  if (response.status === 401) {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
-    window.location.href = "/auth";
-    throw new Error("Unauthorized");
-  }
-
-  return response;
+  return sessionFetchOrThrow(url, options);
 }
 
 export const scope = {

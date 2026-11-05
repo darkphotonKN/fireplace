@@ -13,8 +13,8 @@ import { render, screen, within } from '@testing-library/react';
  * ADR-0013's four-request budget intact; the no-request test below is the
  * guard on that, since a progress number on these rows is exactly the change
  * that would break it. That guard watches the API layer rather than
- * `globalThis.fetch`: the generated client captures `fetch` when it is created,
- * so a spy installed later would never see a call and the guard could not fail.
+ * `globalThis.fetch`, since the API layer is the only way this component could
+ * reach the network.
  */
 
 const listPlans = vi.fn();

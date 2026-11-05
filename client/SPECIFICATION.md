@@ -22,6 +22,7 @@
 
 - [x] Hand-written fetch/axios service layer → FS-none
 - [ ] Generated client for the whole gateway surface → FS-0004
+- [ ] Sessions that renew themselves while in use → FS-ZESEF
 
 ## Plans
 

@@ -111,3 +111,12 @@ func TestIntegrationGetByEmail_IsAnExactMatch(t *testing.T) {
 		t.Errorf("different case: err = %v, want ErrNotFound", err)
 	}
 }
+
+// Service.Refresh turns this into a 401 for a deleted user (FS-ZESEF R4), and
+// only the real query can show that a missing row arrives as ErrNotFound.
+func TestIntegrationGetByID_MissingUser_IsNotFound(t *testing.T) {
+	_, err := NewRepository(openTestDB(t)).GetByID(context.Background(), uuid.New())
+	if !errors.Is(err, commonconstants.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
