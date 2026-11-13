@@ -216,7 +216,7 @@ describe('Todo new-milestone composer, when the plan moves under it', () => {
 
       expect(composerState()).toBe('filling');
       expect(fillingInput('Go live')).not.toBeNull();
-      expect(composer().textContent).toContain('↳ steps for Go live');
+      expect(composer().textContent).toContain('steps for Go live');
     });
   });
 

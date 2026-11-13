@@ -214,7 +214,8 @@ describe('Todo new-milestone composer', () => {
     expect(traced()).toEqual(['new1']);
     expect(composerState()).toBe('filling');
     expect(fillingInput('Launch')!.placeholder).toBe('Add a step…');
-    expect(composer().textContent).toContain('↳ steps for Launch');
+    expect(composer().textContent).toContain('steps for Launch');
+    expect(composer().textContent).not.toContain('↳');
     expect(document.activeElement).toBe(fillingInput('Launch'));
   });
 
