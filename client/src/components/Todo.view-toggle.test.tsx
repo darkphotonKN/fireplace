@@ -55,11 +55,12 @@ const item = (
   ...extra,
 });
 
-// Eight top-level items: one page of rows (ten), two pages of blocks (six).
-const EIGHT = [
+// Fourteen top-level items: one page of rows (twenty), two pages of blocks
+// (twelve, then two).
+const FOURTEEN = [
   item('P0'),
   item('C0', { parentId: 'P0', done: true }),
-  ...Array.from({ length: 7 }, (_, i) => item(`P${i + 1}`)),
+  ...Array.from({ length: 13 }, (_, i) => item(`P${i + 1}`)),
 ];
 
 const cards = () => document.querySelectorAll('[data-checklist-card]');
@@ -70,7 +71,7 @@ const toggle = (name: 'Checklist' | 'Milestones') =>
     name,
   });
 
-async function renderTodo(items: unknown[] = EIGHT) {
+async function renderTodo(items: unknown[] = FOURTEEN) {
   fetchChecklist.mockImplementation(async () => items);
   const Todo = (await import('./Todo')).default;
   const view = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
@@ -86,9 +87,9 @@ describe('Todo list / blocks toggle', () => {
 
   it('should open on the blocks, with the list one click away', async () => {
     await renderTodo();
-    // Six blocks, not eight: a block is taller than a row, so a page holds
-    // fewer of them.
-    expect(cards().length).toBe(6);
+    // Twelve blocks, not fourteen: a block is taller than a row, so a page
+    // holds fewer of them.
+    expect(cards().length).toBe(12);
     expect(toggle('Milestones').getAttribute('aria-pressed')).toBe('true');
     // The guide rail belongs to the rows; a card carries its own structure.
     expect(document.querySelector('[data-guide-rail]')).toBeNull();
@@ -96,7 +97,7 @@ describe('Todo list / blocks toggle', () => {
     fireEvent.click(toggle('Checklist'));
 
     expect(cards().length).toBe(0);
-    expect(document.querySelectorAll('li[tabindex]').length).toBe(9);
+    expect(document.querySelectorAll('li[tabindex]').length).toBe(15);
   });
 
   it("should open a milestone's page from its card menu (FS-043WP R6)", async () => {
@@ -116,7 +117,7 @@ describe('Todo list / blocks toggle', () => {
     expect(screen.queryByRole('button', { name: 'List view' })).toBeNull();
   });
 
-  it('should page the blocks at six where the same list needs no pages', async () => {
+  it('should page the blocks at twelve where the same list needs no pages', async () => {
     await renderTodo();
     expect(screen.getByTestId('page-counter').textContent).toBe('1 of 2');
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
@@ -124,7 +125,7 @@ describe('Todo list / blocks toggle', () => {
 
     fireEvent.click(toggle('Checklist'));
 
-    // Eight top-level items fit one page of rows.
+    // Fourteen top-level items fit one page of rows.
     expect(screen.queryByTestId('page-counter')).toBeNull();
   });
 
@@ -136,10 +137,23 @@ describe('Todo list / blocks toggle', () => {
     fireEvent.click(toggle('Checklist'));
     fireEvent.click(toggle('Milestones'));
 
-    // Ten rows a page and six blocks a page disagree about where anything
+    // Twenty rows a page and twelve blocks a page disagree about where anything
     // is, so the view starts again at the top rather than somewhere random.
     expect(screen.getByTestId('page-counter').textContent).toBe('1 of 2');
     expect(screen.getByText('item P0')).toBeTruthy();
+  });
+
+  it('should fit exactly twelve blocks on one page and open a second at the thirteenth', async () => {
+    const blocks = (n: number) =>
+      Array.from({ length: n }, (_, i) => item(`P${i}`));
+    const first = await renderTodo(blocks(12));
+    expect(cards().length).toBe(12);
+    expect(screen.queryByTestId('page-counter')).toBeNull();
+    first.unmount();
+
+    await renderTodo(blocks(13));
+    expect(cards().length).toBe(12);
+    expect(screen.getByTestId('page-counter').textContent).toBe('1 of 2');
   });
 
   it('should keep a child inside its own block', async () => {
@@ -163,7 +177,7 @@ describe('Todo list / blocks toggle', () => {
   });
 
   it('should honour the type filter in blocks as in rows', async () => {
-    await renderTodo([...EIGHT, item('N1', { type: 'note' })]);
+    await renderTodo([...FOURTEEN, item('N1', { type: 'note' })]);
     fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
 
     expect(cards().length).toBe(1);

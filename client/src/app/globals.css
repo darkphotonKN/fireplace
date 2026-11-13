@@ -106,6 +106,45 @@
 }
 
 /*
+ * Scrollbars, owned rather than left to the OS. Unstyled, macOS draws a thin
+ * overlay bar on a trackpad but a classic grey gutter bar whenever a mouse is
+ * connected (or "Show scroll bars: Always" is set), and it switches between the
+ * two on its own, which is why the board's bar sometimes looked "styled" and
+ * sometimes like the browser default. Styling it makes every platform draw the
+ * same thin warm bar. The standard properties win in Chrome 121+ and Firefox;
+ * Safari, which lacks scrollbar-color, takes the -webkit- fallback instead.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--foreground) / 0.18) transparent;
+}
+
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background: hsl(var(--foreground) / 0.18) padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--foreground) / 0.32);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/*
  * Docked sidebar geometry (FS-S6WVY R5, R6, R14-R24, R33).
  *
  * Driven by `<html data-sidebar="open|hidden">`, which the head script sets

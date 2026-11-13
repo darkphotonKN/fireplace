@@ -111,8 +111,11 @@ export default function LayoutContent({ children }: LayoutContentProps) {
 
       {/* The top bar spans the viewport whatever the sidebar does, so the logo
           and title never move (FS-S6WVY R14). Its bottom hairline and the
-          sidebar's right one frame the page as one surface (R15). */}
-      <header className="fixed inset-x-0 top-0 z-10 h-16 border-b border-border bg-layout">
+          sidebar's right one frame the page as one surface (R15).
+          z-30 sits over the page's own stacking layers (the plan title card
+          is z-10, the Day plan z-[5], the sidebar z-20), which scroll under
+          the bar; it stays under the z-50 menus, dialogs and toasts. */}
+      <header className="fixed inset-x-0 top-0 z-30 h-16 border-b border-border bg-layout">
         {/* pl-2.5 centres the logo on the rail, over the sidebar toggle. */}
         <div className="flex h-full items-center justify-between pl-2.5 pr-4">
           <div className="flex items-center gap-2 text-2xl">

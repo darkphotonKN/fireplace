@@ -55,13 +55,13 @@ const item = (
   ...extra,
 });
 
-// Eight milestones and a note: two pages of cards. P0 is half done, P1 closed.
+// Fourteen milestones and a note: two pages of cards. P0 is half done, P1 closed.
 const PLAN = [
   item('P0'),
   item('C0', { parentId: 'P0', done: true }),
   item('C1', { parentId: 'P0' }),
   item('P1', { done: true }),
-  ...Array.from({ length: 6 }, (_, i) => item(`P${i + 2}`)),
+  ...Array.from({ length: 12 }, (_, i) => item(`P${i + 2}`)),
   item('N1', { type: 'note' }),
 ];
 
@@ -115,29 +115,29 @@ describe('Todo milestone strip', () => {
 
   it('should count the whole plan in the milestone reading, whatever the page or filter', async () => {
     await renderTodo();
-    // The grid holds six cards a page; the strip holds all eight.
+    // The grid holds twelve cards a page; the strip holds all fourteen.
     expect(screen.getByTestId('page-counter').textContent).toBe('1 of 2');
-    expect(screen.getByText('1 of 8 milestones')).toBeTruthy();
-    expect(segments().length).toBe(8);
+    expect(screen.getByText('1 of 14 milestones')).toBeTruthy();
+    expect(segments().length).toBe(14);
     expect(fillOf('item P0')).toBe('50%');
 
     fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
 
-    expect(screen.getByText('1 of 8 milestones')).toBeTruthy();
-    expect(segments().length).toBe(8);
+    expect(screen.getByText('1 of 14 milestones')).toBeTruthy();
+    expect(segments().length).toBe(14);
   });
 
   it('should show the same strip in the checklist reading, through collapse and filter', async () => {
     await renderTodo();
     fireEvent.click(viewButton('Checklist'));
 
-    expect(screen.getByText('1 of 8 milestones')).toBeTruthy();
-    expect(segments().length).toBe(8);
+    expect(screen.getByText('1 of 14 milestones')).toBeTruthy();
+    expect(segments().length).toBe(14);
 
     fireEvent.click(screen.getByRole('button', { name: /collapse all/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
 
-    expect(screen.getByText('1 of 8 milestones')).toBeTruthy();
+    expect(screen.getByText('1 of 14 milestones')).toBeTruthy();
     expect(fillOf('item P0')).toBe('50%');
   });
 
