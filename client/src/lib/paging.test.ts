@@ -23,8 +23,8 @@ const groups = (n: number, childCount = 0): ChecklistGroup[] =>
 const heads = (gs: ChecklistGroup[]) => gs.map((g) => g.item.id);
 
 describe('pageCount', () => {
-  it('should split 25 top-level items into three pages of ten', () => {
-    expect(pageCount(25)).toBe(3);
+  it('should split 25 top-level items into two pages of twenty', () => {
+    expect(pageCount(25)).toBe(2);
   });
 
   it('should keep exactly one page at the page size, and at zero', () => {
@@ -35,43 +35,44 @@ describe('pageCount', () => {
 
 describe('clampPage', () => {
   it('should pull a page past the end back to the last page', () => {
-    expect(clampPage(4, 25)).toBe(3);
+    expect(clampPage(4, 25)).toBe(2);
   });
 
   it('should leave a page inside the range alone and floor below one', () => {
-    expect(clampPage(2, 25)).toBe(2);
-    expect(clampPage(0, 25)).toBe(1);
+    expect(clampPage(2, 45)).toBe(2);
+    expect(clampPage(0, 45)).toBe(1);
   });
 });
 
 describe('pageSlice', () => {
-  it('should cut ten top-level groups per page, the last page short', () => {
+  it('should cut twenty top-level groups per page, the last page short', () => {
     const all = groups(25);
-    expect(heads(pageSlice(all, 1))).toEqual(heads(all).slice(0, 10));
-    expect(heads(pageSlice(all, 3))).toEqual(heads(all).slice(20));
+    expect(heads(pageSlice(all, 1))).toEqual(heads(all).slice(0, 20));
+    expect(heads(pageSlice(all, 2))).toEqual(heads(all).slice(20));
   });
 
   it('should never split a family, however many children it holds', () => {
-    // Ten groups of eight children each: page 1 takes all ten groups whole.
-    const page = pageSlice(groups(10, 8), 1);
-    expect(page).toHaveLength(10);
+    // Twenty groups of eight children each: page 1 takes all twenty whole.
+    const page = pageSlice(groups(20, 8), 1);
+    expect(page).toHaveLength(20);
     expect(page.every((g) => g.children.length === 8)).toBe(true);
   });
 
   it('should give nothing for a page past the end', () => {
-    expect(pageSlice(groups(25), 4)).toEqual([]);
+    expect(pageSlice(groups(25), 3)).toEqual([]);
   });
 });
 
 describe('pageOfItem', () => {
   it('should find the page of a top-level item', () => {
-    expect(pageOfItem(groups(25), 'g1')).toBe(1);
-    expect(pageOfItem(groups(25), 'g11')).toBe(2);
-    expect(pageOfItem(groups(25), 'g25')).toBe(3);
+    expect(pageOfItem(groups(45), 'g1')).toBe(1);
+    expect(pageOfItem(groups(45), 'g20')).toBe(1);
+    expect(pageOfItem(groups(45), 'g21')).toBe(2);
+    expect(pageOfItem(groups(45), 'g45')).toBe(3);
   });
 
   it("should find a child on its parent's page", () => {
-    expect(pageOfItem(groups(25, 2), 'g11c2')).toBe(2);
+    expect(pageOfItem(groups(25, 2), 'g21c2')).toBe(2);
   });
 
   it('should give null for an id that is nowhere in the set', () => {

@@ -145,7 +145,9 @@ describe('Todo new-milestone composer, when the plan moves under it', () => {
   describe('paged away while filling (R37)', () => {
     it('should add the step to the traced milestone and jump back to its page', async () => {
       const user = userEvent.setup();
-      await renderTodo(topLevel(7));
+      // A full page of twelve and one more, so the new milestone lands on
+      // page 2 beside t13.
+      await renderTodo(topLevel(13));
       await startFilling(user);
       expect(counter().textContent).toBe('2 of 2');
 

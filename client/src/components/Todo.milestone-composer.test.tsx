@@ -203,12 +203,12 @@ describe('Todo new-milestone composer', () => {
 
   it('should follow a new milestone to the last page, traced and named in the input', async () => {
     const user = userEvent.setup();
-    await renderTodo(topLevel(12));
+    await renderTodo(topLevel(24));
     expect(counter().textContent).toBe('1 of 2');
 
     await startFilling(user, 'Launch');
 
-    // 13 milestones is three pages of six, and the new one opens the third.
+    // 25 milestones is three pages of twelve, and the new one opens the third.
     expect(counter().textContent).toBe('3 of 3');
     expect(card('new1')).not.toBeNull();
     expect(traced()).toEqual(['new1']);

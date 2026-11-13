@@ -50,15 +50,15 @@ const item = (id: string, parentId?: string) => ({
   planId: 'plan-1',
 });
 
-// 12 top-level items over two pages of ten: P0 (page 1) and P10 (page 2) each
-// hold a child; every other row is childless.
+// 22 top-level items over two pages of twenty: P0 (page 1) and P20 (page 2)
+// each hold a child; every other row is childless.
 const PAGED = [
   item('P0'),
   item('C0', 'P0'),
-  ...Array.from({ length: 9 }, (_, i) => item(`P${i + 1}`)),
-  item('P10'),
-  item('C10', 'P10'),
-  item('P11'),
+  ...Array.from({ length: 19 }, (_, i) => item(`P${i + 1}`)),
+  item('P20'),
+  item('C20', 'P20'),
+  item('P21'),
 ];
 
 const nextPage = () => screen.getByRole('button', { name: 'Next page' });
@@ -90,9 +90,9 @@ describe('Todo collapse all across pages (FS-0008 R23–R24)', () => {
 
     fireEvent.click(nextPage());
 
-    // P10, the only parent here, is expanded — page 1's fold is not this
+    // P20, the only parent here, is expanded — page 1's fold is not this
     // page's business.
-    expect(screen.getByText('item C10')).toBeTruthy();
+    expect(screen.getByText('item C20')).toBeTruthy();
     expect(allToggle()!.textContent).toContain('Collapse all');
   });
 
@@ -100,12 +100,26 @@ describe('Todo collapse all across pages (FS-0008 R23–R24)', () => {
     await renderPaged();
     fireEvent.click(nextPage());
     fireEvent.click(allToggle()!);
-    expect(screen.queryByText('item C10')).toBeNull();
+    expect(screen.queryByText('item C20')).toBeNull();
 
     fireEvent.click(prevPage());
 
     expect(screen.getByText('item C0')).toBeTruthy();
     expect(allToggle()!.textContent).toContain('Collapse all');
+  });
+
+  it('should keep the paged board at its fixed height after collapse all', async () => {
+    // FS-0008 Change Edge State: folding a page shortens its content, not the
+    // window it sits in, so the controls stay where they were.
+    const PAGED_CAP = /(^|\s)h-\[min\(80vh,60rem\)\](\s|$)/;
+    await renderPaged();
+    const listArea = () => document.querySelector<HTMLElement>('[data-list-area]')!;
+    expect(listArea().className).toMatch(PAGED_CAP);
+
+    fireEvent.click(allToggle()!);
+
+    expect(screen.queryByText('item C0')).toBeNull();
+    expect(listArea().className).toMatch(PAGED_CAP);
   });
 
   it('should keep an off-page parent collapsed through this page collapse all', async () => {
@@ -121,17 +135,17 @@ describe('Todo collapse all across pages (FS-0008 R23–R24)', () => {
 
     expect(screen.queryByText('item C0')).toBeNull();
     fireEvent.click(nextPage());
-    expect(screen.queryByText('item C10')).toBeNull();
+    expect(screen.queryByText('item C20')).toBeNull();
   });
 
   it('should offer no toggle on a page whose parents have no children', async () => {
     // Only P0 holds a child, so page 2 is all childless rows.
-    await renderPaged(PAGED.filter((t) => t.id !== 'C10'));
+    await renderPaged(PAGED.filter((t) => t.id !== 'C20'));
     expect(allToggle()).toBeTruthy();
 
     fireEvent.click(nextPage());
 
-    expect(screen.getByText('item P10')).toBeTruthy();
+    expect(screen.getByText('item P20')).toBeTruthy();
     expect(allToggle()).toBeNull();
   });
 });

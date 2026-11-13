@@ -74,7 +74,7 @@ const addBarRail = () => document.querySelector('[data-guide-rail="add-bar"]');
 const counter = () => screen.getByTestId('page-counter');
 const next = () => screen.getByRole('button', { name: 'Next page' });
 
-async function renderList(items: unknown[] = topLevel(25)) {
+async function renderList(items: unknown[] = topLevel(45)) {
   fetchChecklist.mockImplementation(async () => items);
   const Todo = (await import('./Todo')).default;
   render(<Todo fixedTaskType="longterm" enableTypeFilter />);
@@ -100,11 +100,11 @@ describe('Todo add bar over a paged list (FS-0008 R15–R18)', () => {
 
     fireEvent.keyDown(input, { key: 'Tab' });
 
-    // Page 2 ends at t20; t25 is the last of the whole set but out of sight.
-    expect(nestedUnder()).toBe('t20');
-    // The bar sits directly under t20, so the rail runs between them.
+    // Page 2 ends at t40; t45 is the last of the whole set but out of sight.
+    expect(nestedUnder()).toBe('t40');
+    // The bar sits directly under t40, so the rail runs between them.
     expect(addBarRail()).not.toBeNull();
-    expect(railOf('t20')).toBe('parent');
+    expect(railOf('t40')).toBe('parent');
   });
 
   it('should take a top-level add to the last page, where the row lands', async () => {
@@ -115,7 +115,7 @@ describe('Todo add bar over a paged list (FS-0008 R15–R18)', () => {
     fireEvent.change(input, { target: { value: 'item NEW' } });
     fireEvent.submit(input.closest('form')!);
 
-    // 26 items is still three pages, and the new row closes the last one.
+    // 46 items is still three pages, and the new row closes the last one.
     await screen.findByText('item NEW');
     expect(counter().textContent).toBe('3 of 3');
     expect(rowOf('NEW').className).toMatch(/animate-fadeIn/);
@@ -125,11 +125,11 @@ describe('Todo add bar over a paged list (FS-0008 R15–R18)', () => {
   });
 
   it('should go back to the family the child joins when it is on another page', async () => {
-    createChecklistItem.mockImplementation(async () => item('C', 'task', 't10'));
+    createChecklistItem.mockImplementation(async () => item('C', 'task', 't20'));
     const input = await renderList();
     // Nested on page 1, then paged away before anything is typed.
     fireEvent.keyDown(input, { key: 'Tab' });
-    expect(nestedUnder()).toBe('t10');
+    expect(nestedUnder()).toBe('t20');
     fireEvent.click(next());
     fireEvent.click(next());
     expect(counter().textContent).toBe('3 of 3');
@@ -141,7 +141,7 @@ describe('Todo add bar over a paged list (FS-0008 R15–R18)', () => {
     expect(counter().textContent).toBe('1 of 3');
     expect(rowOf('C').className).toMatch(/animate-fadeIn/);
     // The bar is still aimed at the family it just fed (R18).
-    expect(nestedUnder()).toBe('t10');
+    expect(nestedUnder()).toBe('t20');
     await waitFor(() => expect(addInput().readOnly).toBe(false));
     expect(document.activeElement).toBe(addInput());
   });
@@ -156,18 +156,18 @@ describe('Todo add bar over a paged list (FS-0008 R15–R18)', () => {
     // The target is paged away, but it is still a live top-level task, so the
     // bar keeps it rather than dropping to top level (R18, not R8.11).
     expect(counter().textContent).toBe('2 of 3');
-    expect(nestedUnder()).toBe('t10');
+    expect(nestedUnder()).toBe('t20');
     expect(addInput().value).toBe('half typed');
     expect(document.activeElement).toBe(addInput());
   });
 
   it('should still open a collapsed target that the jump brings back into view', async () => {
-    const items = [...topLevel(25), item('c1', 'task', 't10')];
-    createChecklistItem.mockImplementation(async () => item('C', 'task', 't10'));
+    const items = [...topLevel(45), item('c1', 'task', 't20')];
+    createChecklistItem.mockImplementation(async () => item('C', 'task', 't20'));
     const input = await renderList(items);
     fireEvent.keyDown(input, { key: 'Tab' });
-    expect(nestedUnder()).toBe('t10');
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse item t10' }));
+    expect(nestedUnder()).toBe('t20');
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse item t20' }));
     expect(screen.queryByText('item c1')).toBeNull();
     fireEvent.click(next());
 
@@ -180,7 +180,7 @@ describe('Todo add bar over a paged list (FS-0008 R15–R18)', () => {
     expect(counter().textContent).toBe('1 of 3');
     expect(screen.getByText('item c1')).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Collapse item t10' })
+      screen.getByRole('button', { name: 'Collapse item t20' })
     ).toBeTruthy();
     expect(rowOf('C').className).toMatch(/animate-fadeIn/);
   });
