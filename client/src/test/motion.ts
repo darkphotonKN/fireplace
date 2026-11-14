@@ -1,15 +1,22 @@
 import { vi } from 'vitest';
 
 /**
- * Controllable `matchMedia` stub. Only the queries the landing motion
- * primitives actually ask for are answered; anything else reports `false`.
+ * Controllable `matchMedia` stub. Only the queries the app actually asks for
+ * are answered (reduced motion, `min-width`, and `(hover: hover)` for the
+ * sidebar peek); anything else reports `false`.
  */
-export function mockMatchMedia(opts: { reducedMotion?: boolean; wide?: boolean }) {
-  const { reducedMotion = false, wide = true } = opts;
+export function mockMatchMedia(opts: { reducedMotion?: boolean; wide?: boolean; hover?: boolean }) {
+  const { reducedMotion = false, wide = true, hover = false } = opts;
   const listeners = new Set<() => void>();
 
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query.includes('prefers-reduced-motion') ? reducedMotion : query.includes('min-width') ? wide : false,
+    matches: query.includes('prefers-reduced-motion')
+      ? reducedMotion
+      : query.includes('hover: hover')
+        ? hover
+        : query.includes('min-width')
+          ? wide
+          : false,
     media: query,
     onchange: null,
     addEventListener: (_: string, cb: () => void) => listeners.add(cb),

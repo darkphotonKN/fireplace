@@ -92,7 +92,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
   if (notHere) return <PlanNotHere />;
 
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen md:p-8">
       <div className="relative max-w-7xl mx-auto space-y-8">
         {/* Title Section. `relative z-10` lifts this card's stacking context
             (backdrop-blur creates one) above the later-in-DOM Day plan card,
@@ -100,7 +100,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
             that opens downward is painted under the Day plan whatever its own
             z-index. Keep it above the Day plan card's z-[5]. */}
         <div className="relative z-10 backdrop-blur-sm rounded-2xl p-8 bg-card shadow-tile dark:shadow-lg dark:bg-gray-900/10">
-          <h1 className="text-4xl font-bold mb-2">
+          <h1 className="text-4xl font-bold mb-2 break-words">
             {isLoading ? "Loading..." : plan?.name || "Plan Details"}
           </h1>
           <p className="text-base opacity-80">
@@ -182,7 +182,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
                   </p>
                 </div>
               ) : videoSuggestions.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-cards gap-4">
                   {videoSuggestions.map((video, index) => (
                     <a
                       key={index}
@@ -247,7 +247,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
  */
 function PlanNotHere() {
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen md:p-8">
       <div className="max-w-xl mx-auto space-y-4 py-16 text-center">
         <h1 className="text-3xl font-bold">This plan isn&apos;t here</h1>
         <p className="text-base text-muted-foreground">

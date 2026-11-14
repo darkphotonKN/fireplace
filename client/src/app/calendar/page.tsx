@@ -36,7 +36,7 @@ function CalendarPageContent() {
 
   if (!planId) {
     return (
-      <main className="min-h-screen p-8">
+      <main className="min-h-screen md:p-8">
         <div className="max-w-7xl mx-auto">
           <div className="backdrop-blur-sm rounded-2xl p-8 shadow-lg bg-white/5 dark:bg-gray-900/10">
             <h1 className="text-3xl font-bold mb-4">Calendar</h1>
@@ -57,13 +57,13 @@ function CalendarPageContent() {
   }
 
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="backdrop-blur-sm rounded-2xl p-8 shadow-lg bg-white/5 dark:bg-gray-900/10">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-3xl font-bold mb-2 break-words">
                 {loading ? 'Loading...' : plan?.name ? `${plan.name} - Calendar` : 'Calendar'}
               </h1>
               <p className="text-muted-foreground">
@@ -72,7 +72,7 @@ function CalendarPageContent() {
             </div>
             <Link
               href={`/plan/${planId}`}
-              className="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors"
+              className="inline-flex shrink-0 items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to Plan

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within, fireEvent, act } from '@testing-library/react';
+import { mockMatchMedia } from '@/test/motion';
 
 /**
  * FS-12ZMF R26: the sidebar lists shared plans beside owned ones, and only a
@@ -18,9 +19,16 @@ vi.mock('./LayoutWrapper', () => ({
 }));
 
 import Sidebar from './Sidebar';
+import { PlansListProvider } from './PlansList';
+
+/** The shell provides the plan list the panel reads (FS-49CQ2 R4). */
+const renderDock = () => render(<Sidebar />, { wrapper: PlansListProvider });
 
 describe('Sidebar', () => {
   beforeEach(() => {
+    // The setup's matchMedia mock doesn't survive restoreAllMocks; the peek
+    // asks `(hover: hover)` (FS-49CQ2 R11).
+    mockMatchMedia({});
     isCollapsed = false;
     pathname = '/';
     setIsCollapsed.mockReset();
@@ -31,7 +39,7 @@ describe('Sidebar', () => {
   });
 
   it('should mark a shared plan and leave an owned plan unmarked', async () => {
-    render(<Sidebar />);
+    renderDock();
 
     const shared = await screen.findByRole('link', { name: /Their kitchen/ });
     const owned = screen.getByRole('link', { name: /My garden/ });
@@ -41,7 +49,7 @@ describe('Sidebar', () => {
 
   describe('open (FS-S6WVY §Docked shell, §Look)', () => {
     it('should offer to hide the panel it controls', async () => {
-      render(<Sidebar />);
+      renderDock();
       await screen.findByRole('link', { name: /My garden/ });
 
       const toggle = screen.getByRole('button', { name: 'Hide plans panel' });
@@ -54,7 +62,7 @@ describe('Sidebar', () => {
     });
 
     it('should hide by writing the choice through the toggle', async () => {
-      render(<Sidebar />);
+      renderDock();
       await screen.findByRole('link', { name: /My garden/ });
       fireEvent.click(screen.getByRole('button', { name: 'Hide plans panel' }));
       expect(setIsCollapsed).toHaveBeenCalledWith(true);
@@ -62,7 +70,7 @@ describe('Sidebar', () => {
 
     it('should mark the plan being viewed as the current page, and only that one', async () => {
       pathname = '/plan/mine';
-      render(<Sidebar />);
+      renderDock();
 
       const active = await screen.findByRole('link', { name: /My garden/ });
       expect(active).toHaveAttribute('aria-current', 'page');
@@ -76,7 +84,7 @@ describe('Sidebar', () => {
         { id: 'p', name: 'A project', planType: 'project' },
         { id: 'l', name: 'A course', planType: 'learning' },
       ]);
-      render(<Sidebar />);
+      renderDock();
       await screen.findByRole('link', { name: 'A project' });
 
       const projects = screen.getByRole('button', { name: 'Projects' });
@@ -92,7 +100,7 @@ describe('Sidebar', () => {
     });
 
     it('should offer a quiet "New plan" link to create one', async () => {
-      render(<Sidebar />);
+      renderDock();
       const newPlan = await screen.findByRole('link', { name: 'New plan' });
       expect(newPlan).toHaveAttribute('href', '/create-plan');
     });
@@ -113,11 +121,15 @@ describe('Sidebar', () => {
 
     const renderHidden = async () => {
       isCollapsed = true;
-      render(<Sidebar />);
+      renderDock();
       await act(async () => {}); // let the plan list settle
     };
 
-    beforeEach(() => vi.useFakeTimers());
+    beforeEach(() => {
+      vi.useFakeTimers();
+      // A device with a real hover, e.g. a mouse (FS-49CQ2 R11).
+      mockMatchMedia({ hover: true });
+    });
     afterEach(() => vi.useRealTimers());
 
     it('should offer to show the panel, and keep its contents out of reach', async () => {
@@ -129,7 +141,7 @@ describe('Sidebar', () => {
     });
 
     it('should leave the open panel reachable', async () => {
-      render(<Sidebar />);
+      renderDock();
       await act(async () => {});
       expect(panel()).not.toHaveAttribute('inert');
     });
@@ -200,7 +212,7 @@ describe('Sidebar', () => {
 
     it('should close the peek on navigation', async () => {
       isCollapsed = true;
-      const { rerender } = render(<Sidebar />);
+      const { rerender } = renderDock();
       await act(async () => {});
       fireEvent.mouseEnter(rail());
       await wait(200);
@@ -212,7 +224,7 @@ describe('Sidebar', () => {
 
     it('should not revive a peek after the panel was opened and hidden elsewhere', async () => {
       isCollapsed = true;
-      const { rerender } = render(<Sidebar />);
+      const { rerender } = renderDock();
       await act(async () => {});
       fireEvent.mouseEnter(rail());
       await wait(200);
@@ -274,6 +286,43 @@ describe('Sidebar', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Show plans panel' }));
       expect(setIsCollapsed).toHaveBeenCalledWith(false);
+    });
+
+    describe('on a device that cannot hover (FS-49CQ2 §Peek needs a real hover)', () => {
+      beforeEach(() => mockMatchMedia({ hover: false }));
+      afterEach(() => vi.unstubAllGlobals());
+
+      it('should not peek when a tap enters the rail', async () => {
+        await renderHidden();
+
+        fireEvent.mouseEnter(rail());
+        await wait(200);
+
+        expect(rail()).toHaveAttribute('data-peek', 'false');
+        expect(panel()).toHaveAttribute('inert');
+      });
+
+      it('should still pin open from the rail toggle', async () => {
+        await renderHidden();
+
+        fireEvent.mouseEnter(rail());
+        fireEvent.click(screen.getByRole('button', { name: 'Show plans panel' }));
+        await wait(200);
+
+        expect(setIsCollapsed).toHaveBeenCalledWith(false);
+        expect(rail()).toHaveAttribute('data-peek', 'false');
+      });
+
+      it('should not peek when hover support is unknown', async () => {
+        // No matchMedia at all: unknown means no peek.
+        vi.stubGlobal('matchMedia', undefined);
+        await renderHidden();
+
+        fireEvent.mouseEnter(rail());
+        await wait(200);
+
+        expect(panel()).toHaveAttribute('inert');
+      });
     });
   });
 });

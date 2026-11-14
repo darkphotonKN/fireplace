@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act } from '@testing-library/react';
+import { mockMatchMedia } from '@/test/motion';
 
 /**
  * The sidebar discovery tip, and where it is allowed to fire (FS-KSJFR R46,
@@ -51,6 +52,9 @@ const letTheHintFire = () =>
   });
 
 beforeEach(() => {
+  // These cases are the docked widths' behaviour (md and up); below md the
+  // plans panel is a drawer, covered in PlansDrawer.test.tsx.
+  mockMatchMedia({ wide: true });
   vi.useFakeTimers();
   toast.mockReset();
   localStorage.clear();
@@ -151,6 +155,42 @@ describe('LayoutContent — the tip only when the sidebar is hidden (FS-S6WVY R1
     const { rerender } = render(<LayoutContent>page</LayoutContent>);
 
     arriveWithSidebar('hidden');
+    rerender(<LayoutContent>page</LayoutContent>);
+    letTheHintFire();
+
+    expect(toast).not.toHaveBeenCalled();
+  });
+});
+
+describe('LayoutContent — no tip below md (FS-49CQ2 R21)', () => {
+  // The copy says "hover the left edge", and below md there is no edge to hover.
+  beforeEach(() => mockMatchMedia({ wide: false }));
+
+  it('should not fire on a plan page with the sidebar hidden, and leave the first-timer flag unspent', () => {
+    pathname = '/plan/p1';
+
+    render(<LayoutContent>page</LayoutContent>);
+    letTheHintFire();
+
+    expect(toast).not.toHaveBeenCalled();
+    expect(localStorage.getItem('hasSeenSidebarHint')).toBeNull();
+  });
+
+  it('should not fire the 24h reminder either', () => {
+    pathname = '/plan/p1';
+    localStorage.setItem('hasSeenSidebarHint', 'true');
+
+    render(<LayoutContent>page</LayoutContent>);
+    letTheHintFire();
+
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('should not fire as a reaction to widening to md on the same page', () => {
+    pathname = '/plan/p1';
+    const { rerender } = render(<LayoutContent>page</LayoutContent>);
+
+    mockMatchMedia({ wide: true });
     rerender(<LayoutContent>page</LayoutContent>);
     letTheHintFire();
 

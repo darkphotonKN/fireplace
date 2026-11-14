@@ -211,7 +211,7 @@ export default function ChecklistGrid({
       items={groups.map((g) => g.item.id)}
       strategy={rectSortingStrategy}
     >
-    <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-cards items-start gap-4">
       {groups.map(({ item, children }) => {
         const collapsed = collapsedIds.has(item.id);
         const milestone = milestones.get(item.id);

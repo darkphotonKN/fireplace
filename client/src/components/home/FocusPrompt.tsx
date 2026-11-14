@@ -68,7 +68,7 @@ export default function FocusPrompt({ onSkip }: { onSkip: () => void }) {
   );
 
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen md:p-8">
       <div className="mx-auto max-w-7xl space-y-12">
         <div>
           <h1 className="mb-2">Welcome back, {user?.name || "there"}.</h1>
@@ -80,7 +80,7 @@ export default function FocusPrompt({ onSkip }: { onSkip: () => void }) {
             What&apos;s your focus today?
           </h2>
 
-          <div className="mb-12 grid w-full max-w-2xl grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="mb-12 grid w-full max-w-2xl grid-cols-cards gap-4">
             {typeCard("project", "Project", "Something you're building")}
             {typeCard("learning", "Learning", "Something you're learning")}
           </div>

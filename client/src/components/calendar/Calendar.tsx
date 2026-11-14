@@ -92,7 +92,7 @@ export function Calendar({ planId, className = "", compact = false }: CalendarPr
 
   return (
     <div className={`bg-white/5 backdrop-blur-sm rounded-xl ${compact ? "p-4" : "p-6"} ${className}`}>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <h2 className={compact ? "text-lg font-semibold" : "text-2xl font-bold"}>{heading}</h2>
         <div className="flex items-center gap-2">
           <ViewToggle view={view} onChange={setView} />

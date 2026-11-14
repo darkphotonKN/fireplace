@@ -1,29 +1,25 @@
 'use client';
 
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
-import { listPlans } from '@/api/plans';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useSidebar } from './LayoutWrapper';
-import SharedMark from './SharedMark';
+import PlansPanel from './PlansPanel';
+import { FOCUS_RING } from '@/lib/chrome';
+import { useMediaQuery } from './landing/motion/useMediaQuery';
 import { cn } from '@/lib/utils';
-
-interface Plan {
-  id: string;
-  name: string;
-  planType: string;
-  focus?: string;
-  description?: string;
-  relation?: 'owner' | 'member';
-}
-
-type PlanFilter = 'learning' | 'project';
 
 const PANEL_ID = 'plans-panel';
 
 /** Hover intent: a cursor crossing the rail doesn't flash the panel (FS-S6WVY R22). */
 const PEEK_DELAY_MS = 150;
+
+/**
+ * Only a device that can really hover peeks (FS-49CQ2 R11): a tap on a touch
+ * screen fires a synthetic `mouseenter`, and the overlay it opened would only
+ * close on a `mouseleave` that never comes.
+ */
+const CAN_HOVER_QUERY = '(hover: hover)';
 
 /**
  * Stamp when the panel was last seen open, for the discovery tip's 24h reminder
@@ -37,17 +33,8 @@ function stampLastOpen() {
   }
 }
 
-/** The coral focus ring every sidebar control shares (FS-S6WVY R30). */
-const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
-
-const FILTERS: { value: PlanFilter; label: string }[] = [
-  { value: 'project', label: 'Projects' },
-  { value: 'learning', label: 'Learning' },
-];
-
 export default function Sidebar() {
   const pathname = usePathname();
-  const planId = pathname?.split('/plan/')?.[1] || '';
   const { isCollapsed, setIsCollapsed } = useSidebar();
 
   // The peek: the hidden panel shown over the page while the pointer rests on
@@ -58,6 +45,8 @@ export default function Sidebar() {
   if (peekedAt !== null && (!isCollapsed || peekedAt !== pathname)) setPeekedAt(null);
   const isPeeking = isCollapsed && peekedAt === pathname;
   const peekTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Starts false and stays false when the answer is unknown: no peek.
+  const canHover = useMediaQuery(CAN_HOVER_QUERY);
 
   const closePeek = () => {
     clearTimeout(peekTimer.current);
@@ -65,7 +54,7 @@ export default function Sidebar() {
   };
 
   const startPeek = () => {
-    if (!isCollapsed) return;
+    if (!isCollapsed || !canHover) return;
     clearTimeout(peekTimer.current);
     peekTimer.current = setTimeout(() => {
       setPeekedAt(pathname);
@@ -95,40 +84,6 @@ export default function Sidebar() {
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [isPeeking]);
-
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<PlanFilter>('project');
-
-  useEffect(() => {
-    const fetchPlans = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Bare list, not data.result — this endpoint is serialized (FS-0004).
-        setPlans(await listPlans());
-      } catch (err) {
-        console.error('Error fetching plans:', err);
-        setError('Failed to load plans');
-        setPlans([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchPlans();
-  }, []);
-
-  const filteredPlans = plans
-    .filter((plan) => plan.planType === activeFilter)
-    .map((plan) => ({
-      name: plan.name,
-      href: `/plan/${plan.id}`,
-      isActive: plan.id === planId,
-      relation: plan.relation,
-    }));
 
   const toggle = () => {
     const next = !isCollapsed;
@@ -185,83 +140,8 @@ export default function Sidebar() {
           isPeeking && 'shadow-lg',
         )}
       >
-        {/* Header: the filter, beside the toggle's spot. */}
-        <div className="shrink-0 pb-3 pl-12 pr-3 pt-3">
-          <div className="flex rounded-control bg-muted p-0.5">
-            {FILTERS.map(({ value, label }) => {
-              const isActive = activeFilter === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={isActive}
-                  onClick={() => setActiveFilter(value)}
-                  className={cn(
-                    'h-7 flex-1 rounded-control text-xs font-medium transition-colors',
-                    FOCUS_RING,
-                    isActive
-                      ? 'bg-background text-foreground shadow-sm dark:bg-card'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Plan list: scrolls inside the panel; New plan stays pinned below. */}
-        <nav aria-label="Plans" className="min-h-0 flex-1 overflow-y-auto px-3">
-          <ul className="space-y-0.5">
-            {isLoading ? (
-              <li className="px-3 py-2 text-sm text-muted-foreground">Loading…</li>
-            ) : error ? (
-              <li className="px-3 py-2 text-sm text-muted-foreground">{error}</li>
-            ) : filteredPlans.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-muted-foreground">
-                No {activeFilter === 'project' ? 'projects' : 'learning plans'} yet
-              </li>
-            ) : (
-              filteredPlans.map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={item.isActive ? 'page' : undefined}
-                    className={cn(
-                      'relative flex items-center rounded-control px-3 py-2 text-sm transition-colors hover:bg-muted focus-visible:ring-inset',
-                      FOCUS_RING,
-                      item.isActive ? 'font-medium text-primary' : 'text-foreground',
-                    )}
-                  >
-                    {/* The view's one coral moment (R27). */}
-                    {item.isActive && (
-                      <span
-                        aria-hidden
-                        className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary"
-                      />
-                    )}
-                    <span className="min-w-0 truncate">{item.name}</span>
-                    <SharedMark plan={item} className="ml-2" />
-                  </Link>
-                </li>
-              ))
-            )}
-          </ul>
-        </nav>
-
-        <div className="shrink-0 p-3">
-          <Link
-            href="/create-plan"
-            className={cn(
-              'flex w-full items-center justify-center gap-2 rounded-control border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted',
-              FOCUS_RING,
-            )}
-          >
-            <Plus aria-hidden className="h-4 w-4" />
-            New plan
-          </Link>
-        </div>
+        {/* The filter sits beside the toggle's spot. */}
+        <PlansPanel headerClassName="pl-12 pr-3" />
       </aside>
     </div>
   );

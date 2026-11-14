@@ -1397,7 +1397,7 @@ export default function Todo({
       )}
 
       {/* Section Title with Task Type Switcher or Settings Title */}
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-wrap justify-between items-center gap-x-3 gap-y-2 mb-4">
         <h2 className="text-lg font-semibold">
           {showSettings
             ? 'Settings'
@@ -1406,7 +1406,7 @@ export default function Todo({
             : 'Items'}
         </h2>
         {!showSettings && !showArchived && (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {enableTypeFilter && taskType === 'longterm' && (
               <div className="flex items-center gap-1 text-sm">
                 {(
@@ -1550,9 +1550,9 @@ export default function Todo({
                   key={todo.id}
                   className="relative flex items-center justify-between group transition-all duration-200 opacity-60 pt-4 first:pt-0"
                 >
-                  <div className="flex items-center space-x-3 flex-1">
-                    <div className="flex flex-col flex-1">
-                      <label className="text-base cursor-default flex-1">
+                  <div className="flex min-w-0 items-center space-x-3 flex-1">
+                    <div className="flex min-w-0 flex-col flex-1">
+                      <label className="min-w-0 break-words text-base cursor-default flex-1">
                         {todo.description}
                       </label>
                       {todo.scheduledTime && (
@@ -1877,7 +1877,7 @@ export default function Todo({
                   ) : (
                     <>
                       <div
-                        className="flex items-center space-x-3 flex-1"
+                        className="flex min-w-0 items-center space-x-3 flex-1"
                         onClick={
                           (todo.type ?? 'task') === 'task'
                             ? () => toggleTodo(todo.id)
@@ -1888,7 +1888,7 @@ export default function Todo({
                             (todo.type ?? 'task') === 'task' ? 'pointer' : 'default',
                         }}
                       >
-                        <div className="flex flex-1 items-center space-x-2">
+                        <div className="flex min-w-0 flex-1 items-center space-x-2">
                           {(todo.type ?? 'task') === 'task' && (
                             <input
                               type="checkbox"
@@ -1902,12 +1902,15 @@ export default function Todo({
                               disabled={isUpdating}
                             />
                           )}
-                          <div className="flex flex-col flex-1">
+                          <div className="flex min-w-0 flex-col flex-1">
                             {/* The count sits right after the text, so the
-                                label no longer stretches (flex-1). */}
+                                label no longer stretches (flex-1). min-w-0 and
+                                break-words down the chain let a long unbroken
+                                word or URL wrap instead of widening the row
+                                past a 375px card (FS-49CQ2 R23). */}
                             <div className="flex items-baseline gap-2">
                               <label
-                                className={`text-base cursor-pointer ${
+                                className={`min-w-0 break-words text-base cursor-pointer ${
                                   todo.done ? 'line-through opacity-70' : ''
                                 } ${
                                   todo.type === 'note'

@@ -71,6 +71,7 @@ authoritative**; hex values below are for reference/approximation.
 | Input | `--input` | `55 33% 82%` | `#DED9C4` |
 | Ring (focus) | `--ring` | `12 92% 65%` | `#F76F53` |
 | Destructive | `--destructive` | `0 84% 60%` | `#EF4444` |
+| Scrim (overlay) | `--scrim` / `scrim` | `0 0% 18% / 0.4` | `rgba(46,46,46,0.4)` |
 | Radius | `--radius` | — | `0.5rem` (8px) |
 
 ### Dark theme (`.dark`) — warm charcoal + ember
@@ -86,6 +87,7 @@ authoritative**; hex values below are for reference/approximation.
 | Accent foreground | `--accent-foreground` | `43 10% 90%` | `#E9E6DC` |
 | Border | `--border` | `12 15% 20%` | `#3B2E2B` (warm) |
 | Input | `--input` | `0 0% 20%` | `#333333` |
+| Scrim (overlay) | `--scrim` | `0 0% 12% / 0.7` | `rgba(31,31,31,0.7)` |
 
 > **Token gap — closed (FS-0003 / I-0007).** `--primary-foreground` is now defined in
 > `globals.css` for both themes as the **warm dark `#2E2E2E`** (`0 0% 18%`), identical in light
@@ -103,6 +105,9 @@ authoritative**; hex values below are for reference/approximation.
 ### Usage rules
 - Text on `background`/`card` → `foreground`; secondary text → `muted-foreground`.
 - Coral (`primary`) is for emphasis and action, not large fills — a little goes a long way.
+- Dim the page behind an overlay (a drawer, a modal) with `bg-scrim`. The token carries its own
+  alpha in each theme (ink at 40% in light, the page's dark at 70% in dark), so use it without an
+  `/opacity` modifier or a `dark:` override.
 - Never introduce a new raw colour. If you need one, add a semantic token here + in `globals.css`
   for **both** themes.
 
