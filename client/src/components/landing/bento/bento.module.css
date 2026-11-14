@@ -1,0 +1,144 @@
+/*
+ * The bento tiles' reveal (FS-XCTMG R16–R18). Landing-local on purpose: this is
+ * decorative motion, and nothing outside components/landing/ may reach it.
+ *
+ * A mock never styles its own end state. It marks parts with the classes below
+ * (through ./reveal.tsx), and the tile decides when those parts are at rest at
+ * their end values. Three triggers reach the same end values:
+ *
+ *   1. data-reveal="playing" | "end", set by BentoTile: a touch device's
+ *      play-once on entering view, or reduced motion's static end state;
+ *   2. :focus-visible on the tile link, on every device;
+ *   3. :hover, only under (hover: hover). Never Tailwind's hover:, which v3
+ *      does not gate, so a tap on a phone would leave the reveal stuck on.
+ *
+ * Only transform and opacity ever transition. Bars fill by scaleX from the
+ * start edge, and a changing number is two stacked labels cross-faded, so no
+ * frame of a reveal triggers layout. Every part holds its box in both states,
+ * which is what keeps the tile's size fixed between start and end (R11).
+ *
+ * No colour lives here: colour is the mock's, through Tailwind tokens.
+ */
+
+.tile {
+  /* Keep in step with REVEAL_MS in BentoTile.tsx, which waits this long (plus
+     the longest stagger it allows) before calling a touch reveal "end". */
+  --reveal-ms: 700ms;
+  --reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* A bar or segment: scaleX from --reveal-from to --reveal-to (0..1). */
+.fill {
+  transform-origin: left center;
+  transform: scaleX(var(--reveal-from, 0));
+  transition: transform var(--reveal-ms) var(--reveal-ease) var(--reveal-delay, 0ms);
+}
+
+/* Something that arrives: hidden at start, in place at end. */
+.enter {
+  opacity: 0;
+  transform: translateY(0.375rem);
+  transition:
+    opacity var(--reveal-ms) var(--reveal-ease) var(--reveal-delay, 0ms),
+    transform var(--reveal-ms) var(--reveal-ease) var(--reveal-delay, 0ms);
+}
+
+/* Something that is replaced: present at start, gone at end. */
+.leave {
+  opacity: 1;
+  transition: opacity var(--reveal-ms) var(--reveal-ease) var(--reveal-delay, 0ms);
+}
+
+/* A layer that lights up: faint and a touch small at start, full at end. */
+.glow {
+  opacity: 0;
+  transform: scale(0.85);
+  transition:
+    opacity var(--reveal-ms) var(--reveal-ease) var(--reveal-delay, 0ms),
+    transform var(--reveal-ms) var(--reveal-ease) var(--reveal-delay, 0ms);
+}
+
+/* Two states in one cell, so a swap never changes the box. */
+.stack {
+  display: grid;
+}
+
+.stack > * {
+  grid-area: 1 / 1;
+}
+
+/* The footer's "→" leans toward where the link goes. */
+.arrow {
+  display: inline-block;
+  transition: transform var(--reveal-ms) var(--reveal-ease);
+}
+
+/* ---- End values ------------------------------------------------------- */
+
+.tile[data-reveal='playing'] .fill,
+.tile[data-reveal='end'] .fill,
+.tile:focus-visible .fill {
+  transform: scaleX(var(--reveal-to, 1));
+}
+
+.tile[data-reveal='playing'] .enter,
+.tile[data-reveal='end'] .enter,
+.tile:focus-visible .enter {
+  opacity: 1;
+  transform: none;
+}
+
+.tile[data-reveal='playing'] .leave,
+.tile[data-reveal='end'] .leave,
+.tile:focus-visible .leave {
+  opacity: 0;
+}
+
+.tile[data-reveal='playing'] .glow,
+.tile[data-reveal='end'] .glow,
+.tile:focus-visible .glow {
+  opacity: 1;
+  transform: none;
+}
+
+.tile[data-reveal='playing'] .arrow,
+.tile[data-reveal='end'] .arrow,
+.tile:focus-visible .arrow {
+  transform: translateX(0.25rem);
+}
+
+@media (hover: hover) {
+  .tile:hover .fill {
+    transform: scaleX(var(--reveal-to, 1));
+  }
+
+  .tile:hover .enter {
+    opacity: 1;
+    transform: none;
+  }
+
+  .tile:hover .leave {
+    opacity: 0;
+  }
+
+  .tile:hover .glow {
+    opacity: 1;
+    transform: none;
+  }
+
+  .tile:hover .arrow {
+    transform: translateX(0.25rem);
+  }
+}
+
+/* Reduced motion: BentoTile holds every tile at "end", and anything that could
+   still move (a hover before hydration) snaps instead of travelling. */
+@media (prefers-reduced-motion: reduce) {
+  .fill,
+  .enter,
+  .leave,
+  .glow,
+  .arrow {
+    transition: none;
+  }
+}

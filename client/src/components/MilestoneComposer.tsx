@@ -239,10 +239,13 @@ export default function MilestoneComposer({
         />
         {milestone ? (
           // No type control while filling: steps made here are always tasks
-          // (R32). The glyph only says a step is being typed.
+          // (R32). The glyph only says a step is being typed, and stays ember
+          // the whole time so it reads as the "into this milestone" arrow; the
+          // label beside it carries no arrow of its own.
           <span
             aria-hidden
-            className="-ml-2 grid h-8 w-8 shrink-0 place-items-center text-foreground/40 transition-colors duration-300 group-focus-within/add:text-primary"
+            data-composer-arrow
+            className="-ml-2 grid h-8 w-8 shrink-0 place-items-center text-primary transition-colors duration-300"
           >
             <CornerDownRight strokeWidth={1.75} className="h-[18px] w-[18px]" />
           </span>
@@ -294,7 +297,7 @@ export default function MilestoneComposer({
             data-composer-target
             className="mr-2 max-w-[40%] shrink-0 truncate text-sm text-primary/80"
           >
-            ↳ steps for {title}
+            steps for {title}
           </span>
         )}
         {/* readOnly, not disabled, while saving: disabled drops focus. */}
@@ -327,7 +330,7 @@ export default function MilestoneComposer({
           className={cn(
             'ml-3 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-60',
             text.trim()
-              ? 'bg-primary text-primary-foreground shadow-[0_2px_14px_-3px_rgba(247,111,83,0.6)] hover:bg-primary/90'
+              ? 'bg-action text-action-foreground shadow-[0_2px_14px_-3px_hsl(var(--action)/0.6)] hover:bg-action/90'
               : 'text-foreground/40 hover:bg-primary/10 hover:text-primary'
           )}
         >

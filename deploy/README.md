@@ -86,6 +86,29 @@ ssh root@206.189.40.30 'cd /opt/fireplace && docker compose logs -f api-gateway'
 ssh root@206.189.40.30 'cd /opt/fireplace && docker compose up -d'
 ```
 
+## Browsing production data
+
+Postgres publishes `127.0.0.1:5432` on the droplet: loopback only, so it is reachable through an
+SSH tunnel and never from the internet. Connect as `fireplace_readonly`, which can read all three
+databases and write nothing. Use an owner role only for a deliberate fix.
+
+- **SSH:** `root@206.189.40.30` with `~/.ssh/fireplace_deploy`
+- **Database:** `localhost:5432` on the far side of the tunnel, user `fireplace_readonly`, and one
+  data source per database (`fireplace_gateway`, `fireplace_plans`, `fireplace_insights`)
+
+The role is created by hand once, as the superuser. Run it again in any database whose tables
+predate it, so it gets `SELECT` on the existing tables. The default privileges cover tables that
+migrations create later:
+
+```sql
+CREATE ROLE fireplace_readonly LOGIN PASSWORD '<generated>';
+-- in each of the three databases:
+GRANT CONNECT ON DATABASE <db> TO fireplace_readonly;
+GRANT USAGE ON SCHEMA public TO fireplace_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO fireplace_readonly;
+ALTER DEFAULT PRIVILEGES FOR ROLE <db>_owner IN SCHEMA public GRANT SELECT ON TABLES TO fireplace_readonly;
+```
+
 ## Rollout order
 
 Migrations run as one-shot `*-migrate` containers that must exit 0 before their service

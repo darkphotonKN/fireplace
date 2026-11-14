@@ -5,6 +5,12 @@ import { useEffect, useState } from 'react';
 export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 /** Tailwind's `sm` breakpoint. Below it the tour runs no depth translation. */
 export const WIDE_VIEWPORT_QUERY = '(min-width: 640px)';
+/**
+ * A primary pointer that cannot hover: touch. Asked positively, so "no hover"
+ * is only ever acted on once the browser has said so, never on the `false`
+ * every query starts with. A hybrid device follows what the browser reports.
+ */
+export const NO_HOVER_QUERY = '(hover: none)';
 
 /**
  * Subscribes to a media query.
@@ -32,4 +38,8 @@ export function useMediaQuery(query: string): boolean {
 
 export function usePrefersReducedMotion(): boolean {
   return useMediaQuery(REDUCED_MOTION_QUERY);
+}
+
+export function useNoHover(): boolean {
+  return useMediaQuery(NO_HOVER_QUERY);
 }

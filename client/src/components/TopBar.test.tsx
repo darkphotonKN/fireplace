@@ -117,7 +117,7 @@ describe('top bar — stays on top of the page (R22)', () => {
 
     // The plan title card is `relative z-10`; a tie lets it, later in the DOM,
     // paint over the bar on scroll and over the profile menu's "Sign Out".
-    expect(classesOf(topBar())).toContain('z-20');
+    expect(classesOf(topBar())).toContain('z-30');
   });
 });
 

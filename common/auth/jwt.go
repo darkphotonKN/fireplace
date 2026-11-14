@@ -51,11 +51,21 @@ func ParseToken(tokenStr, secret string) (jwt.MapClaims, error) {
 
 // ValidateRefreshToken parses a refresh token and returns its user id.
 func ValidateRefreshToken(tokenStr, secret string) (uuid.UUID, error) {
+	return validateTyped(tokenStr, secret, TokenTypeRefresh)
+}
+
+// ValidateAccessToken parses an access token and returns its user id. This is
+// the bearer check: a refresh token, or a token with no tokenType claim, fails.
+func ValidateAccessToken(tokenStr, secret string) (uuid.UUID, error) {
+	return validateTyped(tokenStr, secret, TokenTypeAccess)
+}
+
+func validateTyped(tokenStr, secret string, want TokenType) (uuid.UUID, error) {
 	claims, err := ParseToken(tokenStr, secret)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	if claims["tokenType"] != string(TokenTypeRefresh) {
+	if claims["tokenType"] != string(want) {
 		return uuid.Nil, errors.New("invalid token type")
 	}
 	return UserIDFromClaims(claims)

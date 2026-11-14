@@ -9,6 +9,7 @@
 
 - [x] Logged-out landing page → FS-none
 - [x] Product tour on the logged-out landing → FS-0003
+- [ ] Feature showcase on the logged-out landing → FS-XCTMG
 
 ## Home
 
@@ -21,6 +22,7 @@
 
 - [x] Hand-written fetch/axios service layer → FS-none
 - [ ] Generated client for the whole gateway surface → FS-0004
+- [x] Sessions that renew themselves while in use → FS-ZESEF
 
 ## Plans
 

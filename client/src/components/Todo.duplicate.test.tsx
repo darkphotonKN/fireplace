@@ -59,7 +59,7 @@ const item = (id: string, parentId?: string, extra: object = {}) => ({
 /** A family in the middle of the list: t1 with steps c1, c2, then t2. */
 const family = () => [item('t1'), item('c1', 't1'), item('c2', 't1'), item('t2')];
 
-/** n top-level tasks named t1..tn — 25 of them is three pages. */
+/** n top-level tasks named t1..tn — 45 of them is three pages. */
 const topLevel = (n: number) =>
   Array.from({ length: n }, (_, i) => item(`t${i + 1}`));
 
@@ -151,12 +151,12 @@ describe('Todo duplicate from a list row (FS-F6AEE R14–R18)', () => {
 
   it('should follow the copy to the page it lands on', async () => {
     duplicateChecklistItem.mockResolvedValue([item('D')]);
-    await renderList(topLevel(25));
+    await renderList(topLevel(45));
     fireEvent.click(next());
     expect(counter().textContent).toBe('2 of 3');
 
-    // t20 closes page 2, so its copy opens page 3.
-    duplicate('t20');
+    // t40 closes page 2, so its copy opens page 3.
+    duplicate('t40');
 
     await waitFor(() => expect(counter().textContent).toBe('3 of 3'));
     expect(screen.getByText('item D')).toBeTruthy();

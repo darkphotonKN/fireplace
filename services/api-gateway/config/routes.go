@@ -56,9 +56,10 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 		slog.Warn("JWT_SECRET is empty — issued tokens will fail validation")
 	}
 	// Token lifetimes are env-driven so each environment tunes without a code
-	// change. Defaults match the .env: 1 day access, 7 day refresh.
-	accessTTL := parseDurationOr("ACCESS_TOKEN_TTL", 24*time.Hour)
-	refreshTTL := parseDurationOr("REFRESH_TOKEN_TTL", 168*time.Hour)
+	// change. docker-compose.yml sets them for the deployed stack, and these
+	// fallbacks match it: 1 hour access, 30 day refresh.
+	accessTTL := parseDurationOr("ACCESS_TOKEN_TTL", time.Hour)
+	refreshTTL := parseDurationOr("REFRESH_TOKEN_TTL", 720*time.Hour)
 
 	authRepo := authgw.NewRepository(db)
 	authService := authgw.NewService(authRepo, publisher, jwtSecret, accessTTL, refreshTTL)

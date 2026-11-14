@@ -14,10 +14,10 @@ import (
 )
 
 // TTL defaults applied when env vars are unset or unparseable.
-// 1h / 7d matches the original monolith — kept here as a safety net.
+// A safety net: docker-compose.yml sets both for the deployed stack (FS-ZESEF R11).
 const (
 	defaultAccessTTL  = time.Hour
-	defaultRefreshTTL = 24 * 7 * time.Hour
+	defaultRefreshTTL = 720 * time.Hour
 )
 
 type Repository interface {
@@ -104,6 +104,12 @@ func (s *service) Refresh(ctx context.Context, refreshToken string) (*AuthTokens
 	}
 	u, err := s.repo.GetByID(ctx, userID)
 	if err != nil {
+		// Same decision as SignIn: a deleted user is indistinguishable from a bad
+		// token. Anything else stays wrapped, so an outage stays a 500 and is
+		// never mistaken for a rejected token.
+		if errors.Is(err, commonconstants.ErrNotFound) {
+			return nil, commonconstants.ErrUnauthorized
+		}
 		return nil, fmt.Errorf("auth: refresh: %w", err)
 	}
 	return s.issueTokens(u)

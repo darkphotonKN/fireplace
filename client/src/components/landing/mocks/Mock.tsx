@@ -6,12 +6,11 @@ import { cn } from '@/lib/utils';
 /**
  * Base wrapper for every mocked visual in the tour. Read this before adding one.
  *
- * The mocks are **stylized-honest, never replicas**. Same tokens, type scale,
- * radii and coral as the real product, but simplified: a checklist is a few
- * rows, a Gantt is a few soft bars, no window chrome, no toolbars, no dense
- * real-app detail. A near-replica silently becomes a lie the first time the real
- * UI changes, because a hand-built mock cannot track the app. A stylized one
- * reads as *a picture of the idea* and stays true.
+ * The mocks are **styled like production, still bespoke and decorative**
+ * (FS-XCTMG R13). Same tokens, Lora, radii and density as the real screens they
+ * stand for (the milestone cards, the Day plan, the progress strip), so a tile
+ * reads as the product. But hand-built: a few rows rather than a full screen,
+ * no window chrome, no toolbars, and never the real components themselves.
  *
  * Rules this wrapper enforces or assumes, binding on every mock:
  *

@@ -53,7 +53,7 @@ export default function UserProfile() {
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
           // A 40px tap target below md, the compact desktop height from md (FS-49CQ2 R17).
-          'flex h-10 min-w-10 max-w-full items-center justify-center gap-2 rounded-md px-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-8',
+          'flex h-10 min-w-10 max-w-full items-center justify-center gap-2 rounded-control px-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-8',
           FOCUS_RING,
         )}
       >
@@ -78,7 +78,7 @@ export default function UserProfile() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-[#ebe8d8] dark:bg-[#2a2a2a] backdrop-blur-sm border border-foreground/10">
+        <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-popover dark:bg-[#2a2a2a] backdrop-blur-sm border border-foreground/10">
           <div className="py-1" role="menu" aria-orientation="vertical">
             <Link
               href="/profile"

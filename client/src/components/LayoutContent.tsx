@@ -131,13 +131,14 @@ export default function LayoutContent({ children }: LayoutContentProps) {
           sidebar's right one frame the page as one surface (R15). With the
           narrow-width drawer open it rises over the scrim and stays usable,
           and a tap on any of its links closes the drawer (FS-49CQ2 R5, R8).
-          z-20 keeps it, and the profile menu that drops from it, over page
-          cards that lift themselves to z-10 (the plan title card), which would
-          otherwise cover the bar on scroll and hide "Sign Out" (FS-49CQ2 R22). */}
+          z-30 sits over the page's own stacking layers (the plan title card
+          is z-10, the Day plan z-[5], the sidebar z-20), which scroll under
+          the bar and would otherwise hide "Sign Out" (FS-49CQ2 R22); it stays
+          under the z-50 menus, dialogs and toasts. */}
       <header
         onClick={drawer.closeOnLinkTap}
         className={cn(
-          "fixed inset-x-0 top-0 z-20 h-16 border-b border-border bg-layout",
+          "fixed inset-x-0 top-0 z-30 h-16 border-b border-border bg-layout",
           drawer.isOpen && "z-40",
         )}
       >

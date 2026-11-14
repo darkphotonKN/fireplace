@@ -112,10 +112,23 @@ interface VideoSuggestion {
   description: string;
 }
 
-// Blocks are taller than rows, so a page of them is shorter. Six fills two
-// columns three deep (three columns two deep on a wide screen) without the
-// card growing past the window the list already holds itself to.
-const GRID_PAGE_SIZE = 6;
+// Blocks are taller than rows, so a page of them is shorter (FS-0008 R26).
+// Twelve is twice the old six, and fills a 3-wide grid four deep or a 2-wide
+// grid six deep with no ragged last row.
+const GRID_PAGE_SIZE = 12;
+
+// The list area's one height cap, min(80vh, 60rem), in its two forms (FS-0008
+// R27): a single page is bounded by it and hugs its content below it, a paged
+// list is fixed at it. 80vh keeps the card on a short screen; on a tall one
+// 60rem stops the window before it leaves a band of empty space. The two
+// drifting apart is how page 2 used to shrink the board; the shared-cap test
+// in Todo.pinned-add-bar.test.tsx ("should use one cap expression for both
+// states") fails if they do again. Each string is written out whole because
+// Tailwind only generates classes it finds literally.
+const LIST_AREA_HEIGHT = {
+  hug: '-mx-1 max-h-[min(80vh,60rem)] overflow-y-auto px-1',
+  paged: '-mx-1 h-[min(80vh,60rem)] overflow-y-auto px-1',
+} as const;
 
 // Where the list / blocks choice is remembered, per device rather than per
 // plan: it says how you like to read a plan, not something about one plan.
@@ -1365,7 +1378,7 @@ export default function Todo({
               setShowSettings(false);
             }
           }}
-          className="flex items-center text-base text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300 mb-4"
+          className="flex items-center text-base text-muted-foreground hover:text-foreground dark:hover:text-gray-300 mb-4"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -1414,10 +1427,10 @@ export default function Todo({
                         setNewTodoType(value);
                       setListTypeFilter(value);
                     }}
-                    className={`px-2 py-1 rounded transition-colors ${
+                    className={`px-2.5 py-1 rounded-control transition-colors ${
                       listTypeFilter === value
-                        ? 'bg-amber-500/20 text-amber-400'
-                        : 'opacity-60 hover:opacity-100 hover:bg-white/5'
+                        ? 'bg-muted font-medium text-foreground dark:bg-amber-500/20 dark:font-normal dark:text-amber-400'
+                        : 'opacity-60 hover:opacity-100 hover:bg-muted dark:hover:bg-white/5'
                     }`}
                     aria-pressed={listTypeFilter === value}
                   >
@@ -1480,7 +1493,7 @@ export default function Todo({
             )}
             <button
               onClick={() => setShowSettings(true)}
-              className="ml-2 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="ml-2 p-1.5 rounded-full hover:bg-muted dark:hover:bg-gray-800 transition-colors"
               title="Settings"
             >
               <svg
@@ -1513,7 +1526,7 @@ export default function Todo({
 
           <button
             onClick={() => setShowArchived(true)}
-            className="w-full p-4 text-left bg-white/5 dark:bg-gray-800/20 rounded-lg hover:bg-white/10 dark:hover:bg-gray-800/30 transition-colors"
+            className="w-full p-4 text-left bg-background dark:bg-gray-800/20 rounded-tile hover:bg-muted dark:hover:bg-gray-800/30 transition-colors"
           >
             <h3 className="text-base font-medium mb-1">View archived tasks</h3>
             <p className="text-sm text-muted-foreground">
@@ -1574,14 +1587,14 @@ export default function Todo({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleMoveItem(todo.id, 'up' as ScopeEnum)}
-                      className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                      className="p-1 hover:bg-muted dark:hover:bg-gray-800 rounded"
                       disabled={index === 0}
                     >
                       <ChevronUp className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleMoveItem(todo.id, 'down' as ScopeEnum)}
-                      className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                      className="p-1 hover:bg-muted dark:hover:bg-gray-800 rounded"
                       disabled={index === archivedTodos.length - 1}
                     >
                       <ChevronDown className="h-4 w-4" />
@@ -1590,7 +1603,7 @@ export default function Todo({
                   <button
                     onClick={() => confirmDeleteTodo(todo)}
                     title="Delete task permanently"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-muted dark:hover:bg-gray-800"
                     style={{ color: 'rgb(247, 111, 83)' }}
                   >
                     <svg
@@ -1638,33 +1651,34 @@ export default function Todo({
           {/* List area (FS-0008 R13). The card has no height of its own, so
               sticky would have nothing to stick inside — this box supplies
               the bounded scrollport the rows scroll in and the add bar pins
-              to. 70vh keeps the whole card on screen while leaving a long
-              page room to run; the bound only bites once the content exceeds
-              it, so short lists look and behave exactly as before. Applied
-              only when the add bar is there, so a list with no bar (archived)
-              is never boxed in for nothing. space-y-4 is the gap
+              to. A single page is bounded by the cap and hugs its content
+              below it, so a three-item plan doesn't sit in a mostly empty
+              box; past the cap it scrolls inside (R28). Applied only when the
+              add bar is there, so a list with no bar (archived) is never
+              boxed in for nothing. space-y-4 is the gap
               the list and the add bar used to get from the wrapper above,
               which the add bar's guide rail measures its -top-7 against. */}
           {/* Once there is more than one page the area becomes a fixed window
               so every page is the same height and the controls never move
               under the cursor (FS-0008 R5's "bottom-right" has to mean the
-              same place on page 1 and page 3). min(70vh, 40rem): a full page
-              of ten rows plus the bar is about 40rem, so on a tall screen the
-              window stops there instead of leaving a band of empty space,
-              while on a short one 70vh keeps the card on screen. A single
-              page still hugs its content — a three-item plan shouldn't sit in
-              a mostly empty box. flex-col with the rows growing keeps the bar
+              same place on page 1 and page 3), a short last page included
+              (R29). Both states share the one cap in LIST_AREA_HEIGHT, in
+              list and grid alike (R27): the window is exactly as tall as one
+              page is allowed to grow, so the item that opens page 2 can grow
+              the board but never shrink it. Dropping back to one page hugs again
+              (R31). flex-col with the rows growing keeps the bar
               at the bottom of the window when a page is short; when a page
               overflows, the area scrolls and the bar pins as before.
               A scroll box clips on every side, so -mx-1 px-1 widens it past
               the content by the 2px a traced card's ring draws outside its
               edge — without it the edge cards lose their outer side. */}
           <div
+            data-list-area
             className={cn(
               'flex flex-col space-y-4',
               totalPages > 1
-                ? '-mx-1 h-[min(70vh,40rem)] overflow-y-auto px-1'
-                : showAddBar && '-mx-1 max-h-[70vh] overflow-y-auto px-1'
+                ? LIST_AREA_HEIGHT.paged
+                : showAddBar && LIST_AREA_HEIGHT.hug
             )}
           >
           <div className="flex-1">
@@ -1845,7 +1859,7 @@ export default function Todo({
                         />
                         <button
                           onClick={() => updateTodoDescription(todo.id)}
-                          className="px-2 py-1 text-sm rounded bg-white/5"
+                          className="px-3 py-1 text-sm rounded-control bg-primary/10 dark:px-2 dark:bg-white/5"
                           style={{ color: 'rgb(247, 111, 83)' }}
                           disabled={isUpdating}
                         >
@@ -1853,7 +1867,7 @@ export default function Todo({
                         </button>
                         <button
                           onClick={cancelEditing}
-                          className="px-2 py-1 text-sm rounded bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900/80 border border-gray-200 dark:border-gray-700"
+                          className="px-3 py-1 text-sm rounded-control bg-muted border border-border dark:px-2 dark:bg-transparent dark:bg-gradient-to-br dark:from-gray-800 dark:to-gray-900/80 dark:border-gray-700"
                           disabled={isUpdating}
                         >
                           Cancel
@@ -2124,7 +2138,7 @@ export default function Todo({
                     className={cn(
                       'ml-3 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-60',
                       newTodo.trim()
-                        ? 'bg-primary text-primary-foreground shadow-[0_2px_14px_-3px_rgba(247,111,83,0.6)] hover:bg-primary/90'
+                        ? 'bg-action text-action-foreground shadow-[0_2px_14px_-3px_hsl(var(--action)/0.6)] hover:bg-action/90'
                         : 'text-foreground/40 hover:bg-primary/10 hover:text-primary'
                     )}
                     disabled={isSubmitting || isTyping}

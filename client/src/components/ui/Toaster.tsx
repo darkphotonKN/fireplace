@@ -32,8 +32,8 @@ function ToastItem({ toast, onDismiss }: { toast: ToastProps; onDismiss: (id: st
       className={`
         flex items-start gap-3 w-80 p-4 rounded-lg shadow-lg
         border-l-4 border-[rgb(247,111,83)]
-        bg-[#ebe8d8] dark:bg-[#2a2a2a]
-        text-[#2e2e2e] dark:text-[#d1cfc0]
+        bg-popover dark:bg-[#2a2a2a]
+        text-foreground dark:text-[#d1cfc0]
         transition-all duration-300 ease-out
         ${isVisible && !isLeaving
           ? 'opacity-100 translate-y-0'

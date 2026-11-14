@@ -80,6 +80,11 @@ services:
 
   postgres:
     restart: unless-stopped
+    # Loopback ONLY: reachable from the droplet itself (an SSH tunnel, e.g.
+    # DataGrip's), never from the internet. Docker binds 127.0.0.1 directly, so
+    # no firewall rule is involved. Never widen this to 0.0.0.0 or a bare port.
+    ports:
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_SUPER_PASSWORD:?POSTGRES_SUPER_PASSWORD must be set}
       GATEWAY_OWNER_PASSWORD: ${GATEWAY_OWNER_PASSWORD:?GATEWAY_OWNER_PASSWORD must be set}

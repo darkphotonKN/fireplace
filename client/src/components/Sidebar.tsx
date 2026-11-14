@@ -122,7 +122,7 @@ export default function Sidebar() {
         aria-expanded={!isCollapsed}
         aria-controls={PANEL_ID}
         className={cn(
-          'absolute left-2 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+          'absolute left-2 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
           FOCUS_RING,
         )}
       >

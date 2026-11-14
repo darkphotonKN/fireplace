@@ -21,7 +21,7 @@ export default function HomeButton() {
       title="Home"
       className={cn(
         // A 40px tap target below md, the compact desktop size from md (FS-49CQ2 R17).
-        'group flex h-10 min-w-10 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm transition-colors md:h-8',
+        'group flex h-10 min-w-10 shrink-0 items-center justify-center gap-1.5 rounded-control px-2 text-sm transition-colors md:h-8',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         isHome
           ? 'font-medium text-primary'

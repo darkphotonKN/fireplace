@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 /**
- * FS-0008 R1–R12: the list is paged ten top-level items at a time, with quiet
+ * FS-0008 R1–R12, R25: the list is paged twenty top-level items at a time, with quiet
  * controls bottom-right. Paging is a view concern — no request gains a page.
  */
 
@@ -81,14 +81,21 @@ describe('Todo paging', () => {
     archiveChecklistItem.mockImplementation(async () => ({}));
   });
 
-  it('should show the first ten top-level items with controls reading 1 of 3', async () => {
+  it('should show the first twenty top-level items with controls reading 1 of 2', async () => {
     await renderList();
-    expect(screen.getByText('item t10')).toBeTruthy();
-    expect(screen.queryByText('item t11')).toBeNull();
-    expect(counter()!.textContent).toBe('1 of 3');
+    expect(screen.getByText('item t20')).toBeTruthy();
+    expect(screen.queryByText('item t21')).toBeNull();
+    expect(counter()!.textContent).toBe('1 of 2');
+
+    // Page 2 holds the other five.
+    fireEvent.click(next());
+    for (let i = 21; i <= 25; i++) {
+      expect(screen.getByText(`item t${i}`)).toBeTruthy();
+    }
+    expect(screen.queryByText('item t20')).toBeNull();
   });
 
-  it('should count a parent with eight children as one of the ten and keep the family together', async () => {
+  it('should count a parent with eight children as one of the twenty and keep the family together', async () => {
     fetchChecklist.mockImplementation(async () => [
       item('t1'),
       ...Array.from({ length: 8 }, (_, i) => item(`c${i + 1}`, 'task', 't1')),
@@ -98,33 +105,62 @@ describe('Todo paging', () => {
     for (let i = 1; i <= 8; i++) {
       expect(screen.getByText(`item c${i}`)).toBeTruthy();
     }
-    // t1 + nine more top-level rows fill the page; t11 waits for page 2.
-    expect(screen.getByText('item t10')).toBeTruthy();
-    expect(screen.queryByText('item t11')).toBeNull();
-    expect(counter()!.textContent).toBe('1 of 3');
+    // t1 + nineteen more top-level rows fill the page; t21 waits for page 2.
+    expect(screen.getByText('item t20')).toBeTruthy();
+    expect(screen.queryByText('item t21')).toBeNull();
+    expect(counter()!.textContent).toBe('1 of 2');
   });
 
-  it('should render no page controls when ten or fewer top-level items fit', async () => {
-    fetchChecklist.mockImplementation(async () => topLevel(10));
+  it('should render no page controls when twenty or fewer top-level items fit', async () => {
+    fetchChecklist.mockImplementation(async () => topLevel(20));
     await renderList();
     expect(counter()).toBeNull();
     expect(screen.queryByRole('button', { name: 'Previous page' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Next page' })).toBeNull();
   });
 
+  it('should open a second page at the twenty-first top-level item', async () => {
+    fetchChecklist.mockImplementation(async () => topLevel(21));
+    await renderList();
+    expect(counter()!.textContent).toBe('1 of 2');
+  });
+
+  it('should keep every item on its page when the viewport changes (R30)', async () => {
+    await renderList();
+    fireEvent.click(next());
+    const before = screen.getAllByText(/^item t\d+$/).map((el) => el.textContent);
+
+    // Paging is count-based: a short, narrow window cuts the same pages.
+    const { innerWidth, innerHeight } = window;
+    try {
+      Object.assign(window, { innerWidth: 360, innerHeight: 480 });
+      fireEvent(window, new Event('resize'));
+
+      expect(counter()!.textContent).toBe('2 of 2');
+      expect(screen.getAllByText(/^item t\d+$/).map((el) => el.textContent)).toEqual(
+        before
+      );
+    } finally {
+      // A failed assertion must not leave later tests in a 360x480 window.
+      Object.assign(window, { innerWidth, innerHeight });
+    }
+  });
+
   it('should walk pages with next and previous, disabling each at its end', async () => {
+    // Three pages, so there is a middle one with both controls live.
+    fetchChecklist.mockImplementation(async () => topLevel(45));
     await renderList();
     expect(prev()).toBeDisabled();
     expect(next()).toBeEnabled();
 
     fireEvent.click(next());
-    expect(screen.getByText('item t11')).toBeTruthy();
-    expect(screen.queryByText('item t10')).toBeNull();
+    expect(screen.getByText('item t21')).toBeTruthy();
+    expect(screen.queryByText('item t20')).toBeNull();
     expect(counter()!.textContent).toBe('2 of 3');
     expect(prev()).toBeEnabled();
 
     fireEvent.click(next());
-    expect(screen.getByText('item t25')).toBeTruthy();
+    expect(screen.getByText('item t45')).toBeTruthy();
     expect(counter()!.textContent).toBe('3 of 3');
     expect(next()).toBeDisabled();
 
@@ -148,12 +184,13 @@ describe('Todo paging', () => {
     const live = screen.getByTestId('page-live');
     expect(live).toHaveAttribute('role', 'status');
     expect(live.getAttribute('aria-live')).toBe('polite');
-    expect(live.textContent).toBe('Page 1 of 3');
+    expect(live.textContent).toBe('Page 1 of 2');
     fireEvent.click(next());
-    expect(screen.getByTestId('page-live').textContent).toBe('Page 2 of 3');
+    expect(screen.getByTestId('page-live').textContent).toBe('Page 2 of 2');
   });
 
   it('should make no request when the page changes', async () => {
+    fetchChecklist.mockImplementation(async () => topLevel(45));
     await renderList();
     fetchChecklist.mockClear();
     fireEvent.click(next());
@@ -167,8 +204,8 @@ describe('Todo paging', () => {
 
   it('should return to page 1 when the type filter changes', async () => {
     fetchChecklist.mockImplementation(async () => [
-      ...topLevel(25),
-      ...Array.from({ length: 12 }, (_, i) => item(`n${i + 1}`, 'note')),
+      ...topLevel(45),
+      ...Array.from({ length: 25 }, (_, i) => item(`n${i + 1}`, 'note')),
     ]);
     await renderList();
     fireEvent.click(next());
@@ -187,35 +224,35 @@ describe('Todo paging', () => {
     const { unmount } = await renderList();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item t1' }));
     fireEvent.click(next());
-    expect(counter()!.textContent).toBe('2 of 3');
+    expect(counter()!.textContent).toBe('2 of 2');
 
     unmount();
     await renderList();
-    expect(counter()!.textContent).toBe('1 of 3');
+    expect(counter()!.textContent).toBe('1 of 2');
     // Collapse is still remembered (FS-0007 R6); only the page is not.
     expect(screen.getByRole('button', { name: 'Expand item t1' })).toBeTruthy();
   });
 
   it('should clamp to the new last page when the current page is archived away', async () => {
-    fetchChecklist.mockImplementation(async () => topLevel(21));
+    fetchChecklist.mockImplementation(async () => topLevel(41));
     await renderList();
     expect(counter()!.textContent).toBe('1 of 3');
     fireEvent.click(next());
     fireEvent.click(next());
     expect(counter()!.textContent).toBe('3 of 3');
 
-    // Page 3 holds t21 alone; archiving it leaves two pages, not an empty one.
-    const row = screen.getByText('item t21').closest('li')!;
+    // Page 3 holds t41 alone; archiving it leaves two pages, not an empty one.
+    const row = screen.getByText('item t41').closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: /^Actions for/ }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Archive' }));
     await waitFor(() => expect(counter()!.textContent).toBe('2 of 2'));
-    expect(screen.getByText('item t20')).toBeTruthy();
+    expect(screen.getByText('item t40')).toBeTruthy();
   });
 
   it('should compute counts, filter tabs and collapse over the whole set while one page shows', async () => {
     fetchChecklist.mockImplementation(async () => [
       ...topLevel(25),
-      // t25 sits on page 3 with two children, one done.
+      // t25 sits on page 2 with two children, one done.
       { ...item('c1', 'task', 't25'), done: true },
       item('c2', 'task', 't25'),
       item('n1', 'note'),
@@ -227,7 +264,6 @@ describe('Todo paging', () => {
     expect(counter()).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'All' }));
-    fireEvent.click(next());
     fireEvent.click(next());
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item t25' }));
     // The count spans the whole family, not the page.

@@ -576,6 +576,26 @@ export interface paths {
         patch: operations["updateProfile"];
         trace?: never;
     };
+    "/api/users/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a refresh token for a new token pair
+         * @description Exchanges a refresh token, sent in the body, for a new access/refresh token pair. The new refresh token has a full lifetime from this exchange. Expiry fields are in NANOSECONDS, inherited from the monolith. A 401 here means the refresh token was rejected — it does not mean a token is required in the Authorization header.
+         */
+        post: operations["refresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/signin": {
         parameters: {
             query?: never;
@@ -979,6 +999,10 @@ export interface components {
              * @description When the profile was last changed
              */
             updatedAt: string;
+        };
+        RefreshRequest: {
+            /** @description Refresh token from signin or an earlier refresh */
+            refreshToken: string;
         };
         ReorderChecklistReq: {
             ids: string[];
@@ -4184,6 +4208,66 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    refresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -60,7 +60,7 @@ export function PlansMenuButton({ drawer }: { drawer: PlansDrawerState }) {
       aria-expanded={drawer.isOpen}
       aria-controls={DRAWER_ID}
       className={cn(
-        'flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden',
+        'flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden',
         FOCUS_RING,
       )}
     >

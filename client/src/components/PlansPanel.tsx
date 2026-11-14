@@ -40,7 +40,7 @@ export default function PlansPanel({ headerClassName }: { headerClassName?: stri
     <>
       {/* Header: the filter. */}
       <div className={cn('shrink-0 pb-3 pt-3', headerClassName ?? 'px-3')}>
-        <div className="flex rounded-md bg-muted p-0.5">
+        <div className="flex rounded-control bg-muted p-0.5">
           {FILTERS.map(({ value, label }) => {
             const isActive = activeFilter === value;
             return (
@@ -50,10 +50,10 @@ export default function PlansPanel({ headerClassName }: { headerClassName?: stri
                 aria-pressed={isActive}
                 onClick={() => setActiveFilter(value)}
                 className={cn(
-                  'h-7 flex-1 rounded-sm text-xs font-medium transition-colors',
+                  'h-7 flex-1 rounded-control text-xs font-medium transition-colors',
                   FOCUS_RING,
                   isActive
-                    ? 'bg-card text-foreground shadow-sm'
+                    ? 'bg-background text-foreground shadow-sm dark:bg-card'
                     : 'text-muted-foreground hover:text-foreground',
                 )}
               >
@@ -82,7 +82,7 @@ export default function PlansPanel({ headerClassName }: { headerClassName?: stri
                   href={item.href}
                   aria-current={item.isActive ? 'page' : undefined}
                   className={cn(
-                    'relative flex items-center rounded-md px-3 py-2 text-sm transition-colors hover:bg-muted focus-visible:ring-inset',
+                    'relative flex items-center rounded-control px-3 py-2 text-sm transition-colors hover:bg-muted focus-visible:ring-inset',
                     FOCUS_RING,
                     item.isActive ? 'font-medium text-primary' : 'text-foreground',
                   )}
@@ -107,7 +107,7 @@ export default function PlansPanel({ headerClassName }: { headerClassName?: stri
         <Link
           href="/create-plan"
           className={cn(
-            'flex w-full items-center justify-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted',
+            'flex w-full items-center justify-center gap-2 rounded-control border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted',
             FOCUS_RING,
           )}
         >

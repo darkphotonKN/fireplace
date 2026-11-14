@@ -5,8 +5,9 @@
 
 import type { ChecklistGroup } from './nesting';
 
-/** Top-level items per page (R3). */
-export const PAGE_SIZE = 10;
+/** Top-level items per page (R3, R25). Twenty, so paging starts at roughly
+ *  twice the board it used to (ten), not while the list is still short. */
+export const PAGE_SIZE = 20;
 
 /** How many pages the set needs. Always at least one, so an empty list is
  *  page 1 of 1 rather than page 1 of 0. */

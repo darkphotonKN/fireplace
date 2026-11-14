@@ -14,8 +14,8 @@ export const MAX_OFFSET_PX = 80;
 interface ParallaxLayerProps extends MotionWrapperProps {
   /**
    * Apparent scroll speed relative to the page. `1` is natural document flow;
-   * `0` would pin the layer. The tour uses ~0.2 for the ambient glow and ~0.6
-   * for mock art.
+   * `0` would pin the layer. The tour uses it only for the ambient glow
+   * (`GLOW_SPEED`, 0.2).
    */
   speed: number;
 }

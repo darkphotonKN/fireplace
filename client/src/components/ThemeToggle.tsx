@@ -13,7 +13,7 @@ export default function ThemeToggle() {
       onClick={toggleTheme}
       className={cn(
         // A 40px tap target below md, the compact desktop size from md (FS-49CQ2 R17).
-        'flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-8 md:w-8',
+        'flex h-10 w-10 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-8 md:w-8',
         FOCUS_RING,
       )}
       title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}

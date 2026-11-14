@@ -48,8 +48,8 @@ func userResponseFromProto(u *pb.User) UserResponse {
 	}
 }
 
-// AuthResponse is what signin publishes: the token pair plus the user it
-// belongs to.
+// AuthResponse is what signin and refresh publish: the token pair plus the user
+// it belongs to.
 //
 // Field names are transcribed from the legacy LoginResponse exactly —
 // including `userInfo`, which reads oddly next to `accessToken` but is what
@@ -89,6 +89,14 @@ type SigninRequest struct {
 	Password string `json:"password" doc:"Plaintext password"`
 }
 
+// RefreshRequest is the body of POST /api/users/refresh.
+//
+// No minLength on the token: an empty string is not a shape failure, it reaches
+// the token check and gets the 401 (FS-ZESEF R3).
+type RefreshRequest struct {
+	RefreshToken string `json:"refreshToken" doc:"Refresh token from signin or an earlier refresh"`
+}
+
 // --- huma input/output wrappers -------------------------------------------
 
 type SignupInput struct {
@@ -109,6 +117,14 @@ type SigninInput struct {
 }
 
 type SigninOutput struct {
+	Body AuthResponse
+}
+
+type RefreshInput struct {
+	Body RefreshRequest
+}
+
+type RefreshOutput struct {
 	Body AuthResponse
 }
 

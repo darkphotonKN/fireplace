@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 import Logo from '@/components/Logo';
 import ThemeToggle from '@/components/ThemeToggle';
-import CtaLink, { SIGN_UP_HREF } from './CtaLink';
+import CtaLink, { SIGN_IN_HREF, SIGN_UP_HREF } from './CtaLink';
 import { useScrolledPast } from './motion/useScrolledPast';
 
 /**
@@ -13,11 +13,20 @@ import { useScrolledPast } from './motion/useScrolledPast';
 const REVEAL_AT = 0.8;
 
 /**
+ * x.ai-sized from `sm` up: smaller than the hero's pills. Below `sm` the
+ * padding tightens and the wordmark drops, so logo, toggle and both pills
+ * fit one line on a 320px phone. `whitespace-nowrap shrink-0` keep a pill
+ * from wrapping its label or being squeezed when space runs short.
+ */
+const BAR_PILL = 'shrink-0 whitespace-nowrap px-3 py-2 text-sm sm:px-4';
+
+/**
  * The tour's own chrome.
  *
  * Absent over the hero — the first impression is the fire and nothing else — and
- * fading in past it so the CTA stays one click away through the remaining five
- * sections. `LayoutContent` short-circuits for the logged-out home route and
+ * fading in past it so sign-up and sign-in stay one click away through the
+ * grid and the close. No profile menu: signed-in visitors never see the
+ * landing. `LayoutContent` short-circuits for the logged-out home route and
  * supplies no chrome at all, so this is the landing's, not the app's.
  */
 export default function ChromeBar() {
@@ -36,15 +45,18 @@ export default function ChromeBar() {
         visible ? 'opacity-100' : 'pointer-events-none opacity-0'
       )}
     >
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3">
-        <span className="flex items-center gap-2 text-lg">
+      <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
+        <span className="flex items-center gap-2 text-base sm:text-lg">
           <Logo />
-          <span className="text-lg font-bold text-foreground">Fireplace</span>
+          <span className="hidden text-base font-bold text-foreground sm:inline sm:text-lg">Fireplace</span>
         </span>
 
-        <span className="flex items-center gap-3">
+        <span className="flex items-center gap-2">
           <ThemeToggle />
-          <CtaLink href={SIGN_UP_HREF} className="px-5 py-2 text-sm">
+          <CtaLink href={SIGN_IN_HREF} variant="muted" className={BAR_PILL}>
+            Sign in
+          </CtaLink>
+          <CtaLink href={SIGN_UP_HREF} className={BAR_PILL}>
             Start your plan
           </CtaLink>
         </span>

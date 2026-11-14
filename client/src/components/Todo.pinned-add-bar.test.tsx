@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 /**
  * FS-0008 R13–R14: the add bar is pinned to the bottom of the list card and
@@ -60,9 +60,14 @@ const addInput = () =>
   screen.getByRole('textbox', { name: /^New (task|note)/ }) as HTMLInputElement;
 // The add bar's wrapper is what pins; the form inside keeps its own look.
 const pinned = () => addInput().closest('form')!.parentElement!;
-// Sticky is inert without a scrolling ancestor, so the bar's own parent is
-// the bounded list area that scrolls under it.
-const listArea = () => pinned().parentElement!;
+// Sticky is inert without a scrolling ancestor: this is the bounded list area
+// the rows scroll in and the add bar pins to, in list and grid alike.
+const listArea = () => document.querySelector<HTMLElement>('[data-list-area]')!;
+
+// One cap for both states (FS-0008 R27): a single page is bounded by it, a
+// paged list is fixed at it.
+const HUG = /(^|\s)max-h-\[min\(80vh,60rem\)\](\s|$)/;
+const PAGED = /(^|\s)h-\[min\(80vh,60rem\)\](\s|$)/;
 
 async function renderLong() {
   fetchChecklist.mockImplementation(async () => LONG);
@@ -134,7 +139,7 @@ describe('Todo pinned add bar (FS-0008 R13–R14)', () => {
     input.focus();
     fireEvent.change(input, { target: { value: 'item NEW' } });
     fireEvent.submit(input.closest('form')!);
-    // 24 items is three pages, so the appended row lands on the last one and
+    // 24 items is two pages, so the appended row lands on the last one and
     // the view goes with it (R17) — the arrival is seen, not left off-page.
     expect(await screen.findByText('item NEW')).toBeTruthy();
     await waitFor(() => expect(addInput().readOnly).toBe(false));
@@ -163,20 +168,33 @@ describe('Todo pinned add bar (FS-0008 R13–R14)', () => {
     expect(document.querySelector('[data-add-bar-fade]')).toBeNull();
   });
 
-  it('should hold one fixed window height once the list pages', async () => {
-    // 24 items is three pages. Without a fixed height the section would
-    // collapse from ten rows to one when page 3 holds a single item, moving
-    // the controls and the bar under the cursor.
+  it('should hold the list area at the cap on every page once the list pages', async () => {
+    // 24 items is two pages. Without a fixed height the section would
+    // collapse from twenty rows to four when page 2 holds the rest, moving
+    // the controls and the bar under the cursor (R29).
     await renderLong();
     const area = listArea();
-    expect(area.className).toMatch(/\bh-\[min\(70vh,40rem\)\]/);
+    expect(area.className).toMatch(PAGED);
     expect(area.className).not.toMatch(/\bmax-h-\[/);
     // The rows region grows, so a short page still leaves the bar at the
     // window's bottom rather than floating under the last row.
     expect(area.firstElementChild!.className).toMatch(/\bflex-1\b/);
 
+    // Page 2 is the short last page: four rows, same height.
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
-    expect(listArea().className).toMatch(/\bh-\[min\(70vh,40rem\)\]/);
+    expect(listArea().className).toMatch(PAGED);
+  });
+
+  it('should hold the cap on a middle page as well', async () => {
+    fetchChecklist.mockImplementation(async () =>
+      Array.from({ length: 45 }, (_, i) => item(`L${i}`))
+    );
+    const Todo = (await import('./Todo')).default;
+    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item L0');
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(screen.getByTestId('page-counter').textContent).toBe('2 of 3');
+    expect(listArea().className).toMatch(PAGED);
   });
 
   it('should hug its content while everything fits on one page', async () => {
@@ -185,9 +203,81 @@ describe('Todo pinned add bar (FS-0008 R13–R14)', () => {
     render(<Todo fixedTaskType="longterm" enableTypeFilter />);
     await screen.findByText('item L0');
 
-    // A four-item plan shouldn't sit in a mostly empty box; only the 70vh
-    // cap applies, for the one-huge-family case.
-    expect(listArea().className).not.toMatch(/\bh-\[min\(/);
-    expect(listArea().className).toMatch(/\bmax-h-\[70vh\]/);
+    // A four-item plan shouldn't sit in a mostly empty box. Only the cap
+    // applies, for the one-huge-family case, and it scrolls inside (R28).
+    const area = listArea();
+    expect(area.className).toMatch(HUG);
+    expect(area.className).toMatch(/\boverflow-y-auto\b/);
+    expect(area.className).not.toMatch(/(^|\s)h-\[/);
+  });
+
+  it('should bound one page and fix many pages at the same cap in the grid', async () => {
+    // Twelve cards is one page, thirteen is two (R26). Same cap as the list,
+    // so the board is never taller in one view than in the other (R27).
+    window.localStorage.setItem('checklistView', 'grid');
+    fetchChecklist.mockImplementation(async () => LONG.slice(0, 12));
+    const Todo = (await import('./Todo')).default;
+    const { unmount } = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item L0');
+    expect(listArea().className).toMatch(HUG);
+    expect(listArea().className).not.toMatch(/(^|\s)h-\[/);
+    unmount();
+
+    fetchChecklist.mockImplementation(async () => LONG.slice(0, 13));
+    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item L0');
+    expect(listArea().className).toMatch(PAGED);
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(listArea().className).toMatch(PAGED);
+  });
+
+  it('should use one cap expression for both states, so page 2 never shrinks the board', async () => {
+    fetchChecklist.mockImplementation(async () => LONG.slice(0, 20));
+    const Todo = (await import('./Todo')).default;
+    const { unmount } = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item L0');
+    const hugCap = listArea().className.match(/\bmax-h-\[([^\]]+)\]/)![1];
+    unmount();
+
+    fetchChecklist.mockImplementation(async () => LONG.slice(0, 21));
+    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item L0');
+    const pagedCap = listArea().className.match(/(?:^|\s)h-\[([^\]]+)\]/)![1];
+    expect(pagedCap).toBe(hugCap);
+    // Neither of the old, mismatched bounds survives on the list area.
+    expect(listArea().className).not.toMatch(/70vh|40rem/);
+  });
+
+  it.each([
+    [
+      'archiving one',
+      async () => {
+        const row = screen.getByText('item L0').closest('li')!;
+        fireEvent.click(within(row).getByRole('button', { name: /^Actions for/ }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Archive' }));
+      },
+    ],
+    [
+      'filtering to the notes',
+      async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+      },
+    ],
+  ])('should go back to hugging when %s drops the list to one page', async (_case, drop) => {
+    // 21 items pages: twenty tasks and one note, so archiving any one leaves
+    // twenty and the Notes filter leaves one.
+    fetchChecklist.mockImplementation(async () => [
+      ...LONG.slice(0, 20),
+      { ...item('N0'), type: 'note' },
+    ]);
+    const Todo = (await import('./Todo')).default;
+    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
+    await screen.findByText('item L0');
+    expect(listArea().className).toMatch(PAGED);
+
+    await drop();
+    await waitFor(() => expect(screen.queryByTestId('page-counter')).toBeNull());
+    expect(listArea().className).toMatch(HUG);
+    expect(listArea().className).not.toMatch(/(^|\s)h-\[/);
   });
 });

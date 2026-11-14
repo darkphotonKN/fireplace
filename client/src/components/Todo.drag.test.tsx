@@ -327,28 +327,28 @@ describe('Todo drag to reorder', () => {
   });
 
   it('should leave the other pages\' order untouched (R8)', async () => {
-    const many = Array.from({ length: 13 }, (_, i) =>
+    const many = Array.from({ length: 23 }, (_, i) =>
       item(`t${String(i + 1).padStart(2, '0')}`)
     );
     await renderList(many);
 
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     layout();
-    expect(order()).toEqual(['item t11', 'item t12', 'item t13']);
+    expect(order()).toEqual(['item t21', 'item t22', 'item t23']);
 
-    await drag('item t13', 'item t11');
+    await drag('item t23', 'item t21');
 
-    expect(order()).toEqual(['item t13', 'item t11', 'item t12']);
-    // The whole set is written, and the first page's ten are in it, in the
+    expect(order()).toEqual(['item t23', 'item t21', 'item t22']);
+    // The whole set is written, and the first page's twenty are in it, in the
     // order they already had (R8.2).
     expect(reorderChecklistItems).toHaveBeenCalledWith('plan-1', {
       scope: 'longterm',
       parentId: null,
       ids: [
-        ...many.slice(0, 10).map((i) => i.id),
-        't13',
-        't11',
-        't12',
+        ...many.slice(0, 20).map((i) => i.id),
+        't23',
+        't21',
+        't22',
       ],
     });
   });

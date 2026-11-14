@@ -129,3 +129,85 @@ A plan's checklist grows until the card runs off the screen and the add bar sits
 - Remembering the page across reloads or sharing it in the URL.
 - Paging inside the archived view or the daily insights section.
 - Changing what the type filter itself filters.
+
+## Change: taller board, later paging
+Status: work-order
+Date: 2026-11-13
+
+The board pages too early and changes height when it does. A page holds ten rows or six cards, so
+paging starts while the board is still short. And the two states use different bounds: one page caps
+at `max-h-[70vh]`, while two or more pages sit in a fixed `h-[min(70vh,40rem)]` window. On a tall
+screen a single page can run up to 70vh, then shrinks to 40rem once page 2 appears. The user
+reported that drop as jank. This change doubles the page and gives both states one shared cap, so
+the board grows with its content, then holds that height once paging starts.
+
+Client only, like the original work order: page-size constants and the list area's height classes
+in `Todo.tsx`. No API, no new components. R1, R2, R4 and R5–R24 stand unchanged. R25 and R26
+replace the numbers in R3 (and in the acceptance criteria above that quote them). Everything else
+R3 says still holds: a collapsed parent counts as one, and folding never changes paging.
+
+### Requirements
+
+25. R25 A list page holds at most **20 top-level items** (`PAGE_SIZE` in `lib/paging`), up from
+    ten. *Charter default (C1). Reason: roughly twice the board before paging starts.*
+26. R26 A grid page holds at most **12 cards** (`GRID_PAGE_SIZE` in `Todo.tsx`), up from six. A card
+    is one top-level item, so the page unit is unchanged. *Charter default (C1). Reason: twice the
+    board, and 12 fills a 3-wide grid four deep or a 2-wide grid six deep with no ragged last row.*
+27. R27 The list and the grid share **one height cap: `min(80vh, 60rem)`**. The same expression
+    bounds both the single-page and the paged state, so a single page can never be taller than a
+    paged one. *Charter default (C2). Reason: today the two states use different bounds (max 70vh
+    vs. fixed min(70vh, 40rem)), so the board shrinks when page 2 appears on a tall screen. That
+    is the reported jank.*
+28. R28 **One page:** the list area hugs its content up to the cap. Past the cap it scrolls
+    inside, with the add bar pinned as before (R13, R14). A short list never sits in an empty
+    box. *Charter default (C2).*
+29. R29 **Two or more pages:** the list area is fixed at exactly the cap on **every** page,
+    including a short last page. Space left under a short page's rows stays empty. The add bar
+    stays at the bottom of the window and the page controls stay in place (R5). *Charter default
+    (C2). Reason: same as R27; a fixed height keeps the controls from moving under the cursor.*
+30. R30 Paging stays **count-based** (R3, R25, R26). Page boundaries never depend on rendered
+    height, viewport size or row height, so resizing the window never moves an item to another
+    page. *Charter default (C3). Reason: pages cut by height would reshuffle items on every
+    resize. A larger count plus a shared cap gives "grows, then stays fixed" without that.*
+31. R31 When the set drops back to **one page** (archive, delete or a filter change),
+    the list area **returns to hugging** (R28). The fixed height still means "more than one page",
+    as it does today. *Charter default (C4).*
+32. R32 This change covers the **long-term list and grid** only. The archived view and the
+    daily plan have no paging today and stay exactly as they are. *Charter default (C5).*
+
+### Acceptance Criteria
+
+- [ ] `PAGE_SIZE` is 20 and `GRID_PAGE_SIZE` is 12.
+- [ ] List view: 25 top-level items show 20 on page 1, with controls reading `1 of 2`. Page 2 shows the other 5.
+- [ ] List view: exactly 20 top-level items show no page controls; 21 show `1 of 2`.
+- [ ] List view: a parent with 8 children counts as one of the twenty, and its children render on the parent's page.
+- [ ] Grid view: 13 top-level items show 12 cards on page 1, reading `1 of 2`. Exactly 12 show no controls.
+- [ ] One page: the list area is bounded by `max-h-[min(80vh,60rem)]` and scrolls inside. It has no fixed height, so a short list hugs its rows.
+- [ ] Two or more pages: the list area has the fixed height `h-[min(80vh,60rem)]` on page 1, on a middle page and on a short last page.
+- [ ] The single-page bound and the paged height are the same `min(80vh,60rem)` expression, in list and grid alike, so adding the item that opens page 2 never makes the board shorter.
+- [ ] Taking a 21-item list back to 20 by archiving, deleting or filtering removes the controls, and the list area goes back to the single-page bound.
+- [ ] Changing the viewport size does not change which items sit on which page.
+- [ ] The archived view and the daily plan are unchanged: same markup, same classes, no paging.
+- [ ] Regression: FS-0008 R5–R18 hold at the new sizes (controls bottom-right and quiet, pinned add bar, Tab-to-nest on the current page, page jumps on add, clamping, page-1 reset), as do FS-0007's behaviours.
+- [ ] Client test suite passes, with fixtures that relied on the old sizes (10 rows, 6 cards, `70vh` / `40rem`) updated to the new ones.
+
+### Edge States
+
+- **Exactly 20 rows / 12 cards:** one page, no controls, the area hugs its content.
+- **21st item added:** the view jumps to page 2 (R17), and the area goes from hugging to the fixed cap. If the content was shorter than the cap, the board grows once, to the cap. It never shrinks.
+- **Short last page:** fixed at the cap, empty space below the rows, add bar and controls in their usual place.
+- **A single family taller than the cap** (a parent with 40 children): the family is never split (R2). On one page, the area scrolls inside the cap. On a paged board, that page scrolls inside the fixed window.
+- **Short screen** (80vh under 60rem): the cap is 80vh, and a full page scrolls inside it.
+- **Tall screen** (80vh over 60rem): the cap is 60rem, the same height on every page.
+- **Narrow screen, grid in one column:** 12 cards run past the cap and scroll inside it. Paging does not shrink to fit.
+- **Filter or view toggle drops to one page:** page 1 (R8), hugging (R31).
+- **Collapse all on a paged board:** the height stays fixed at the cap. Folding never changes paging (R3) or the paged height.
+
+### Out of Scope
+
+- Cutting pages by measured rendered height, or a page size that adapts to the viewport (rejected: R30).
+- Paging in the archived view or the daily plan, or any change to their height (R32).
+- Any API, gRPC or data change, and any new component.
+- Changes to the page controls, the add bar, or R5–R24 behaviour beyond the new numbers.
+- Per-user or persisted page size (already out of scope above).
+- FS-FSFEC's Background line "Grid pages at 6 cards". It describes what had shipped at the time and stays as written.

@@ -56,7 +56,7 @@ export default function FocusPrompt({ onSkip }: { onSkip: () => void }) {
   const typeCard = (type: string, title: string, blurb: string) => (
     <button
       onClick={() => handleTypeSelect(type)}
-      className={`rounded-lg p-6 transition-all ${
+      className={`rounded-tile p-6 transition-all ${
         selectedType === type
           ? "bg-primary/10 shadow-sm ring-2 ring-primary scale-[1.02]"
           : "bg-foreground/5 hover:bg-foreground/10"
@@ -106,7 +106,7 @@ export default function FocusPrompt({ onSkip }: { onSkip: () => void }) {
             disabled={!focusText.trim()}
             aria-hidden={!focusText.trim()}
             tabIndex={focusText.trim() ? 0 : -1}
-            className={`w-full max-w-2xl rounded-md bg-primary py-4 text-lg font-semibold text-primary-foreground transition-all duration-300 hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/30 active:scale-[0.98] ${
+            className={`w-full max-w-2xl rounded-control bg-action py-4 text-lg font-semibold text-action-foreground transition-all duration-300 hover:bg-action/90 hover:shadow-lg hover:shadow-action/30 active:scale-[0.98] ${
               focusText.trim()
                 ? "pointer-events-auto opacity-100"
                 : "pointer-events-none opacity-0"

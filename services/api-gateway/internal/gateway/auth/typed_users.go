@@ -13,8 +13,8 @@ import (
 // SERIALIZED users operations (FS-0004 §API surface, users).
 //
 // This is the first group carrying BOTH public and protected operations, which
-// is why it went first: signup and signin run no middleware and declare no
-// Security, while get-user and list-users declare both. Everything before this
+// is why it went first: signup, signin and refresh run no middleware and declare
+// no Security, while get-user and list-users declare both. Everything before this
 // slice was uniformly protected, so the split was never actually exercised.
 
 // UsersClient is the narrow seam these operations depend on. *Client satisfies
@@ -22,6 +22,7 @@ import (
 type UsersClient interface {
 	SignUpProto(ctx context.Context, req SignupRequest) (*pb.AuthResponse, error)
 	SignInProto(ctx context.Context, req SigninRequest) (*pb.AuthResponse, error)
+	RefreshProto(ctx context.Context, req RefreshRequest) (*pb.AuthResponse, error)
 	GetUserProto(ctx context.Context, id uuid.UUID) (*pb.User, error)
 	ListUsersProto(ctx context.Context) ([]*pb.User, error)
 }
@@ -33,10 +34,10 @@ func RegisterUsersOperations(api huma.API, c UsersClient,
 
 	// --- PUBLIC ---------------------------------------------------------
 	//
-	// No Middlewares, no Security. Note that signin still documents 401: it
-	// answers 401 for bad credentials while requiring no token to call. A
-	// documented 401 and a required token are different claims, and any gate
-	// that infers one from the other is wrong.
+	// No Middlewares, no Security. Note that signin and refresh still document
+	// 401: they answer 401 for bad credentials or a bad refresh token while
+	// requiring no token in the header. A documented 401 and a required token
+	// are different claims, and any gate that infers one from the other is wrong.
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "signup",
@@ -77,6 +78,28 @@ func RegisterUsersOperations(api huma.API, c UsersClient,
 			return nil, apierr.ProblemFor("login", err)
 		}
 		return &SigninOutput{Body: authResponseFromProto(resp)}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "refresh",
+		Method:      http.MethodPost,
+		Path:        "/api/users/refresh",
+		Summary:     "Exchange a refresh token for a new token pair",
+		Description: "Exchanges a refresh token, sent in the body, for a new access/refresh " +
+			"token pair. The new refresh token has a full lifetime from this exchange. " +
+			"Expiry fields are in NANOSECONDS, inherited from the monolith. " +
+			"A 401 here means the refresh token was rejected — it does not mean a token " +
+			"is required in the Authorization header.",
+		Errors: []int{
+			http.StatusUnauthorized, http.StatusUnprocessableEntity,
+			http.StatusServiceUnavailable,
+		},
+	}, func(ctx context.Context, in *RefreshInput) (*RefreshOutput, error) {
+		resp, err := c.RefreshProto(ctx, in.Body)
+		if err != nil {
+			return nil, apierr.ProblemFor("refresh", err)
+		}
+		return &RefreshOutput{Body: authResponseFromProto(resp)}, nil
 	})
 
 	// --- PROTECTED ------------------------------------------------------
