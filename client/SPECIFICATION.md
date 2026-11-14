@@ -46,6 +46,10 @@
 - [x] Plans sidebar → FS-none
 - [x] Docked sidebar that remembers open or hidden → FS-S6WVY
 
+## Layout
+
+- [ ] Responsive layout on phone, tablet and desktop → FS-49CQ2
+
 ## Suggestions
 
 - [x] Daily suggestions on the daily tab → FS-none
