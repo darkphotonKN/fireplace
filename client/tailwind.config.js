@@ -43,6 +43,8 @@ module.exports = {
         ring: 'hsl(var(--ring))',
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
+        // Carries its own alpha (both themes); no `/opacity` modifier.
+        scrim: 'hsl(var(--scrim))',
         primary: {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',
@@ -71,6 +73,13 @@ module.exports = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+      },
+      // Card grids (FS-49CQ2 R12–R13): as many columns as fit the width the
+      // grid actually gets beside the sidebar, never narrower than 18rem; below
+      // 18rem the one column shrinks to the container. The minimum lives only
+      // here. auto-fill (not auto-fit) keeps empty trailing tracks, accepted.
+      gridTemplateColumns: {
+        cards: 'repeat(auto-fill, minmax(min(100%, 18rem), 1fr))',
       },
       borderRadius: {
         lg: 'var(--radius)',

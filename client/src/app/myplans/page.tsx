@@ -153,7 +153,7 @@ export default function MyPlans() {
   };
 
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen md:p-8">
       <div className="max-w-7xl mx-auto space-y-12">
         {/* Header Section */}
         <div className="backdrop-blur-sm rounded-2xl p-8 shadow-lg bg-white/5 dark:bg-gray-900/10">
@@ -236,7 +236,7 @@ export default function MyPlans() {
               </div>
             )
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-cards gap-6">
               {plans.map((plan) => (
                 <div key={plan.id} className="relative group">
                   <Link href={`/plan/${plan.id}`}>

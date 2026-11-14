@@ -20,11 +20,12 @@ export default function HomeButton() {
       aria-current={isHome ? 'page' : undefined}
       title="Home"
       className={cn(
-        'group flex h-8 items-center gap-1.5 rounded-md px-2 text-sm transition-colors',
+        // A 40px tap target below md, the compact desktop size from md (FS-49CQ2 R17).
+        'group flex h-10 min-w-10 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm transition-colors md:h-8',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         isHome
           ? 'font-medium text-primary'
-          : 'text-foreground/70 hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
       )}
     >
       <House

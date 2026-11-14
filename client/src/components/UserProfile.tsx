@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { getProfile } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
+import { FOCUS_RING } from '@/lib/chrome';
+import { cn } from '@/lib/utils';
 
 export default function UserProfile() {
   const [isOpen, setIsOpen] = useState(false);
@@ -45,17 +47,25 @@ export default function UserProfile() {
   const displayName = loading ? '...' : (userName || 'User');
 
   return (
-    <div className="relative z-50" ref={dropdownRef}>
+    <div className="relative z-50 min-w-0" ref={dropdownRef}>
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 text-foreground/80 hover:text-foreground transition-colors"
+        className={cn(
+          // A 40px tap target below md, the compact desktop height from md (FS-49CQ2 R17).
+          'flex h-10 min-w-10 max-w-full items-center justify-center gap-2 rounded-md px-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-8',
+          FOCUS_RING,
+        )}
       >
-        <span className="text-sm">{displayName}</span>
+        {/* Below sm the name is read, not shown, so a long one can't push the
+            bar past a 375px phone; it stays the button's name (R18). From sm
+            it shows as before, cut short only if the bar runs out of room. */}
+        <span className="sr-only text-sm sm:not-sr-only sm:truncate">{displayName}</span>
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 20 20"
           fill="currentColor"
-          className={`w-3 h-3 transition-transform ${
+          className={`w-3 h-3 shrink-0 transition-transform ${
             isOpen ? 'rotate-180' : ''
           }`}
         >

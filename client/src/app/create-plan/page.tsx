@@ -96,7 +96,7 @@ function CreatePlanContent() {
   };
 
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen md:p-8">
       <div className="max-w-7xl mx-auto flex items-center justify-center h-[calc(100vh-8rem)]">
         <Card className="w-full max-w-md backdrop-blur-sm shadow-lg border-0 bg-white/5 dark:bg-gray-900/10">
           <div className="p-8">

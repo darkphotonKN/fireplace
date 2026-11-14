@@ -32,6 +32,12 @@
   --border: 12 30% 75%; /* Softer border with a hint of our primary color */
   --input: 55 33% 82%;
   --ring: 12 92% 65%;
+  /*
+   * Overlay scrim (FS-49CQ2 R4): dims the page behind a drawer. Carries its own
+   * alpha, so use it as `bg-scrim` with no opacity modifier. Light dims with
+   * the ink colour; dark with the page's own dark, so both themes recede.
+   */
+  --scrim: 0 0% 18% / 0.4; /* rgba(46, 46, 46, 0.4) */
 
   --radius: 0.5rem;
 }
@@ -54,6 +60,7 @@
   --accent-foreground: 43 10% 90%;
   /* --primary is identical in dark, so its text pair is too. */
   --primary-foreground: 0 0% 18%;
+  --scrim: 0 0% 12% / 0.7; /* rgba(31, 31, 31, 0.7) */
 }
 
 /*
@@ -164,6 +171,58 @@ html[data-sidebar-ready][data-sidebar='hidden']
 @media (prefers-reduced-motion: reduce) {
   html .fp-sidebar-panel {
     transition-delay: 0s !important;
+  }
+}
+
+/*
+ * Below md the plans panel never docks (FS-49CQ2 R1, R2, R10; supersedes
+ * FS-S6WVY R17, R19 there). Whatever `html[data-sidebar]` says, the dock and
+ * its rail are not shown and main runs full width. CSS only, so the first
+ * paint is already full width and hydration matches; the head script and the
+ * attribute keep driving the docked widths untouched. The query is the exact
+ * complement of Tailwind's `md` (its `max-md` form), so no fractional width
+ * shows the dock, the rail and the menu button together.
+ */
+@media not all and (min-width: 768px) {
+  .fp-sidebar-offset {
+    margin-left: 0;
+  }
+
+  .fp-sidebar-dock {
+    display: none;
+  }
+}
+
+/*
+ * The narrow-width drawer (FS-49CQ2 R4, R9): the dock's open width, but never
+ * more than 85% of the viewport. It mounts on open, so entry is a keyframe:
+ * a slide on the sidebar's curve, with the scrim fading in step. Under reduced
+ * motion the drawer only fades.
+ */
+.fp-plans-drawer {
+  width: min(var(--fp-sidebar-open-width), 85vw);
+  animation: fp-plans-drawer-in 300ms var(--fp-sidebar-ease);
+}
+
+.fp-plans-scrim {
+  animation: fp-plans-fade-in 300ms var(--fp-sidebar-ease);
+}
+
+@keyframes fp-plans-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes fp-plans-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fp-plans-drawer {
+    animation-name: fp-plans-fade-in;
   }
 }
 

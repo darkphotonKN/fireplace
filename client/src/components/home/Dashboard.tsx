@@ -54,7 +54,7 @@ export default function Dashboard({ onStartPlan }: { onStartPlan: () => void }) 
   const { work, tick, tickedIds } = useHomeTicks(selected);
 
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen md:p-8">
       <div className="mx-auto max-w-5xl space-y-12">
         {/* The status line renders in every state, the failed one included:
             §Edge States asks for its neutral form **and** the error state, and
@@ -125,9 +125,10 @@ function ContinueBlock({
   return (
     <section className="space-y-6">
       <h2>Continue where you left off</h2>
-      {/* Whatever exists fills the row — two plans are two cards, never two
-          cards and an empty slot. */}
-      <ul className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      {/* Only what exists is drawn — two plans are two cards, never a
+          placeholder card. Columns follow the width the grid gets (FS-49CQ2
+          R12), so a wide column may leave an empty trailing track. */}
+      <ul className="grid grid-cols-cards gap-4">
         {plans.map((plan) => (
           <ContinueCard
             key={plan.id}

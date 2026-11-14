@@ -509,7 +509,7 @@ export default function DayPlanSection({ planId }: { planId: string }) {
               ) : (
                 <>
                 <DayProgress groups={groups} />
-                <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-cards items-start gap-4">
                   {groups.map((group, i) => (
                     <div
                       key={`${i}-${group.label}`}
@@ -574,6 +574,7 @@ export default function DayPlanSection({ planId }: { planId: string }) {
  * The "i" tooltip (R63, D11): "your daily progression". Same markup as the
  * plan-focus tooltip in the plan layout. It opens downward over the section,
  * so the layout lifts this card above the middle card (see its comment).
+ * Centred under the icon so its 16rem fits a 375px screen (FS-49CQ2 R22).
  */
 function DayPlanInfo() {
   return (
@@ -600,7 +601,7 @@ function DayPlanInfo() {
       <div
         id="day-plan-info"
         role="tooltip"
-        className="absolute left-0 top-full mt-2 w-64 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
+        className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50"
       >
         <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 shadow-xl">
           <p className="text-xs text-white mb-1">Your daily progression</p>
@@ -609,7 +610,7 @@ function DayPlanInfo() {
             anything due for revision, comes back on its own.
           </p>
         </div>
-        <div className="absolute left-1 -top-1 w-2 h-2 bg-gray-900 border-l border-t border-gray-700 transform rotate-45"></div>
+        <div className="absolute left-1/2 -translate-x-1/2 -top-1 w-2 h-2 bg-gray-900 border-l border-t border-gray-700 transform rotate-45"></div>
       </div>
     </div>
   );

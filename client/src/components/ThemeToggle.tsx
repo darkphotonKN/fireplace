@@ -1,14 +1,21 @@
 'use client';
 
 import { useTheme } from '@/context/ThemeContext';
+import { FOCUS_RING } from '@/lib/chrome';
+import { cn } from '@/lib/utils';
 
 export default function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
 
   return (
     <button
+      type="button"
       onClick={toggleTheme}
-      className="p-2 rounded-md transition-colors text-foreground/60 hover:text-foreground/90 hover:bg-black/5 dark:hover:bg-white/10"
+      className={cn(
+        // A 40px tap target below md, the compact desktop size from md (FS-49CQ2 R17).
+        'flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-8 md:w-8',
+        FOCUS_RING,
+      )}
       title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
     >
       {theme === 'dark' ? (
