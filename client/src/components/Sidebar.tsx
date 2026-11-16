@@ -140,8 +140,8 @@ export default function Sidebar() {
           isPeeking && 'shadow-lg',
         )}
       >
-        {/* The filter sits beside the toggle's spot. */}
-        <PlansPanel headerClassName="pl-12 pr-3" />
+        {/* The title sits beside the toggle; the filter spans the panel below. */}
+        <PlansPanel titleClassName="pl-9" />
       </aside>
     </div>
   );
