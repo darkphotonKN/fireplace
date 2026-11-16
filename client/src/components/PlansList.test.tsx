@@ -3,8 +3,8 @@ import { render, screen, within, fireEvent } from '@testing-library/react';
 
 /**
  * The dock and the narrow-width drawer show one plan list (FS-49CQ2 R4): one
- * fetch for the shell, and one Projects / Learning choice, whichever surface
- * makes it.
+ * fetch for the shell, and one All / Projects / Learning choice, whichever
+ * surface makes it. Both start on All (FS-S6WVY R41).
  */
 
 const listPlans = vi.fn();
@@ -48,6 +48,19 @@ describe('PlansListProvider', () => {
     expect(listPlans).toHaveBeenCalledTimes(1);
   });
 
+  it('should start both panels on All', async () => {
+    const { dock, drawer } = twoSurfaces();
+    await within(dock).findByRole('link', { name: /A project/ });
+
+    for (const panel of [dock, drawer]) {
+      expect(within(panel).getByRole('button', { name: 'All' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(within(panel).getByRole('link', { name: /A course/ })).toBeInTheDocument();
+    }
+  });
+
   it('should share the filter between the panels', async () => {
     const { dock, drawer } = twoSurfaces();
     await within(dock).findByRole('link', { name: /A project/ });
@@ -59,6 +72,16 @@ describe('PlansListProvider', () => {
       'true',
     );
     expect(within(drawer).getByRole('link', { name: /A course/ })).toBeInTheDocument();
+    expect(within(drawer).queryByRole('link', { name: /A project/ })).toBeNull();
+
+    // And the reverse: a pick in the drawer shows in the dock.
+    fireEvent.click(within(drawer).getByRole('button', { name: 'All' }));
+
+    expect(within(dock).getByRole('button', { name: 'All' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(dock).getByRole('link', { name: /A project/ })).toBeInTheDocument();
   });
 
   it('should not fetch until a panel shows', () => {

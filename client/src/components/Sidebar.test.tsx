@@ -79,6 +79,28 @@ describe('Sidebar', () => {
       );
     });
 
+    it('should start on All, first of three, listing every plan in API order', async () => {
+      listPlans.mockResolvedValue([
+        { id: 'l', name: 'A course', planType: 'learning' },
+        { id: 'p', name: 'A project', planType: 'project' },
+      ]);
+      renderDock();
+      await screen.findByRole('link', { name: 'A project' });
+
+      const filter = screen.getByRole('button', { name: 'All' }).parentElement!;
+      const segments = within(filter).getAllByRole('button');
+      expect(segments.map((s) => s.textContent)).toEqual(['All', 'Projects', 'Learning']);
+      expect(segments.map((s) => s.getAttribute('aria-pressed'))).toEqual([
+        'true',
+        'false',
+        'false',
+      ]);
+
+      const rows = within(screen.getByRole('navigation', { name: 'Plans' })).getAllByRole('link');
+      expect(rows.map((r) => r.textContent)).toEqual(['A course', 'A project']);
+      expect(screen.queryByRole('heading')).toBeNull();
+    });
+
     it('should expose which plan type is selected, and switch it', async () => {
       listPlans.mockResolvedValue([
         { id: 'p', name: 'A project', planType: 'project' },
@@ -87,9 +109,11 @@ describe('Sidebar', () => {
       renderDock();
       await screen.findByRole('link', { name: 'A project' });
 
+      const all = screen.getByRole('button', { name: 'All' });
       const projects = screen.getByRole('button', { name: 'Projects' });
       const learning = screen.getByRole('button', { name: 'Learning' });
-      expect(projects).toHaveAttribute('aria-pressed', 'true');
+      expect(all).toHaveAttribute('aria-pressed', 'true');
+      expect(projects).toHaveAttribute('aria-pressed', 'false');
       expect(learning).toHaveAttribute('aria-pressed', 'false');
 
       fireEvent.click(learning);
@@ -97,6 +121,112 @@ describe('Sidebar', () => {
       expect(projects).toHaveAttribute('aria-pressed', 'false');
       expect(screen.getByRole('link', { name: 'A course' })).toBeInTheDocument();
       expect(screen.queryByRole('link', { name: 'A project' })).toBeNull();
+    });
+
+    describe('the All filter (FS-S6WVY §Change: All filter, on by default)', () => {
+      const mixed = [
+        { id: 'p', name: 'A project', planType: 'project' },
+        { id: 'l', name: 'A course', planType: 'learning' },
+        { id: 'x', name: 'An oddity', planType: 'habit' },
+      ];
+      const rowNames = () =>
+        within(screen.getByRole('navigation', { name: 'Plans' }))
+          .queryAllByRole('link')
+          .map((r) => r.textContent);
+
+      beforeEach(() => listPlans.mockResolvedValue(mixed));
+
+      it.each([
+        ['learning', 'l', 'A course'],
+        ['project', 'p', 'A project'],
+      ])('should list and mark the %s plan being viewed with nothing picked', async (_t, id, name) => {
+        pathname = `/plan/${id}`;
+        renderDock();
+
+        const row = await screen.findByRole('link', { name });
+        expect(row).toHaveAttribute('aria-current', 'page');
+        expect(row.querySelector('.bg-primary')).not.toBeNull();
+      });
+
+      it('should hold a Learning pick when navigating onto a project plan', async () => {
+        const { rerender } = renderDock();
+        await screen.findByRole('link', { name: 'A project' });
+        fireEvent.click(screen.getByRole('button', { name: 'Learning' }));
+
+        pathname = '/plan/p';
+        rerender(<Sidebar />);
+
+        expect(screen.getByRole('button', { name: 'Learning' })).toHaveAttribute(
+          'aria-pressed',
+          'true',
+        );
+        expect(screen.queryByRole('link', { name: 'A project' })).toBeNull();
+        expect(screen.queryByRole('link', { current: 'page' })).toBeNull();
+      });
+
+      it.each([['Projects'], ['Learning']])(
+        'should list every plan again on All after %s',
+        async (pick) => {
+          renderDock();
+          await screen.findByRole('link', { name: 'A project' });
+          fireEvent.click(screen.getByRole('button', { name: pick }));
+          fireEvent.click(screen.getByRole('button', { name: 'All' }));
+
+          expect(rowNames()).toEqual(['A project', 'A course', 'An oddity']);
+        },
+      );
+
+      it('should list a plan of an unknown type under All only', async () => {
+        renderDock();
+        expect(await screen.findByRole('link', { name: 'An oddity' })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Projects' }));
+        expect(rowNames()).toEqual(['A project']);
+        fireEvent.click(screen.getByRole('button', { name: 'Learning' }));
+        expect(rowNames()).toEqual(['A course']);
+      });
+
+      it('should start on All again after a remount, writing the choice nowhere', async () => {
+        const setItem = vi.spyOn(Storage.prototype, 'setItem');
+        const pushState = vi.spyOn(window.history, 'pushState');
+        const replaceState = vi.spyOn(window.history, 'replaceState');
+        const { unmount } = renderDock();
+        await screen.findByRole('link', { name: 'A project' });
+        fireEvent.click(screen.getByRole('button', { name: 'Learning' }));
+        unmount();
+
+        renderDock();
+        await screen.findByRole('link', { name: 'A project' });
+        expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+        // Not local or session storage, the URL, or the API (the list call takes no filter).
+        expect(setItem).not.toHaveBeenCalled();
+        expect(pushState).not.toHaveBeenCalled();
+        expect(replaceState).not.toHaveBeenCalled();
+        expect(listPlans.mock.calls).toEqual([[], []]);
+      });
+
+      it.each([
+        ['All', 'No plans yet'],
+        ['Projects', 'No projects yet'],
+        ['Learning', 'No learning plans yet'],
+      ])('should say so when there are no plans, under %s', async (pick, copy) => {
+        listPlans.mockResolvedValue([]);
+        renderDock();
+        await screen.findByText('No plans yet');
+
+        fireEvent.click(screen.getByRole('button', { name: pick }));
+        expect(screen.getByText(copy)).toBeInTheDocument();
+      });
+
+      it('should style All as the other segments: muted track, card surface, coral focus ring', async () => {
+        renderDock();
+        await screen.findByRole('link', { name: 'A project' });
+
+        const all = screen.getByRole('button', { name: 'All' });
+        expect(all.parentElement).toHaveClass('bg-muted');
+        expect(all).toHaveClass('bg-background', 'dark:bg-card', 'focus-visible:ring-ring');
+        expect(all.className).not.toMatch(/(^|\s)(bg|text)-primary/);
+      });
     });
 
     it('should offer a quiet "New plan" link to create one', async () => {
