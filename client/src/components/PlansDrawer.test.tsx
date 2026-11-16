@@ -124,7 +124,11 @@ describe('PlansDrawer — open (R4, R8)', () => {
     expect(button).toHaveAttribute('aria-expanded', 'true');
     const panel = drawer()!;
     expect(document.getElementById(button.getAttribute('aria-controls')!)).toContainElement(panel);
-    expect(within(panel).getByRole('button', { name: 'Projects' })).toHaveFocus();
+    // The first control is the All segment, pressed by default (FS-S6WVY R41).
+    const all = within(panel).getByRole('button', { name: 'All' });
+    expect(all).toHaveFocus();
+    expect(all).toHaveAttribute('aria-pressed', 'true');
+    expect(within(panel).getByRole('button', { name: 'Projects' })).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: 'Learning' })).toBeInTheDocument();
     expect(
       within(within(panel).getByRole('link', { name: /Their kitchen/ })).getByText('shared'),

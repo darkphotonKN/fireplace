@@ -9,13 +9,21 @@ import { FOCUS_RING } from '@/lib/chrome';
 import { cn } from '@/lib/utils';
 
 const FILTERS: { value: PlanFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
   { value: 'project', label: 'Projects' },
   { value: 'learning', label: 'Learning' },
 ];
 
+/** What the list says when the filter matches nothing (R31, FS-S6WVY R40). */
+const EMPTY: Record<PlanFilter, string> = {
+  all: 'No plans yet',
+  project: 'No projects yet',
+  learning: 'No learning plans yet',
+};
+
 /**
- * The plans panel's body: the Projects / Learning filter, the plan list (with
- * the shared mark) and "New plan" pinned at the bottom. The dock and the
+ * The plans panel's body: the All / Projects / Learning filter, the plan list
+ * (with the shared mark) and "New plan" pinned at the bottom. The dock and the
  * narrow-width drawer both render it, so its look is defined once (FS-S6WVY
  * R25–R31, FS-49CQ2 R4). The list and the filter come from the shell's
  * `PlansListProvider`, so both surfaces show the same ones. The caller supplies
@@ -28,7 +36,8 @@ export default function PlansPanel({ headerClassName }: { headerClassName?: stri
   const { plans, isLoading, error, activeFilter, setActiveFilter } = usePlansList();
 
   const filteredPlans = plans
-    .filter((plan) => plan.planType === activeFilter)
+    // All is every plan in API order, unknown types included (FS-S6WVY R39).
+    .filter((plan) => activeFilter === 'all' || plan.planType === activeFilter)
     .map((plan) => ({
       name: plan.name,
       href: `/plan/${plan.id}`,
@@ -72,9 +81,7 @@ export default function PlansPanel({ headerClassName }: { headerClassName?: stri
           ) : error ? (
             <li className="px-3 py-2 text-sm text-muted-foreground">{error}</li>
           ) : filteredPlans.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-muted-foreground">
-              No {activeFilter === 'project' ? 'projects' : 'learning plans'} yet
-            </li>
+            <li className="px-3 py-2 text-sm text-muted-foreground">{EMPTY[activeFilter]}</li>
           ) : (
             filteredPlans.map((item) => (
               <li key={item.href}>

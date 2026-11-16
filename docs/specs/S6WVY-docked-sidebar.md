@@ -312,3 +312,99 @@ Look
 - Editing FS-KSJFR (supersession is recorded here only).
 - Moving `bg-layout`'s raw values into tokens (pre-existing drift in `globals.css`; R25 governs
   `Sidebar.tsx` and the new shell code, not that class).
+
+## Change: All filter, on by default
+Status: work-order
+Date: 2026-11-16
+
+The panel's filter has two segments, Projects and Learning, and starts on Projects every time the
+shell mounts. So a user who lands on a learning plan sees a list without it, and nothing is
+highlighted: R27's active-plan mark never fires. This change adds a third segment, **All**, puts
+it first and makes it the default, so with nothing picked the current plan is always listed and
+marked. The user's words: "on by default so I see all my plans", and default to All "in the cases
+nothing was picked, so that your plan is highlighted".
+
+Client only, like the original work order. The filter state is in
+`client/src/components/PlansList.tsx` (shared by the dock and the narrow-width drawer, FS-49CQ2
+R4); the segments and empty copy are in `client/src/components/PlansPanel.tsx`. No backend, API,
+route or data change, and no new dependency. R1–R25, R27–R30 and R32–R34 stand unchanged. R35 and
+R36 extend R26's two segments to three; R40 adds a third empty string beside R31's two. Everything
+else R26 says still holds for every segment: muted track, card-surface active segment, no coral,
+sentence case, active state exposed to assistive tech. Decisions marked *charter default* were set
+by the charter run that scoped this change, each with its reason; none was challenged (client
+chrome, cheap to reverse).
+
+### Requirements
+
+- **R35** — The filter has a third segment labelled **"All"**, as text, not an icon. *Charter
+  default. Reason: it matches the other two text segments, so it needs no tooltip or separate
+  accessible name.*
+- **R36** — The segments read **All · Projects · Learning**, in that order. *Charter default.
+  Reason: the default goes first.*
+- **R37** — **All is selected whenever the shell mounts**: first load, reload, and after signing in.
+  The choice is held in memory for the life of the shell only and is never written to storage, the
+  URL or the server. *Charter default. Reason: remembering the filter stays out of scope (see this
+  FS's Out of Scope).*
+- **R38** — An **explicit Projects or Learning pick holds while navigating** within the shell,
+  including onto a plan of the other type, whose row is then not listed and so not marked. The
+  filter never switches by itself. *Charter default. Reason: the user scoped the fix to "the cases
+  nothing was picked"; with All as the default, the current plan is always listed and marked (R27)
+  until the user narrows the list themselves.*
+- **R39** — **All lists every plan** the user can see, in the order the API returns them, with no
+  grouping by type and no type badge. A plan whose `planType` is neither `project` nor `learning`
+  appears under All only. *Charter default. Reason: smallest change; an unknown type simply falls
+  out of the two type filters.*
+- **R40** — With no plans at all, the All empty row reads **"No plans yet"**, styled per R31.
+  Projects and Learning keep R31's "No projects yet" / "No learning plans yet". *Charter default.
+  Reason: the same invitational voice as R31.*
+- **R41** — The dock and the drawer share the one choice, as FS-49CQ2 R4 requires: both start on
+  All, and a pick in either shows in the other. Opening the drawer still moves focus to its first
+  control (FS-49CQ2), which is now the All segment.
+
+### Acceptance Criteria
+
+- [ ] The filter shows three segments, "All", "Projects", "Learning", in that order, in the dock
+      and in the drawer.
+- [ ] On first render, All has `aria-pressed="true"` and Projects and Learning `"false"`.
+- [ ] Under All, a project plan and a learning plan are both listed, in API order, with no group
+      headings or type badge.
+- [ ] On a learning plan's page with nothing picked, that plan's row is listed with
+      `aria-current="page"` and the coral mark (R27). Same for a project plan.
+- [ ] Picking Learning, then navigating to a project plan, leaves Learning pressed and does not
+      list the project plan.
+- [ ] Picking Projects or Learning, then All, lists every plan again.
+- [ ] A remount of the shell (reload) starts on All whatever was picked before; nothing is written
+      to `localStorage`, `sessionStorage`, the URL or the API.
+- [ ] A plan with an unknown `planType` is listed under All and under neither Projects nor
+      Learning.
+- [ ] With no plans, All shows "No plans yet"; Projects and Learning keep "No projects yet" and
+      "No learning plans yet".
+- [ ] A pick made in the dock shows in the drawer and the reverse (FS-49CQ2 R4 still holds).
+- [ ] Opening the drawer focuses the All segment.
+- [ ] The All segment follows R26 and R30: muted track, card-surface active state, no coral, coral
+      `focus-visible` ring.
+- [ ] `Sidebar.test.tsx`, `PlansDrawer.test.tsx` and `PlansList.test.tsx` are updated to the new
+      default and order and cover the criteria above; `npm run lint`, `npm run build` and the test
+      suite pass.
+
+### Edge States
+
+| Situation | Behaviour |
+|---|---|
+| Nothing picked, on a learning (or project) plan | All; the plan is listed and marked (R37, R27). |
+| Learning picked, then open a project plan | Learning holds; the plan is not listed, nothing is marked (R38). |
+| Reload, or a fresh sign-in | Back to All (R37). |
+| No plans at all, All selected | "No plans yet" (R40). |
+| Plans exist, none of the selected type | R31's copy for that type, as before. |
+| Plan with an unknown `planType` | Under All only (R39). |
+| Plans still loading, or failed to load | Loading or error row as before, under every segment. |
+| Drawer opened at narrow width | All pressed unless a pick was already made in the dock; focus on All (R41). |
+| On `/` or another non-plan route | All by default; no row is marked, as before. |
+
+### Out of Scope
+
+- Remembering the filter across reloads or tabs (unchanged from this FS's Out of Scope).
+- Switching the filter to match the current plan's type, or resetting a pick to All on navigation.
+- Grouping or sorting plans under All, type badges or icons on rows, and per-type counts.
+- An icon for the All segment.
+- Any backend, API, route or data change, and any new dependency.

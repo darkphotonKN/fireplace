@@ -21,7 +21,7 @@ export interface PanelPlan {
   relation?: 'owner' | 'member';
 }
 
-export type PlanFilter = 'learning' | 'project';
+export type PlanFilter = 'all' | 'learning' | 'project';
 
 interface PlansList {
   plans: PanelPlan[];
@@ -36,10 +36,10 @@ interface PlansList {
 const PlansListContext = createContext<PlansList | null>(null);
 
 /**
- * The plan list and the Projects / Learning choice behind the plans panel,
- * held once for the shell (FS-49CQ2 R4). The dock and the narrow-width drawer
- * both read it, so a drawer that mounts on open shows the list at once and
- * keeps the filter, and the two never fetch twice. It fetches when the first
+ * The plan list and the All / Projects / Learning choice behind the plans
+ * panel, held once for the shell (FS-49CQ2 R4). The dock and the narrow-width
+ * drawer both read it, so a drawer that mounts on open shows the list at once
+ * and keeps the filter, and the two never fetch twice. It fetches when the first
  * panel shows, not on mount, and lives as long as the shell does, as the
  * dock's own list used to (FS-S6WVY).
  */
@@ -47,7 +47,8 @@ export function PlansListProvider({ children }: { children: ReactNode }) {
   const [plans, setPlans] = useState<PanelPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<PlanFilter>('project');
+  // All on every mount, held in memory only, never stored (FS-S6WVY R37).
+  const [activeFilter, setActiveFilter] = useState<PlanFilter>('all');
   const requested = useRef(false);
 
   const load = useCallback(() => {
