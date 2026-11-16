@@ -96,9 +96,9 @@ describe('Sidebar', () => {
         'false',
       ]);
 
-      const rows = within(screen.getByRole('navigation', { name: 'Plans' })).getAllByRole('link');
-      expect(rows.map((r) => r.textContent)).toEqual(['A course', 'A project']);
-      expect(screen.queryByRole('heading')).toBeNull();
+      const list = within(screen.getByRole('navigation', { name: 'Plans' }));
+      expect(list.getAllByRole('link').map((r) => r.textContent)).toEqual(['A course', 'A project']);
+      expect(list.queryByRole('heading')).toBeNull();
     });
 
     it('should expose which plan type is selected, and switch it', async () => {

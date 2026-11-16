@@ -27,9 +27,9 @@ const EMPTY: Record<PlanFilter, string> = {
  * narrow-width drawer both render it, so its look is defined once (FS-S6WVY
  * R25–R31, FS-49CQ2 R4). The list and the filter come from the shell's
  * `PlansListProvider`, so both surfaces show the same ones. The caller supplies
- * the surface it sits on.
+ * the surface it sits on, and the dock indents the title past its toggle.
  */
-export default function PlansPanel({ headerClassName }: { headerClassName?: string }) {
+export default function PlansPanel({ titleClassName }: { titleClassName?: string }) {
   const pathname = usePathname();
   const planId = pathname?.split('/plan/')?.[1] || '';
 
@@ -47,9 +47,18 @@ export default function PlansPanel({ headerClassName }: { headerClassName?: stri
 
   return (
     <>
-      {/* Header: the filter. */}
-      <div className={cn('shrink-0 pb-3 pt-3', headerClassName ?? 'px-3')}>
-        <div className="flex rounded-control bg-muted p-0.5">
+      {/* Header: the title on the toggle's row, then the filter across the
+          panel's full width, so three labels never crowd beside the toggle. */}
+      <div className="shrink-0 px-3 pb-3 pt-3">
+        <h2
+          className={cn(
+            'flex h-8 items-center text-sm font-semibold text-foreground',
+            titleClassName ?? 'px-3',
+          )}
+        >
+          Plans
+        </h2>
+        <div className="mt-2 flex rounded-control bg-muted p-0.5">
           {FILTERS.map(({ value, label }) => {
             const isActive = activeFilter === value;
             return (
@@ -59,7 +68,9 @@ export default function PlansPanel({ headerClassName }: { headerClassName?: stri
                 aria-pressed={isActive}
                 onClick={() => setActiveFilter(value)}
                 className={cn(
-                  'h-7 flex-1 rounded-control text-xs font-medium transition-colors',
+                  // Sized to the label, the leftover shared: All stays
+                  // compact and the longer labels keep their breathing room.
+                  'h-7 flex-auto whitespace-nowrap rounded-control px-2 text-xs font-medium transition-colors',
                   FOCUS_RING,
                   isActive
                     ? 'bg-background text-foreground shadow-sm dark:bg-card'
