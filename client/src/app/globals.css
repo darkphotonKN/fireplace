@@ -55,6 +55,13 @@
    */
   --scrim: 0 0% 18% / 0.4; /* rgba(46, 46, 46, 0.4) */
 
+  /*
+   * A note's paper (FS-PGG2N R46, variant A): the surface of a note and
+   * nothing else. The note card, a note row's chip, the note page's sheet.
+   * Warm enough to read as paper against the ivory tiles.
+   */
+  --note-paper: 42 70% 95%;
+
   --radius: 0.5rem;
 
   /*
@@ -87,6 +94,8 @@
   /* --primary is identical in dark, so its text pair is too. */
   --primary-foreground: 0 0% 18%;
   --scrim: 0 0% 12% / 0.7; /* rgba(31, 31, 31, 0.7) */
+  /* Paper in the dark: a warm brown just above the card, never a light sheet. */
+  --note-paper: 38 22% 17%;
   --action: 12 92% 65%;
   --action-foreground: 0 0% 18%;
 

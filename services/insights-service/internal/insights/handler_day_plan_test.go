@@ -74,7 +74,7 @@ func TestHandlerPlanMyDay_MapsThePlannedDayPlan(t *testing.T) {
 			{ID: entryB, Kind: dayplan.EntryNewStep, ParentItemID: &newParent, Text: "Do knapsack", Reason: "start"},
 		}}},
 	}}
-	h := NewHandler(nil, plans)
+	h := NewHandler(nil, plans, nil)
 
 	resp, err := h.PlanMyDay(context.Background(), &pb.PlanMyDayRequest{PlanId: planID.String(), UserId: userID.String(), Date: "2026-10-25"})
 
@@ -105,7 +105,7 @@ func TestHandlerGetDayPlan_NotPlannedHasNoSourceNoDrawTimeAndNoGroups(t *testing
 	plans := &fakeDayPlans{plan: dayplan.DayPlan{
 		Key: guided.DayKey{PlanID: planID, UserID: userID, Date: time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)}, Groups: []dayplan.Group{}, RefreshesRemaining: 3,
 	}}
-	h := NewHandler(nil, plans)
+	h := NewHandler(nil, plans, nil)
 
 	resp, err := h.GetDayPlan(context.Background(), &pb.GetDayPlanRequest{PlanId: planID.String(), UserId: userID.String(), Date: "2026-10-25"})
 
@@ -147,7 +147,7 @@ func TestHandlerDayPlan_MapsErrors(t *testing.T) {
 				if tt.badPlan {
 					planID = "nope"
 				}
-				err := call(NewHandler(nil, &fakeDayPlans{err: tt.svcErr}), planID)
+				err := call(NewHandler(nil, &fakeDayPlans{err: tt.svcErr}, nil), planID)
 
 				if status.Code(err) != tt.wantCode {
 					t.Fatalf("code = %s, want %s (err %v)", status.Code(err), tt.wantCode, err)
@@ -170,7 +170,7 @@ func TestHandlerTickDayPlanEntry_ForwardsTheCallAndMapsTheTickedEntry(t *testing
 		ID: entryID, Kind: dayplan.EntryExistingItem, ItemID: &item, ParentItemID: &parent,
 		Text: "Solve the climbing stairs problem", Reason: "start", Ticked: true,
 	}}
-	h := NewHandler(nil, plans)
+	h := NewHandler(nil, plans, nil)
 	itemStr := item.String()
 
 	resp, err := h.TickDayPlanEntry(context.Background(), &pb.TickDayPlanEntryRequest{EntryId: entryID.String(), UserId: userID.String(), ItemId: &itemStr})
@@ -198,7 +198,7 @@ func TestHandlerUntickDayPlanEntry_ForwardsTheCall(t *testing.T) {
 	entryID, userID := uuid.New(), uuid.New()
 	plans := &fakeDayPlans{}
 
-	_, err := NewHandler(nil, plans).UntickDayPlanEntry(context.Background(), &pb.UntickDayPlanEntryRequest{EntryId: entryID.String(), UserId: userID.String()})
+	_, err := NewHandler(nil, plans, nil).UntickDayPlanEntry(context.Background(), &pb.UntickDayPlanEntryRequest{EntryId: entryID.String(), UserId: userID.String()})
 
 	if err != nil || !plans.unticked || plans.gotEntry != entryID || plans.gotUser != userID {
 		t.Fatalf("untick err %v, service unticked %v entry %s user %s", err, plans.unticked, plans.gotEntry, plans.gotUser)
@@ -245,7 +245,7 @@ func TestHandlerDayTicks_MapErrors(t *testing.T) {
 				case "item":
 					itemID = ptrTo("nope")
 				}
-				err := call(NewHandler(nil, &fakeDayPlans{err: tt.svcErr}), entryID, userID, itemID)
+				err := call(NewHandler(nil, &fakeDayPlans{err: tt.svcErr}, nil), entryID, userID, itemID)
 
 				if status.Code(err) != tt.wantCode {
 					t.Fatalf("code = %s, want %s (err %v)", status.Code(err), tt.wantCode, err)
@@ -269,7 +269,7 @@ func TestHandlerTickDayPlanEntry_MapsRevisionAndRevisionsSwitch(t *testing.T) {
 	h := NewHandler(nil, &fakeDayPlans{entry: dayplan.Entry{
 		ID: entryID, Kind: dayplan.EntryExistingItem, ItemID: &item, Text: "x", Reason: "y", Ticked: true,
 		Revision: ptrTo(2), RevisionsEnabled: ptrTo(false),
-	}})
+	}}, nil)
 
 	resp, err := h.TickDayPlanEntry(context.Background(), &pb.TickDayPlanEntryRequest{EntryId: entryID.String(), UserId: uuid.NewString()})
 
@@ -280,7 +280,7 @@ func TestHandlerTickDayPlanEntry_MapsRevisionAndRevisionsSwitch(t *testing.T) {
 		t.Fatalf("entry = %v, want revision 2 and revisions_enabled false", e)
 	}
 
-	h = NewHandler(nil, &fakeDayPlans{entry: dayplan.Entry{ID: entryID, Kind: dayplan.EntryExistingItem, ItemID: &item, Text: "x", Reason: "y"}})
+	h = NewHandler(nil, &fakeDayPlans{entry: dayplan.Entry{ID: entryID, Kind: dayplan.EntryExistingItem, ItemID: &item, Text: "x", Reason: "y"}}, nil)
 	resp, err = h.TickDayPlanEntry(context.Background(), &pb.TickDayPlanEntryRequest{EntryId: entryID.String(), UserId: uuid.NewString()})
 	if err != nil {
 		t.Fatal(err)
@@ -294,7 +294,7 @@ func TestHandlerSetItemRevisions_ForwardsTheCall(t *testing.T) {
 	planID, userID, item := uuid.New(), uuid.New(), uuid.New()
 	plans := &fakeDayPlans{}
 
-	_, err := NewHandler(nil, plans).SetItemRevisions(context.Background(), &pb.SetItemRevisionsRequest{
+	_, err := NewHandler(nil, plans, nil).SetItemRevisions(context.Background(), &pb.SetItemRevisionsRequest{
 		PlanId: planID.String(), UserId: userID.String(), ItemId: item.String(), Enabled: true,
 	})
 
@@ -323,7 +323,7 @@ func TestHandlerSetItemRevisions_MapsErrors(t *testing.T) {
 			if tt.req != nil {
 				tt.req(req)
 			}
-			_, err := NewHandler(nil, &fakeDayPlans{err: tt.svcErr}).SetItemRevisions(context.Background(), req)
+			_, err := NewHandler(nil, &fakeDayPlans{err: tt.svcErr}, nil).SetItemRevisions(context.Background(), req)
 
 			if status.Code(err) != tt.wantCode {
 				t.Fatalf("code = %s, want %s (err %v)", status.Code(err), tt.wantCode, err)

@@ -6,6 +6,7 @@ import (
 
 	planpb "github.com/darkphotonKN/fireplace/common/api/proto/plan"
 	"github.com/darkphotonKN/fireplace/services/insights-service/internal/dayplan"
+	"github.com/darkphotonKN/fireplace/services/insights-service/internal/notesummary"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -47,5 +48,29 @@ func TestToPlanProfile_CarriesPlanTypeAndFocus(t *testing.T) {
 
 	if got != (dayplan.PlanProfile{Type: "learning", Focus: "Graphs first"}) {
 		t.Fatalf("profile = %+v", got)
+	}
+}
+
+// FS-PGG2N R39 (ADR-0015): only owner and member may read; none and an
+// unanswered relation fail closed.
+func TestOwnerOrMember_OnlyOwnerAndMember(t *testing.T) {
+	cases := map[planpb.PlanRelation]bool{
+		planpb.PlanRelation_PLAN_RELATION_OWNER:       true,
+		planpb.PlanRelation_PLAN_RELATION_MEMBER:      true,
+		planpb.PlanRelation_PLAN_RELATION_NONE:        false,
+		planpb.PlanRelation_PLAN_RELATION_UNSPECIFIED: false,
+	}
+	for rel, want := range cases {
+		if got := ownerOrMember(rel); got != want {
+			t.Errorf("ownerOrMember(%v) = %v, want %v", rel, got, want)
+		}
+	}
+}
+
+func TestToNoteSummaryItem_CarriesTypeBodyAndArchived(t *testing.T) {
+	got := toNoteSummaryItem(&planpb.ChecklistItem{Id: "i", Type: "note", Description: "Body", Archived: true})
+
+	if got != (notesummary.Item{Type: "note", Description: "Body", Archived: true}) {
+		t.Fatalf("item = %+v", got)
 	}
 }

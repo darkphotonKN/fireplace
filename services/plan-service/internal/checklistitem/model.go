@@ -3,6 +3,7 @@ package checklistitem
 import (
 	"time"
 
+	"github.com/darkphotonKN/fireplace/services/plan-service/internal/itemtype"
 	"github.com/google/uuid"
 )
 
@@ -18,6 +19,7 @@ type Item struct {
 	StartDate   *time.Time `db:"start_date" json:"start_date,omitempty"`
 	DueDate     *time.Time `db:"due_date" json:"due_date,omitempty"`
 	Intention   *string    `db:"intention" json:"intention,omitempty"`
+	Summary     *string    `db:"summary" json:"summary,omitempty"`
 	Scope       string     `db:"scope" json:"scope"`
 	Archived    bool       `db:"archived" json:"archived"`
 	CreatedAt   time.Time  `db:"created_at" json:"created_at"`
@@ -30,12 +32,16 @@ const (
 	ScopeDaily    = "daily"
 	UpcomingWeek  = "week"
 	UpcomingMonth = "month"
-	TypeTask      = "task"
-	TypeNote      = "note"
+	TypeTask      = itemtype.Task
+	TypeNote      = itemtype.Note
 
 	// MaxIntentionChars bounds an item's intention, counted in characters
 	// (runes), not bytes. The column's CHECK holds the same limit.
 	MaxIntentionChars = 280
+
+	// MaxSummaryChars bounds a note's summary, counted in characters (runes),
+	// not bytes. The column's CHECK holds the same limit (FS-PGG2N R2).
+	MaxSummaryChars = 280
 )
 
 // CreateItemInput is the service-layer input for creating a checklist item.
@@ -59,6 +65,14 @@ type CreateItemInput struct {
 //	SetIntention=true, I=nil  → clear column
 //	SetIntention=true, I=&s   → trim s; an empty result clears, over 280 characters is refused
 //
+// Summary is three-state the same way (FS-PGG2N R2, R3), and only a note may
+// carry one:
+//
+//	SetSummary=false          → leave column alone
+//	SetSummary=true, S=nil    → clear column
+//	SetSummary=true, S=&s     → trim s; an empty result clears, over 280 characters
+//	                            or a non-empty value for a task is refused
+//
 // PlanID is the plan the caller addressed: the write touches the row only when
 // it belongs to that plan (FS-12ZMF R11).
 type UpdateItemInput struct {
@@ -73,6 +87,8 @@ type UpdateItemInput struct {
 	ParentID     *uuid.UUID
 	SetIntention bool
 	Intention    *string
+	SetSummary   bool
+	Summary      *string
 }
 
 // UpdateDatesInput allows setting / leaving start_date and due_date. The

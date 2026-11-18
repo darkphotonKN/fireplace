@@ -16,6 +16,13 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
+// ErrNoteHasComments: an update asked a note that has comments to become a
+// task (FS-65B3N R4). The repository decides it inside the write's own
+// transaction, holding the item row FOR UPDATE, so a comment created
+// concurrently (which holds it FOR SHARE) cannot slip between the check and
+// the type change (R5). Nothing is written.
+var ErrNoteHasComments = errors.New("checklistitem: note has comments")
+
 type Repository interface {
 	Create(ctx context.Context, in CreateItemInput, sequenceNo int) (*Item, error)
 	Update(ctx context.Context, in UpdateItemInput) error
@@ -150,10 +157,13 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 	}
 
 	if in.SetIntention {
-		in.Intention, err = normalizeIntention(in.Intention)
+		in.Intention, err = normalizeText("intention", in.Intention, MaxIntentionChars)
 		if err != nil {
 			return nil, err
 		}
+	}
+	if err := applySummaryRules(&in, current); err != nil {
+		return nil, err
 	}
 
 	// task→note transition: reject if it has children (notes can't be parents).
@@ -188,6 +198,10 @@ func (s *service) Update(ctx context.Context, in UpdateItemInput) (*Item, error)
 	}
 
 	if err := s.repo.Update(ctx, in); err != nil {
+		if errors.Is(err, ErrNoteHasComments) {
+			return nil, commongrpc.WithCode(codes.FailedPrecondition, errcode.NoteHasComments,
+				"checklistitem: update: this note has comments; delete them to make it a task")
+		}
 		return nil, fmt.Errorf("checklistitem: update: %w", err)
 	}
 
@@ -220,10 +234,11 @@ func refuseDailyScope(scope *string) error {
 		"the daily scope is retired: items are long-term")
 }
 
-// normalizeIntention trims an intention and turns an empty result into nil, so
+// normalizeText trims a free-text field and turns an empty result into nil, so
 // whitespace clears the column rather than storing blanks. A trimmed value over
-// MaxIntentionChars characters is refused (FS-043WP R38).
-func normalizeIntention(v *string) (*string, error) {
+// max characters (runes, not bytes) is refused. Intention (FS-043WP R38) and
+// summary (FS-PGG2N R2) share it.
+func normalizeText(field string, v *string, max int) (*string, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -231,11 +246,39 @@ func normalizeIntention(v *string) (*string, error) {
 	if trimmed == "" {
 		return nil, nil
 	}
-	if n := utf8.RuneCountInString(trimmed); n > MaxIntentionChars {
-		return nil, fmt.Errorf("%w: intention must be at most %d characters (got %d)",
-			commonconstants.ErrInvalidInput, MaxIntentionChars, n)
+	if n := utf8.RuneCountInString(trimmed); n > max {
+		return nil, fmt.Errorf("%w: %s must be at most %d characters (got %d)",
+			commonconstants.ErrInvalidInput, field, max, n)
 	}
 	return &trimmed, nil
+}
+
+// applySummaryRules normalizes a summary the update sets and holds the
+// note-only rule (FS-PGG2N R2, R3, R6). The item's type after the update is the
+// one it names, else the current one. A non-empty summary on a task is refused;
+// an empty one is accepted and leaves the column NULL. An update that makes the
+// item a task clears its summary in the same write, as task→note clears done.
+func applySummaryRules(in *UpdateItemInput, current *Item) error {
+	resultType := current.Type
+	if in.Type != nil {
+		resultType = *in.Type
+	}
+	if in.SetSummary {
+		summary, err := normalizeText("summary", in.Summary, MaxSummaryChars)
+		if err != nil {
+			return err
+		}
+		if summary != nil && resultType != TypeNote {
+			return fmt.Errorf("%w: only a note can carry a summary", commonconstants.ErrInvalidInput)
+		}
+		in.Summary = summary
+	}
+	// Unconditional on a type → task, not only when the row read above had a
+	// summary: one written since would otherwise meet the note-only CHECK.
+	if in.Type != nil && *in.Type == TypeTask {
+		in.SetSummary, in.Summary = true, nil
+	}
+	return nil
 }
 
 func (s *service) UpdateDates(ctx context.Context, in UpdateDatesInput) (*Item, error) {

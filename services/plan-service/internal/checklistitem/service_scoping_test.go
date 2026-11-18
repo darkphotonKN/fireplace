@@ -83,6 +83,9 @@ func (r *scopedRepo) Update(ctx context.Context, in UpdateItemInput) error {
 	if in.SetIntention {
 		it.Intention = in.Intention
 	}
+	if in.SetSummary {
+		it.Summary = in.Summary
+	}
 	return nil
 }
 

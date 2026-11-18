@@ -68,6 +68,20 @@ service InsightsService {
   // plan the caller cannot access, or an item not in the plan, is NotFound.
   // On a project plan it is accepted and has no effect.
   rpc SetItemRevisions(SetItemRevisionsRequest) returns (SetItemRevisionsResponse);
+
+  // SummarizeNote writes one plain paragraph of at most 280 characters
+  // summarizing a note's body, and returns it (FS-PGG2N R38-R44). It stores
+  // nothing, writes nothing to plan-service and publishes no event: saving the
+  // summary is the client's item update. The model sees only the first 8000
+  // characters of the body. It is one metered model call of kind
+  // note_summary, made only because the user asked (ADR-0019).
+  // Refusals: a caller with no relation to the plan, or an item that is
+  // missing, archived or in another plan, is NotFound; an item that is not a
+  // note is FailedPrecondition with ErrorInfo reason ITEM_NOT_A_NOTE; the
+  // daily token budget spent is ResourceExhausted with LLM_BUDGET_EXHAUSTED;
+  // a model error, timeout or empty output is Unavailable with
+  // NOTE_SUMMARY_FAILED.
+  rpc SummarizeNote(SummarizeNoteRequest) returns (SummarizeNoteResponse);
 }
 
 message GenerateSuggestionRequest {
@@ -196,4 +210,16 @@ message DayPlanEntry {
   // revisions_enabled is the item's revisions switch; set only on
   // existing_item entries of learning plans.
   optional bool revisions_enabled = 10;
+}
+
+message SummarizeNoteRequest {
+  string plan_id = 1;
+  string user_id = 2;
+  // item_id is the note to summarize. It must belong to plan_id.
+  string item_id = 3;
+}
+
+message SummarizeNoteResponse {
+  // summary is one paragraph, 1-280 characters, whitespace collapsed.
+  string summary = 1;
 }

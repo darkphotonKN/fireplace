@@ -27,7 +27,7 @@ func (f failingInsights) SuggestVideos(context.Context, uuid.UUID, uuid.UUID) ([
 // Over budget, the legacy generators answer ResourceExhausted carrying
 // LLM_BUDGET_EXHAUSTED as ErrorInfo, which the gateway maps to 429 (R33).
 func TestHandler_BudgetExhaustedIsResourceExhaustedWithItsCode(t *testing.T) {
-	h := NewHandler(failingInsights{err: fmt.Errorf("insights: generate suggestion: %w", ai.ErrBudgetExhausted)}, nil)
+	h := NewHandler(failingInsights{err: fmt.Errorf("insights: generate suggestion: %w", ai.ErrBudgetExhausted)}, nil, nil)
 	ctx := context.Background()
 	plan, user := uuid.NewString(), uuid.NewString()
 

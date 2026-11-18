@@ -74,6 +74,8 @@ read-model, HTTP REST surface, AI suggestions) are listed under **Owned elsewher
 - [x] Notes can never be done
 - [x] Two-tier nesting maximum
 - [x] Indent / outdent, and filter by type
+- [ ] Long-form note body with a summary → FS-PGG2N
+- [ ] Authored comments on a note → FS-65B3N
 
 ### Resources
 

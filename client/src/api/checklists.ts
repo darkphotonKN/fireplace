@@ -177,7 +177,7 @@ export const reorderChecklists = async (
 
 /**
  * Duplicates one live item (FS-F6AEE). The copy keeps the source's text,
- * intention, type, scope, parent and dates, is never done, and lands directly
+ * intention, summary, type, scope, parent and dates, is never done, and lands directly
  * after the source; a top-level item brings copies of its live children. The
  * server writes it all in one transaction and returns the created items: the
  * copy first, then its copied children in order (a list of one for a step, a

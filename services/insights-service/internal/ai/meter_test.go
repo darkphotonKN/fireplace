@@ -361,3 +361,32 @@ func TestGenerator_OnlyRetryableStatusesAreRetried(t *testing.T) {
 		})
 	}
 }
+
+const blankResponse = `{
+  "id": "x", "object": "chat.completion", "model": "gpt-5-mini-2025-08-07",
+  "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "  \n "}}],
+  "usage": {"prompt_tokens": 300, "completion_tokens": 2, "total_tokens": 302}
+}`
+
+// FS-PGG2N R41-R42: a generator that needs text records a blank answer as a
+// failed attempt, with its usage, and fails the call without a retry.
+func TestGenerator_RequireText_BlankAnswerIsRecordedAsFailed(t *testing.T) {
+	var calls atomic.Int32
+	client := fakeOpenAI(t, func(w http.ResponseWriter, _ map[string]any) {
+		calls.Add(1)
+		io.WriteString(w, blankResponse)
+	})
+	ledger := newFakeLedger(fixedClock(noon))
+	gen := newGenerator("sys", client, newMeter(ledger, 1000, fixedClock(noon)), 0)
+	gen.requireText = true
+
+	_, err := gen.Generate(context.Background(), testCall(), "prompt")
+
+	if err == nil || calls.Load() != 1 {
+		t.Fatalf("err = %v, calls = %d; want an error after one call", err, calls.Load())
+	}
+	rows := ledger.recorded()
+	if len(rows) != 1 || rows[0].Succeeded || rows[0].Usage.InputTokens != 300 {
+		t.Fatalf("rows = %+v, want one failed row with its usage", rows)
+	}
+}

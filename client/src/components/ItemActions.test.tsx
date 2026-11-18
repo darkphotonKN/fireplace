@@ -227,6 +227,22 @@ describe('ItemActions', () => {
     ).toEqual(['Set dates', 'Rename', 'Archive', 'Delete']);
   });
 
+  it("should offer only Make a task and Delete on a note's own page (FS-PGG2N R20)", () => {
+    const onToggleType = vi.fn();
+    const onDelete = vi.fn();
+    render(
+      <ItemActions
+        item={item({ type: 'note' })}
+        onToggleType={onToggleType}
+        onDelete={onDelete}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
+    expect(
+      screen.getAllByRole('menuitem').map((r) => r.textContent)
+    ).toEqual(['Make a task', 'Delete']);
+  });
+
   it('should offer Duplicate only when it is handed one, after Rename (FS-F6AEE R14)', () => {
     open();
     expect(screen.queryByRole('menuitem', { name: 'Duplicate' })).toBeNull();

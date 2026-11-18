@@ -10,6 +10,7 @@ import (
 	"github.com/darkphotonKN/fireplace/common/discovery"
 	"github.com/darkphotonKN/fireplace/services/insights-service/internal/dayplan"
 	"github.com/darkphotonKN/fireplace/services/insights-service/internal/guided"
+	"github.com/darkphotonKN/fireplace/services/insights-service/internal/notesummary"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -121,10 +122,7 @@ func (c *PlanClient) GetPlanContext(ctx context.Context, planID, userID uuid.UUI
 
 	checklist := make([]ChecklistItem, 0, len(resp.Items))
 	for _, it := range resp.Items {
-		checklist = append(checklist, ChecklistItem{
-			Description: it.Description,
-			Scope:       it.Scope,
-		})
+		checklist = append(checklist, toChecklistItem(it))
 	}
 
 	return &PlanContext{
@@ -132,6 +130,17 @@ func (c *PlanClient) GetPlanContext(ctx context.Context, planID, userID uuid.UUI
 		Focus:          plan.Focus,
 		ChecklistItems: checklist,
 	}, nil
+}
+
+// toChecklistItem maps an item for prompt context: a note's summary rides
+// along so the prompt can use it instead of the body (FS-PGG2N R45).
+func toChecklistItem(it *planpb.ChecklistItem) ChecklistItem {
+	return ChecklistItem{
+		Description: it.GetDescription(),
+		Scope:       it.GetScope(),
+		Type:        it.GetType(),
+		Summary:     it.Summary,
+	}
 }
 
 // GetPlanProfile returns the plan's type and focus, which the day plan's
@@ -207,6 +216,54 @@ func toPlanItems(items []*planpb.ChecklistItem) ([]guided.PlanItem, error) {
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+// IsOwnerOrMember asks plan-service for userID's relation to planID and
+// reports whether it is owner or member (FS-PGG2N R39). plan-service answers
+// the relation; enforcing it is the caller's job (ADR-0015). A plan that does
+// not exist is relation none.
+func (c *PlanClient) IsOwnerOrMember(ctx context.Context, planID, userID uuid.UUID) (bool, error) {
+	conn, err := c.ensureConn(ctx)
+	if err != nil {
+		return false, fmt.Errorf("insights: plan client: connect: %w", err)
+	}
+	resp, err := planpb.NewPlanServiceClient(conn).GetPlanAccess(ctx, &planpb.GetPlanAccessRequest{
+		PlanId: planID.String(),
+		UserId: userID.String(),
+	})
+	if err != nil {
+		return false, fromPlanService("get plan access", err)
+	}
+	return ownerOrMember(resp.GetRelation()), nil
+}
+
+// ownerOrMember fails closed: any relation but owner or member, including an
+// unset one, refuses.
+func ownerOrMember(rel planpb.PlanRelation) bool {
+	return rel == planpb.PlanRelation_PLAN_RELATION_OWNER || rel == planpb.PlanRelation_PLAN_RELATION_MEMBER
+}
+
+// GetItem reads one item of planID for a note summary. plan-service answers
+// NotFound for a missing item and for one in another plan; an archived item is
+// returned with Archived set, for the caller to refuse.
+func (c *PlanClient) GetItem(ctx context.Context, planID, userID, itemID uuid.UUID) (notesummary.Item, error) {
+	conn, err := c.ensureConn(ctx)
+	if err != nil {
+		return notesummary.Item{}, fmt.Errorf("insights: plan client: connect: %w", err)
+	}
+	item, err := planpb.NewChecklistServiceClient(conn).GetItem(ctx, &planpb.GetItemRequest{
+		Id:     itemID.String(),
+		UserId: userID.String(),
+		PlanId: planID.String(),
+	})
+	if err != nil {
+		return notesummary.Item{}, fromPlanService("get item", err)
+	}
+	return toNoteSummaryItem(item), nil
+}
+
+func toNoteSummaryItem(it *planpb.ChecklistItem) notesummary.Item {
+	return notesummary.Item{Type: it.GetType(), Description: it.GetDescription(), Archived: it.GetArchived()}
 }
 
 // Close releases the underlying gRPC connection.

@@ -105,4 +105,58 @@ describe('Calendar', () => {
     expect(await screen.findByText('March 2026')).toBeInTheDocument();
     expect(screen.queryByText('Someday, maybe')).not.toBeInTheDocument();
   });
+
+  it("should show a dated note's first line in its chip and title, not the whole body (FS-PGG2N R11, G20)", async () => {
+    getPlanCalendar.mockResolvedValue({
+      planId: 'plan-1',
+      view: 'month',
+      windowStart: '2026-03-01',
+      windowEnd: '2026-03-31',
+      items: [
+        {
+          id: 'n1',
+          description: 'Reading notes\nchapter one\nchapter two',
+          type: 'note',
+          scope: 'longterm',
+          done: false,
+          startDate: '2026-03-16T00:00:00Z',
+          dueDate: '2026-03-16T00:00:00Z',
+        },
+      ],
+    });
+    render(<Calendar planId="plan-1" />);
+
+    const chip = await screen.findByText('Reading notes');
+    expect(chip.textContent).toBe('Reading notes');
+    expect(chip.closest('[title]')!.getAttribute('title')).toBe('Reading notes');
+    expect(screen.queryByText(/chapter one/)).toBeNull();
+  });
+
+  it("should show a dated note's summary before its body, first line only (FS-PGG2N R4, R11)", async () => {
+    getPlanCalendar.mockResolvedValue({
+      planId: 'plan-1',
+      view: 'month',
+      windowStart: '2026-03-01',
+      windowEnd: '2026-03-31',
+      items: [
+        {
+          id: 'n2',
+          description: 'Reading notes\nchapter one',
+          type: 'note',
+          summary: 'Three ideas, ranked\nand why',
+          scope: 'longterm',
+          done: false,
+          startDate: '2026-03-16T00:00:00Z',
+          dueDate: '2026-03-16T00:00:00Z',
+        },
+      ],
+    });
+    render(<Calendar planId="plan-1" />);
+
+    const chip = await screen.findByText('Three ideas, ranked');
+    expect(chip.textContent).toBe('Three ideas, ranked');
+    expect(chip.closest('[title]')!.getAttribute('title')).toBe('Three ideas, ranked');
+    expect(screen.queryByText(/Reading notes/)).toBeNull();
+    expect(screen.queryByText(/and why/)).toBeNull();
+  });
 });

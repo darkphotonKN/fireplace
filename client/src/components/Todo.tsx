@@ -43,10 +43,19 @@ import SortableItem from '@/components/SortableItem';
 import { getChecklistSuggestion } from '@/api/insights';
 import { getPlan, type PlanMember } from '@/api/plans';
 import { duplicateChecklistItem } from '@/api/checklists';
+import { errorCode, NOTE_HAS_COMMENTS_MESSAGE } from '@/api/client';
 import { insertDuplicate } from '@/lib/duplicate';
+import {
+  cardText,
+  itemName,
+  NOTE_ROW_CHIP,
+  NOTE_ROW_LINK,
+  notePageHref,
+} from '@/lib/noteText';
 import PlanSharing from '@/components/PlanSharing';
 import { useParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -770,7 +779,12 @@ export default function Todo({
           t.id === id ? { ...t, type: previous.type, done: previous.done } : t
         )
       );
-      setError('Failed to change item type. Please try again.');
+      setError(
+        // A note with comments stays a note, and says why (FS-65B3N R4, R31).
+        errorCode(err) === 'NOTE_HAS_COMMENTS'
+          ? NOTE_HAS_COMMENTS_MESSAGE
+          : 'Failed to change item type. Please try again.'
+      );
     }
   };
 
@@ -1629,7 +1643,7 @@ export default function Todo({
       {/* Delete Confirmation Modal */}
       {showDeleteModal && todoToDelete && (
         <DeleteConfirm
-          description={todoToDelete.description}
+          description={itemName(todoToDelete)}
           onCancel={() => {
             setShowDeleteModal(false);
             setTodoToDelete(null);
@@ -1740,6 +1754,8 @@ export default function Todo({
                 arriving={newTodoAnimations}
                 milestoneHref={(id) => `/plan/${planId}/m/${id}`}
                 onOpenMilestone={(id) => router.push(`/plan/${planId}/m/${id}`)}
+                noteHref={(id) => notePageHref(planId, id)}
+                onEditNote={(id) => router.push(notePageHref(planId, id, true))}
                 onDuplicate={duplicateTodo}
               />
             </div>
@@ -1759,7 +1775,7 @@ export default function Todo({
                 <SortableItem
                   key={todo.id}
                   id={todo.id}
-                  label={todo.description}
+                  label={itemName(todo)}
                   disabled={!canDrag(todo.id)}
                 >
                 {({ bind, handle }) => (
@@ -1913,14 +1929,31 @@ export default function Todo({
                                 className={`min-w-0 break-words text-base cursor-pointer ${
                                   todo.done ? 'line-through opacity-70' : ''
                                 } ${
-                                  todo.type === 'note'
-                                    ? 'italic text-muted-foreground'
-                                    : ''
-                                } ${
                                   newTodoAnimations[todo.id] ? 'relative' : ''
                                 }`}
                               >
-                                {todo.description}
+                                {todo.type === 'note' ? (
+                                  // Upright in a paper chip, the card text
+                                  // clamped (FS-PGG2N R11, R48); a live note's
+                                  // is the way to its page (R13), an archived
+                                  // one's is not (R15).
+                                  taskType !== 'archived' && !todo.archived ? (
+                                    <Link
+                                      href={notePageHref(planId, todo.id)}
+                                      data-note-text={todo.id}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className={NOTE_ROW_LINK}
+                                    >
+                                      {cardText(todo)}
+                                    </Link>
+                                  ) : (
+                                    <span data-note-text={todo.id} className={NOTE_ROW_CHIP}>
+                                      {cardText(todo)}
+                                    </span>
+                                  )
+                                ) : (
+                                  todo.description
+                                )}
                               </label>
                               {isCollapsed(todo.id) && (
                                 <span className="shrink-0 text-sm tabular-nums text-foreground/40 animate-in fade-in duration-200">
@@ -1953,7 +1986,7 @@ export default function Todo({
                                   <button
                                     type="button"
                                     onClick={() => deleteTodo(todo.id)}
-                                    aria-label={`Delete ${todo.description} permanently`}
+                                    aria-label={`Delete ${itemName(todo)} permanently`}
                                     title="Delete permanently"
                                     className="grid h-6 w-6 place-items-center rounded-full text-foreground/35 opacity-0 outline-none transition-[color,background-color,opacity] duration-200 hover:bg-foreground/[0.06] hover:text-primary focus-visible:text-primary group-hover/row:opacity-100 group-focus-visible/row:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-60"
                                   >
@@ -1962,7 +1995,11 @@ export default function Todo({
                                 ) : (
                                   <ItemActions
                                     item={todo}
-                                    onEdit={() => startEditing(todo)}
+                                    onEdit={
+                                      todo.type === 'note'
+                                        ? () => router.push(notePageHref(planId, todo.id, true))
+                                        : () => startEditing(todo)
+                                    }
                                     onToggleType={() => toggleTodoType(todo.id)}
                                     onArchive={() => archiveTodo(todo.id)}
                                     onDelete={() => deleteTodo(todo.id)}

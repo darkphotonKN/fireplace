@@ -122,9 +122,12 @@ func SetupRouter(db *sqlx.DB, registry commondiscovery.Registry, publisher commo
 		People:     planPeople{users: authRepo},
 		Notes:      notesService,
 
+		NoteComments: planGwClient,
+
 		Suggestions:      insightsGwClient,
 		VideoSuggestions: insightsGwClient,
 		DayPlans:         insightsGwClient,
+		NoteSummaries:    insightsGwClient,
 		Analytics:        userAnalyticsService,
 		Calendar:         calendarGwClient,
 	})

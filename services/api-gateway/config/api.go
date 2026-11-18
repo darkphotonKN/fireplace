@@ -62,6 +62,10 @@ type APIDeps struct {
 	Members plangw.MembersClient
 	People  plangw.People
 
+	// NoteComments is plan-service's comment half (FS-65B3N); authors are
+	// named through People.
+	NoteComments plangw.NoteCommentsClient
+
 	// Notes is a gateway-LOCAL domain: unlike the fields above it is not a
 	// downstream client but this service's own service object.
 	Notes notes.NotesService
@@ -74,6 +78,9 @@ type APIDeps struct {
 	// DayPlans serves the day plan (FS-02JBZ), through the insights-service
 	// gRPC client.
 	DayPlans insights.DayPlanService
+	// NoteSummaries serves the AI note summary (FS-PGG2N R38), through the
+	// insights-service gRPC client.
+	NoteSummaries insights.NoteSummaryService
 
 	// Analytics may be nil — its operation answers 501 before consulting it.
 	Analytics useranalytics.AnalyticsService
@@ -169,10 +176,12 @@ func RegisterAPI(engine *gin.Engine, deps APIDeps, protect func(huma.Context, fu
 	authgw.RegisterUsersOperations(api, deps.Users, protect, Secured)
 	plangw.RegisterPlanOperations(api, deps.Plans, deps.PlanAccess, protect, Secured)
 	plangw.RegisterChecklistOperations(api, deps.Checklists, deps.PlanAccess, protect, Secured)
+	plangw.RegisterNoteCommentOperations(api, deps.NoteComments, deps.People, deps.PlanAccess, protect, Secured)
 	plangw.RegisterMemberOperations(api, deps.Members, deps.People, deps.PlanAccess, protect, Secured)
 	notes.RegisterNotesOperations(api, deps.Notes, deps.PlanAccess, protect, Secured)
 	insights.RegisterInsightsOperations(api, deps.Suggestions, deps.VideoSuggestions, deps.PlanAccess, protect, Secured)
 	insights.RegisterDayPlanOperations(api, deps.DayPlans, deps.PlanAccess, protect, Secured)
+	insights.RegisterNoteSummaryOperations(api, deps.NoteSummaries, deps.PlanAccess, protect, Secured)
 	useranalytics.RegisterAnalyticsOperations(api, deps.Analytics, protect, Secured)
 	calendargw.RegisterCalendarOperations(api, deps.Calendar, protect, Secured)
 	return api

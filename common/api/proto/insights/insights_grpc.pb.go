@@ -26,6 +26,7 @@ const (
 	InsightsService_TickDayPlanEntry_FullMethodName   = "/insights.InsightsService/TickDayPlanEntry"
 	InsightsService_UntickDayPlanEntry_FullMethodName = "/insights.InsightsService/UntickDayPlanEntry"
 	InsightsService_SetItemRevisions_FullMethodName   = "/insights.InsightsService/SetItemRevisions"
+	InsightsService_SummarizeNote_FullMethodName      = "/insights.InsightsService/SummarizeNote"
 )
 
 // InsightsServiceClient is the client API for InsightsService service.
@@ -89,6 +90,19 @@ type InsightsServiceClient interface {
 	// plan the caller cannot access, or an item not in the plan, is NotFound.
 	// On a project plan it is accepted and has no effect.
 	SetItemRevisions(ctx context.Context, in *SetItemRevisionsRequest, opts ...grpc.CallOption) (*SetItemRevisionsResponse, error)
+	// SummarizeNote writes one plain paragraph of at most 280 characters
+	// summarizing a note's body, and returns it (FS-PGG2N R38-R44). It stores
+	// nothing, writes nothing to plan-service and publishes no event: saving the
+	// summary is the client's item update. The model sees only the first 8000
+	// characters of the body. It is one metered model call of kind
+	// note_summary, made only because the user asked (ADR-0019).
+	// Refusals: a caller with no relation to the plan, or an item that is
+	// missing, archived or in another plan, is NotFound; an item that is not a
+	// note is FailedPrecondition with ErrorInfo reason ITEM_NOT_A_NOTE; the
+	// daily token budget spent is ResourceExhausted with LLM_BUDGET_EXHAUSTED;
+	// a model error, timeout or empty output is Unavailable with
+	// NOTE_SUMMARY_FAILED.
+	SummarizeNote(ctx context.Context, in *SummarizeNoteRequest, opts ...grpc.CallOption) (*SummarizeNoteResponse, error)
 }
 
 type insightsServiceClient struct {
@@ -169,6 +183,16 @@ func (c *insightsServiceClient) SetItemRevisions(ctx context.Context, in *SetIte
 	return out, nil
 }
 
+func (c *insightsServiceClient) SummarizeNote(ctx context.Context, in *SummarizeNoteRequest, opts ...grpc.CallOption) (*SummarizeNoteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SummarizeNoteResponse)
+	err := c.cc.Invoke(ctx, InsightsService_SummarizeNote_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InsightsServiceServer is the server API for InsightsService service.
 // All implementations must embed UnimplementedInsightsServiceServer
 // for forward compatibility.
@@ -230,6 +254,19 @@ type InsightsServiceServer interface {
 	// plan the caller cannot access, or an item not in the plan, is NotFound.
 	// On a project plan it is accepted and has no effect.
 	SetItemRevisions(context.Context, *SetItemRevisionsRequest) (*SetItemRevisionsResponse, error)
+	// SummarizeNote writes one plain paragraph of at most 280 characters
+	// summarizing a note's body, and returns it (FS-PGG2N R38-R44). It stores
+	// nothing, writes nothing to plan-service and publishes no event: saving the
+	// summary is the client's item update. The model sees only the first 8000
+	// characters of the body. It is one metered model call of kind
+	// note_summary, made only because the user asked (ADR-0019).
+	// Refusals: a caller with no relation to the plan, or an item that is
+	// missing, archived or in another plan, is NotFound; an item that is not a
+	// note is FailedPrecondition with ErrorInfo reason ITEM_NOT_A_NOTE; the
+	// daily token budget spent is ResourceExhausted with LLM_BUDGET_EXHAUSTED;
+	// a model error, timeout or empty output is Unavailable with
+	// NOTE_SUMMARY_FAILED.
+	SummarizeNote(context.Context, *SummarizeNoteRequest) (*SummarizeNoteResponse, error)
 	mustEmbedUnimplementedInsightsServiceServer()
 }
 
@@ -260,6 +297,9 @@ func (UnimplementedInsightsServiceServer) UntickDayPlanEntry(context.Context, *U
 }
 func (UnimplementedInsightsServiceServer) SetItemRevisions(context.Context, *SetItemRevisionsRequest) (*SetItemRevisionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetItemRevisions not implemented")
+}
+func (UnimplementedInsightsServiceServer) SummarizeNote(context.Context, *SummarizeNoteRequest) (*SummarizeNoteResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SummarizeNote not implemented")
 }
 func (UnimplementedInsightsServiceServer) mustEmbedUnimplementedInsightsServiceServer() {}
 func (UnimplementedInsightsServiceServer) testEmbeddedByValue()                         {}
@@ -408,6 +448,24 @@ func _InsightsService_SetItemRevisions_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InsightsService_SummarizeNote_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SummarizeNoteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InsightsServiceServer).SummarizeNote(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InsightsService_SummarizeNote_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InsightsServiceServer).SummarizeNote(ctx, req.(*SummarizeNoteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InsightsService_ServiceDesc is the grpc.ServiceDesc for InsightsService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -442,6 +500,10 @@ var InsightsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetItemRevisions",
 			Handler:    _InsightsService_SetItemRevisions_Handler,
+		},
+		{
+			MethodName: "SummarizeNote",
+			Handler:    _InsightsService_SummarizeNote_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

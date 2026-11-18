@@ -29,6 +29,8 @@ func planScopedRoutes(planID string) []struct{ method, path string } {
 		{http.MethodDelete, "/api/plans/" + planID + "/checklists/" + uuid.NewString()},
 		{http.MethodGet, "/api/plans/" + planID + "/notes"},
 		{http.MethodDelete, "/api/plans/" + planID + "/notes/" + uuid.NewString()},
+		{http.MethodGet, "/api/plans/" + planID + "/checklists/" + uuid.NewString() + "/comments"},
+		{http.MethodDelete, "/api/plans/" + planID + "/checklists/" + uuid.NewString() + "/comments/" + uuid.NewString()},
 		{http.MethodGet, "/api/plans/" + planID + "/members"},
 		{http.MethodDelete, "/api/plans/" + planID + "/members/" + uuid.NewString()},
 		{http.MethodGet, "/api/plans/" + planID + "/calendar?view=week"},

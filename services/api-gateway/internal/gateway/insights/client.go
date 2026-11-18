@@ -272,3 +272,24 @@ func optionalUUID(field string, s *string) (*uuid.UUID, error) {
 	}
 	return &id, nil
 }
+
+// SummarizeNote asks insights-service for a summary of one note's body
+// (FS-PGG2N R38). It returns the text only: nothing is stored. Refusals arrive
+// as gRPC status, ITEM_NOT_A_NOTE, LLM_BUDGET_EXHAUSTED and
+// NOTE_SUMMARY_FAILED as ErrorInfo codes, and are returned untouched for
+// apierr to map.
+func (c *Client) SummarizeNote(ctx context.Context, planID, userID, itemID uuid.UUID) (string, error) {
+	conn, err := c.ensureConn(ctx)
+	if err != nil {
+		return "", err
+	}
+	resp, err := pb.NewInsightsServiceClient(conn).SummarizeNote(ctx, &pb.SummarizeNoteRequest{
+		PlanId: planID.String(),
+		UserId: userID.String(),
+		ItemId: itemID.String(),
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.GetSummary(), nil
+}

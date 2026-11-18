@@ -27,6 +27,8 @@ var rpcClasses = map[string]string{
 	"TickDayPlanEntry":   rpcWrite,
 	"UntickDayPlanEntry": rpcWrite,
 	"SetItemRevisions":   rpcWrite,
+	// FS-PGG2N R44: a model call made only on the user's press.
+	"SummarizeNote": rpcGenerate,
 }
 
 // FS-02JBZ R92, A2: the daily brief's RPCs are gone; every RPC left is
@@ -84,14 +86,15 @@ func TestHandler_ReadRPCsNeverReachAGenerator(t *testing.T) {
 	}
 	for name, call := range reads {
 		t.Run(name, func(t *testing.T) {
-			gens, dayPlans := &generatorTrap{}, &fakeDayPlans{}
+			gens, dayPlans, notes := &generatorTrap{}, &fakeDayPlans{}, &fakeNoteSummaries{}
 
-			if err := call(NewHandler(gens, dayPlans)); err != nil {
+			if err := call(NewHandler(gens, dayPlans, notes)); err != nil {
 				t.Fatalf("%s: %v", name, err)
 			}
 
-			if gens.calls != 0 || dayPlans.drew {
-				t.Fatalf("%s reached a generator (insights calls %d, PlanMyDay %v)", name, gens.calls, dayPlans.drew)
+			if gens.calls != 0 || dayPlans.drew || notes.calls != 0 {
+				t.Fatalf("%s reached a generator (insights calls %d, PlanMyDay %v, SummarizeNote %d)",
+					name, gens.calls, dayPlans.drew, notes.calls)
 			}
 		})
 	}

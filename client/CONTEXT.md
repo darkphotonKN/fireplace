@@ -39,6 +39,18 @@ a tagline, never as a name in code or specs.
 | **next step** | The first live, not-done **task** step of a milestone, in stored order (`nextStep()`). Derived on every read, never stored: ticking it lets the following one through. All done → the *completion nudge* takes its slot; no task steps (none, or only notes) → an invitation to add the first. | Not a field, a pin or a user choice. Never a note. Hidden while the milestone is closed. Not "current step" or "focus" (rejected; *Focus* is a retired plan word). |
 | **shared plan** | A plan the caller is a **member** of (its `relation` is `member`), shown in the sidebar, My Plans and home alongside owned plans with a small lowercase **shared** mark (`SharedMark`). The member works its items, notes and calendar as the owner does; the plan's name, deletion and people stay the owner's (the daily-reset toggle that was also owner-only is gone, FS-02JBZ). | Not a plan the caller owns and has shared out: owned plans carry no mark in v1. Not a role or a read-only copy. Not "collaborator" or "sharee" (rejected; the person is a **member**, a plan-service term). |
 
+### Notes (FS-PGG2N, FS-65B3N)
+
+| Term | Means | Does NOT mean |
+| --- | --- | --- |
+| **note** | A checklist item of type `note`: text with no checkbox, never done. A top-level note is drawn as a **note card** in the grid; a note under a milestone is a child row there and on the milestone page. One line today; with FS-PGG2N it has a **body**, a **summary** and **comments**, and opens on its **note page**. | Not a task, not a milestone, never counted in progress. Not the gateway's hidden notes panel (`NotesContainer`, `/api/plans/:id/notes`), a separate legacy system with types and priorities that nothing here builds on. Not italic in the new look (FS-PGG2N). |
+| **note page** | One note opened at its own address, filling the plan's **middle card** the way the *milestone page* does: the **body** in an editor, then its **comments**. Every note has one, top-level or under a milestone. Leaving it with a long body and no summary asks for one (FS-PGG2N). | Not a modal, sheet or inline expand (rejected). Not the milestone page. Not its own permission: it inherits the plan's access. |
+| **body** | A note's full text, written on the note page and stored as the item's `description`. The short text typed on the card is where the body starts: it *is* the note. | Not a headline or title above the note (a fixed headline line was rejected). Not a comment, not the summary. Not a *Plan Draft* or a milestone's *why it matters*. |
+| **summary** | The short version of a note shown on its card: written by the user, or by AI when the user presses the button on the note page (ADR-0019). Once one exists only a hand edit changes it, so it may go stale. Stored as the item field `summary` (≤ 280 chars, notes only). A note with no summary shows its body as its **card text**. | Not the body cut short: a clamped body is the fallback and is never called a summary. Never generated on load, save, or a leave without a press. Not the item's `description`, which is the body. |
+| **card text** | What stands for a note wherever it is shown short: its summary if it has one, else its body (`cardText()`). Clamped to 4 lines on the note card, 2 on child rows, milestone page steps and list rows; one-line places (calendar chip, menus, tab title, accessible names) use its first line (FS-PGG2N). | Not stored: derived on every render, so there is no truncated copy anywhere. Not the summary itself, and not a title. |
+| **leave prompt** | The dialog the note page shows when someone navigates away inside the app while the body is longer than 280 characters and the note has no summary: *Summarize with AI*, *Write a summary* or *Leave anyway*. At most once per visit (FS-PGG2N). | Not a browser `beforeunload` warning: closing the tab or reloading never asks, and the card text then shows the body clamped. Not a save warning, though a failed save also holds the leave with *Leave anyway*. |
+| **comment** | A dated, authored entry under a note's body on the note page: a later addition, a source, a reply. Any member of the plan may add one; its author may edit it (marked *edited*) or delete it, and the plan owner may delete anyone's (FS-65B3N). | Not "update" (rejected: collides with item update, `UpdateChecklistItem` and `updated_at`). Not an edit of the body, and never folded into the body or the summary. |
+
 ### Suggestions (FS-DF4ZB)
 
 | Term | Means | Does NOT mean |
@@ -78,6 +90,9 @@ FS-DF4ZB's **Today's moves**, **suggested steps** and **suggested milestone**, a
 milestone is a client reading of a top-level checklist item, not a server entity (ADR-0014). The
 one server trace is the generic item field `intention`, which the server stores without knowing
 what it is for.
+FS-PGG2N's **note page** is a client term too. **Note**, **body**, **summary** and **comment** are
+plan-service's (stored there) and keep the same names on screen; an AI summary is generated by
+insights-service only when the user asks for one.
 
 **Plan**, **checklist item**, **scope** (`daily` | `longterm`; `daily` is a retired value since
 FS-02JBZ, still in the contract but refused on create and update), **dailyReset** (vestigial:

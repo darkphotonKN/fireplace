@@ -43,6 +43,13 @@
 - [x] Milestone page → FS-043WP
 - [x] Duplicate an item → FS-F6AEE
 
+## Notes
+
+- [x] One-line notes among a plan's items → FS-none
+- [ ] Long-form notes with a short summary → FS-PGG2N
+- [ ] AI-written note summary on request → FS-PGG2N
+- [ ] Comments on a note from plan members → FS-65B3N
+
 ## Navigation
 
 - [x] Plans sidebar → FS-none

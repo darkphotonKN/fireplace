@@ -15,6 +15,13 @@ into allow or refuse for an operation, asked first on every plan-scoped route (p
 checklists, members, notes, calendar, insights). Fails closed: no answer or no checker means no
 access (ADR-0015 §3).
 
+**Gateway notes** — the gateway's own `notes` table, `internal/notes` and the
+`/api/plans/:id/notes*` routes (typed `user`/`ai`/`warning`/`insight`/`suggestion`, with priorities
+and tags). Hidden in the client; a candidate for retirement. Not the **note** people write: that
+is a plan-service checklist item of type `note`, reached through the checklist routes, with its
+body, summary and comments (FS-PGG2N, FS-65B3N). "notes" in the seam's list above means these
+routes.
+
 **Owner-only** / **owner-or-member** — the two requirements (`Need`) an operation can place on a
 relation. Owner-only: update plan, delete plan, add or remove member. (Toggle daily reset was
 owner-only too, until FS-02JBZ removed the operation with the daily scope.)

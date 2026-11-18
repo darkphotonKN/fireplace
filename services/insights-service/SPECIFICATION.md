@@ -32,6 +32,7 @@ insights-service is the **owner** of the AI Insights + video-suggestion domain i
 - [ ] Populate `generated_insights.content` (written empty today)
 - [ ] Planless draft generation for guided plan creation → FS-0006
 - [ ] Generation outcomes published as events → FS-0006
+- [ ] Note summary generation → FS-PGG2N
 
 ## Guided suggestions
 

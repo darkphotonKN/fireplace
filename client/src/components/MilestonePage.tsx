@@ -25,10 +25,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import ItemDateChip from '@/components/ItemDateChip';
 import ItemActions, { type ItemActionsHandle } from '@/components/ItemActions';
 import DeleteConfirm from '@/components/DeleteConfirm';
+import BackLink from '@/components/BackLink';
 import CompletionNudge, { useCompletionNudges } from '@/components/CompletionNudge';
 import ProgressMeter from '@/components/ProgressMeter';
 import { cn } from '@/lib/utils';
 import { insertDuplicate } from '@/lib/duplicate';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
+import { cardText, NOTE_ROW_LINK, notePageHref } from '@/lib/noteText';
 import {
   findMilestone,
   nextStep,
@@ -280,7 +283,9 @@ export default function MilestonePage({ planId, milestoneId }: MilestonePageProp
   const planHref = `/plan/${planId}`;
   return (
     <div className="space-y-4">
-      <BackToPlan href={planHref} />
+      {/* The Settings back button, pointed at the plan's URL rather than
+          history (R9, G13). */}
+      <BackLink href={planHref} label="Back to plan" />
       {error && (
         <div className="rounded-md bg-red-50 p-2 text-base text-red-600">
           {error}
@@ -550,42 +555,6 @@ function MilestoneDates({
   );
 }
 
-/** The tab is named after the milestone while it is open, so a bookmark is too (R12). */
-function useDocumentTitle(title: string) {
-  useEffect(() => {
-    const previous = document.title;
-    document.title = title;
-    return () => {
-      document.title = previous;
-    };
-  }, [title]);
-}
-
-/** The Settings back button, pointed at the plan's URL rather than history (R9, G13). */
-function BackToPlan({ href }: { href: string }) {
-  return (
-    <Link
-      href={href}
-      className="flex w-fit items-center text-base text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300"
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        aria-hidden
-        className="mr-1 h-4 w-4"
-      >
-        <path
-          fillRule="evenodd"
-          d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z"
-          clipRule="evenodd"
-        />
-      </svg>
-      Back to plan
-    </Link>
-  );
-}
-
 /** Calm, never a crash or a blank card: the id is no milestone of this plan (C8). */
 function NotHere({ planHref }: { planHref: string }) {
   return (
@@ -664,7 +633,7 @@ function StepList({
             {note ? (
               <span
                 aria-hidden
-                className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-foreground/30"
+                className="mt-[11px] h-1 w-1 shrink-0 rounded-full bg-foreground/30"
               />
             ) : (
               <span className="mt-[3px] shrink-0">
@@ -675,18 +644,28 @@ function StepList({
                 />
               </span>
             )}
-            <InlineText
-              text={step.description}
-              onSave={(text) => onRename(step.id, text)}
-              className={cn(
-                'text-base leading-6',
-                note
-                  ? 'italic text-foreground/60'
-                  : step.done
-                    ? 'text-foreground/40 line-through'
-                    : 'text-foreground/85'
-              )}
-            />
+            {note ? (
+              // Upright on a chip of paper, the card text clamped, as the
+              // grid's child rows draw it; the way to the note's own page,
+              // where it is written (FS-PGG2N R11, R13, R48).
+              <span className="min-w-0 flex-1">
+                <Link
+                  href={notePageHref(step.planId, step.id)}
+                  className={cn(NOTE_ROW_LINK, 'text-base leading-6')}
+                >
+                  {cardText(step)}
+                </Link>
+              </span>
+            ) : (
+              <InlineText
+                text={step.description}
+                onSave={(text) => onRename(step.id, text)}
+                className={cn(
+                  'text-base leading-6',
+                  step.done ? 'text-foreground/40 line-through' : 'text-foreground/85'
+                )}
+              />
+            )}
           </li>
         );
       })}
