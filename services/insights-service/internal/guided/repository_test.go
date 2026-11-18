@@ -67,7 +67,7 @@ func TestRepositoryIntegration_RecordAttemptStoresUsage(t *testing.T) {
 	// "daily_suggestions" and "daily_brief" have no constant since their
 	// generators were removed (FS-DF4ZB R55, FS-02JBZ R92), but rows written
 	// before then must stay valid.
-	kinds := []ai.Kind{ai.Kind("daily_brief"), ai.KindChecklistSuggestion, ai.KindVideoTerms, ai.Kind("daily_suggestions"), ai.KindDayPlan}
+	kinds := []ai.Kind{ai.Kind("daily_brief"), ai.KindChecklistSuggestion, ai.KindVideoTerms, ai.Kind("daily_suggestions"), ai.KindDayPlan, ai.KindNoteSummary}
 
 	for _, kind := range kinds {
 		a := ai.Attempt{

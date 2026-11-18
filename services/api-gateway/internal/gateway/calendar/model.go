@@ -8,6 +8,8 @@ import "github.com/google/uuid"
 type CalendarItem struct {
 	ID          uuid.UUID `json:"id"`
 	Description string    `json:"description"`
+	Type        string    `json:"type"`
+	Summary     *string   `json:"summary,omitempty"`
 	Scope       string    `json:"scope"`
 	Done        bool      `json:"done"`
 	StartDate   string    `json:"startDate"`

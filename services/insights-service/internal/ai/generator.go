@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/sashabaranov/go-openai"
@@ -19,6 +20,9 @@ import (
 type Generator struct {
 	caller       chatCaller
 	systemPrompt string
+	// requireText makes a blank answer a failed call, recorded as a failed
+	// attempt, rather than an empty success (FS-PGG2N R42).
+	requireText bool
 }
 
 // NewGenerator builds a Generator for one system prompt, metered by meter.
@@ -46,6 +50,9 @@ func (g *Generator) Generate(ctx context.Context, call Call, message string) (st
 	}, func(resp openai.ChatCompletionResponse) error {
 		if len(resp.Choices) == 0 {
 			return errors.New("ai: chat completion returned no choices")
+		}
+		if g.requireText && strings.TrimSpace(resp.Choices[0].Message.Content) == "" {
+			return errors.New("ai: chat completion returned no text")
 		}
 		return nil
 	})

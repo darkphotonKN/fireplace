@@ -112,6 +112,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/insights/note-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Summarize a note with AI
+         * @description Writes one plain paragraph of at most 280 characters summarizing the note's body and returns it. Nothing is stored: to keep it, save it as the note's summary with updateChecklist. The model reads only the first 8000 characters of the body. Each call is one metered model call. 404 NOT_FOUND: the note is missing, archived or in another plan. 400 ITEM_NOT_A_NOTE: the item is a task. 429 LLM_BUDGET_EXHAUSTED: the platform's daily token budget is spent; retry after the next UTC midnight. 503 NOTE_SUMMARY_FAILED: the model failed, timed out or wrote nothing; retrying is correct. 503 SERVICE_UNAVAILABLE: the insights service could not be reached; retrying is correct.
+         */
+        post: operations["summarizeNote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/insights/suggest-videos": {
         parameters: {
             query?: never;
@@ -351,7 +371,7 @@ export interface paths {
         head?: never;
         /**
          * Update a checklist item
-         * @description Partial update. `parentId` is three-state: send a UUID to re-parent, null to clear, or omit to leave unchanged. `intention` is free text: omit it to leave it unchanged or send a string to set it; the server trims it, an empty result clears it, and more than 280 characters after trimming is 400 VALIDATION_FAILED. Conversion, re-parenting and the intention length rules are enforced downstream. The daily scope is retired: `scope: daily` is well-formed but refused with 400 DAILY_SCOPE_RETIRED.
+         * @description Partial update. `parentId` is three-state: send a UUID to re-parent, null to clear, or omit to leave unchanged. `intention` is free text: omit it to leave it unchanged or send a string to set it; the server trims it, an empty result clears it, and more than 280 characters after trimming is 400 VALIDATION_FAILED. `summary` is the short text a note carries, set the same way: omit to leave it, send a string to set it, an empty result after trimming clears it. More than 280 characters after trimming, or a non-empty summary for an item that is a task or that this update makes a task, is 400 VALIDATION_FAILED. Setting `type: task` on a note clears its summary in the same update. Setting `type: task` on a note that has comments is refused with 400 NOTE_HAS_COMMENTS and changes nothing. Conversion, re-parenting and the intention and summary rules are enforced downstream. The daily scope is retired: `scope: daily` is well-formed but refused with 400 DAILY_SCOPE_RETIRED.
          */
         patch: operations["updateChecklist"];
         trace?: never;
@@ -374,6 +394,54 @@ export interface paths {
          * @description Takes a body with `archived`. It is a SETTER, not a toggle — sending false unarchives.
          */
         patch: operations["archiveChecklist"];
+        trace?: never;
+    };
+    "/api/plans/{id}/checklists/{checklist_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a note's comments
+         * @description Every comment on the note, oldest first, with no pagination; [] when it has none. Open to the plan's owner and members. `canEdit` and `canDelete` say what the caller may do with each. `authorName` is null for an author whose account no longer exists. 400 `ITEM_NOT_A_NOTE` when the item is a task: only notes have comments.
+         */
+        get: operations["listNoteComments"];
+        put?: never;
+        /**
+         * Add a comment to a note
+         * @description Adds a comment by the caller, who is always its author: the body carries no author. Open to the plan's owner and members. The body is trimmed and must then be 1-2000 characters, else 400 `VALIDATION_FAILED`. 400 `ITEM_NOT_A_NOTE` when the item is a task. Adding a comment never changes the note itself.
+         */
+        post: operations["createNoteComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{id}/checklists/{checklist_id}/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a comment on a note
+         * @description Deletes the comment for good and answers 204 with no body. Its author may delete it, and so may the plan's owner, whoever wrote it; anyone else with access gets 403 `FORBIDDEN`. 404 when the comment is not on this note, including one already deleted.
+         */
+        delete: operations["deleteNoteComment"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit a comment on a note
+         * @description Replaces the comment's body and marks it edited; no earlier version is kept. Only the comment's author may edit it, the plan's owner included: anyone else with access gets 403 `FORBIDDEN`. The body is trimmed and must then be 1-2000 characters, else 400 `VALIDATION_FAILED`. The same text as stored changes nothing and leaves `editedAt` as it was. 404 when the comment is not on this note.
+         */
+        patch: operations["updateNoteComment"];
         trace?: never;
     };
     "/api/plans/{id}/checklists/{checklist_id}/dates": {
@@ -407,7 +475,7 @@ export interface paths {
         put?: never;
         /**
          * Duplicate a checklist item
-         * @description Copies a live item with its description, intention, type, scope, parent and dates; the copy is never done. A top-level item brings a copy of each of its non-archived children, in their order. The copy is placed directly after the source in its sibling set, and everything is written in one transaction. Returns the created items: the copy first, then its copied children. An archived source is refused with 400.
+         * @description Copies a live item with its description, intention, summary, type, scope, parent and dates; the copy is never done. A top-level item brings a copy of each of its non-archived children, in their order. The copy is placed directly after the source in its sibling set, and everything is written in one transaction. Returns the created items: the copy first, then its copied children. An archived source is refused with 400.
          */
         post: operations["duplicateChecklist"];
         delete?: never;
@@ -704,6 +772,16 @@ export interface components {
             id: string;
             scope: string;
             startDate: string;
+            /**
+             * @description The short summary a note carries; omitted when unset. Only a note has one. A note's calendar text is the first line of its summary, else of its description (FS-PGG2N R11).
+             * @example Three ideas for the launch, ranked
+             */
+            summary?: string;
+            /**
+             * @example note
+             * @enum {string}
+             */
+            type: "task" | "note";
         };
         CalendarResponse: {
             items: components["schemas"]["CalendarItemResponse"][] | null;
@@ -749,6 +827,11 @@ export interface components {
             sequence: string;
             /** Format: date-time */
             startDate?: string;
+            /**
+             * @description The short summary a note carries; omitted when unset. Only a note has one.
+             * @example Three ideas for the launch, ranked
+             */
+            summary?: string;
             /**
              * @example task
              * @enum {string}
@@ -882,6 +965,40 @@ export interface components {
             /** @description suggestion | warning | insight; empty or omitted means all */
             requestType?: string;
         };
+        NoteCommentReq: {
+            /** @description Plain text. Trimmed by the server; must then be 1-2000 characters, else 400 VALIDATION_FAILED */
+            body: string;
+        };
+        NoteCommentResp: {
+            /**
+             * Format: uuid
+             * @description The user who wrote it
+             */
+            authorId: string;
+            /** @description The author's display name if set, otherwise account name; null when the account no longer exists */
+            authorName: string | null;
+            /** @description Plain text, trimmed, line breaks kept */
+            body: string;
+            /** @description Whether the caller may delete it: its author, or the plan's owner */
+            canDelete: boolean;
+            /** @description Whether the caller may edit it: only its author may */
+            canEdit: boolean;
+            /**
+             * Format: date-time
+             * @description When it was written
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When it was last edited; null until the first edit
+             */
+            editedAt: string | null;
+            /**
+             * Format: uuid
+             * @description Comment id
+             */
+            id: string;
+        };
         NoteResponse: {
             aiMetadata?: components["schemas"]["AIMetadataPayload"];
             content: string;
@@ -897,6 +1014,10 @@ export interface components {
             type: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        NoteSummaryResponse: {
+            /** @description One plain paragraph summarizing the note's body, in the note's language. Not saved: set it as the note's summary with updateChecklist */
+            summary: string;
         };
         PlanMemberResp: {
             /** @description The account's email */
@@ -1062,6 +1183,18 @@ export interface components {
             /** @description Plaintext password; hashed by auth-service */
             password: string;
         };
+        SummarizeNoteRequest: {
+            /**
+             * Format: uuid
+             * @description The note to summarize
+             */
+            itemId: string;
+            /**
+             * Format: uuid
+             * @description Plan id; the note must belong to it
+             */
+            planId: string;
+        };
         TickDayPlanEntryRequest: {
             /**
              * Format: uuid
@@ -1089,6 +1222,11 @@ export interface components {
             parentId?: string | null;
             /** @example longterm */
             scope?: string;
+            /**
+             * @description The short summary a note carries. Omit to leave it unchanged; send a string to set it. The server trims it and an empty result clears it. More than 280 characters after trimming, or a non-empty summary for an item that is or becomes a task, is rejected with 400.
+             * @example Three ideas for the launch, ranked
+             */
+            summary?: string;
             /** @example task */
             type?: string;
         };
@@ -1751,6 +1889,102 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    summarizeNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SummarizeNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteSummaryResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3108,6 +3342,359 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChecklistResp"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listNoteComments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+                /** @description Checklist item id */
+                checklist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteCommentResp"][] | null;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createNoteComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+                /** @description The note's item id */
+                checklist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteCommentReq"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteCommentResp"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteNoteComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+                /** @description The note's item id */
+                checklist_id: string;
+                /** @description Comment id */
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateNoteComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Plan id */
+                id: string;
+                /** @description The note's item id */
+                checklist_id: string;
+                /** @description Comment id */
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteCommentReq"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteCommentResp"];
                 };
             };
             /** @description Bad Request */

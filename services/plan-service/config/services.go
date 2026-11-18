@@ -11,6 +11,7 @@ import (
 	"github.com/darkphotonKN/fireplace/common/discovery"
 	commonworker "github.com/darkphotonKN/fireplace/common/worker"
 	"github.com/darkphotonKN/fireplace/services/plan-service/internal/checklistitem"
+	"github.com/darkphotonKN/fireplace/services/plan-service/internal/notecomment"
 	"github.com/darkphotonKN/fireplace/services/plan-service/internal/outbox"
 	"github.com/darkphotonKN/fireplace/services/plan-service/internal/plan"
 	"github.com/jmoiron/sqlx"
@@ -35,6 +36,10 @@ func SetupServices(workerCtx context.Context, db *sqlx.DB, amqpChannel *amqp.Cha
 	checklistRepo := checklistitem.NewRepository(db)
 	checklistService := checklistitem.NewService(checklistRepo, publisher)
 	checklistHandler := checklistitem.NewHandler(checklistService)
+
+	// --- note comments (FS-65B3N), served on ChecklistService beside items ---
+	commentRepo := notecomment.NewRepository(db)
+	comments := notecomment.NewHandler(notecomment.NewService(commentRepo))
 
 	// setup publish worker
 	worker := commonworker.NewPublishWorker(outboxService, publisher, db, time.Minute*2)
@@ -61,8 +66,23 @@ func SetupServices(workerCtx context.Context, db *sqlx.DB, amqpChannel *amqp.Cha
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterPlanServiceServer(grpcServer, planHandler)
-	pb.RegisterChecklistServiceServer(grpcServer, checklistHandler)
+	pb.RegisterChecklistServiceServer(grpcServer, checklistServer{checklistHandler, comments})
 
 	slog.Info("plan-service initialized successfully")
 	return grpcServer
 }
+
+// checklistServer is ChecklistService: item RPCs from checklistitem, comment
+// RPCs from notecomment. checklistitem's handler embeds the Unimplemented
+// server and notecomment's does not, so each comment method resolves to
+// notecomment's (the shallower one) and nothing else is ambiguous.
+type checklistServer struct {
+	*itemHandler
+	*commentHandler
+}
+
+// Aliases give the two embedded handlers distinct field names.
+type (
+	itemHandler    = checklistitem.Handler
+	commentHandler = notecomment.Handler
+)

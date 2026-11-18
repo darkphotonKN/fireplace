@@ -90,4 +90,25 @@ const (
 	// the entry's own. Decided by insights-service and sent as an ErrorInfo
 	// detail on FailedPrecondition.
 	DayPlanEntryNotTickable Code = "DAY_PLAN_ENTRY_NOT_TICKABLE"
+
+	// ItemNotANote (400): the item is a task, milestones included, and the
+	// request needs a note: only a note has a body to summarize (FS-PGG2N R39,
+	// decided by insights-service) or comments to list or add (FS-65B3N R3,
+	// decided by plan-service). Sent as an ErrorInfo detail on
+	// FailedPrecondition.
+	ItemNotANote Code = "ITEM_NOT_A_NOTE"
+
+	// NoteSummaryFailed (503): the model call behind a note summary failed,
+	// timed out or answered nothing usable, so no summary was written
+	// (FS-PGG2N R42). Retrying is correct. Clients tell it from
+	// SERVICE_UNAVAILABLE (insights-service unreachable) by code only.
+	// Decided by insights-service and sent as an ErrorInfo detail on
+	// Unavailable.
+	NoteSummaryFailed Code = "NOTE_SUMMARY_FAILED"
+
+	// NoteHasComments (400): an item update asked a note that has comments to
+	// become a task, and nothing was written; the comments must be deleted
+	// first (FS-65B3N R4). Decided by plan-service and sent as an ErrorInfo
+	// detail on FailedPrecondition.
+	NoteHasComments Code = "NOTE_HAS_COMMENTS"
 )

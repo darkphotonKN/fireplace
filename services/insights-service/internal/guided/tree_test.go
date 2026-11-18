@@ -1,6 +1,7 @@
 package guided
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -46,5 +47,31 @@ func TestPlanTree_ParentItemsAreOpenTopLevelTasks(t *testing.T) {
 	parents := tree.ParentItems()
 	if len(parents) != 1 || parents[0].ID != open {
 		t.Fatalf("parent items = %+v, want only the open top-level task", parents)
+	}
+}
+
+// FS-PGG2N R45: notes are not in the plan tree, so a note's body, however
+// long or however edited, changes neither the tree the model sees nor its
+// state hash.
+func TestNewPlanTree_NotesNeverReachTheTreeOrItsHash(t *testing.T) {
+	task := PlanItem{ID: uuid.New(), Description: "Ship the API", Type: "task", Scope: "longterm"}
+	noteID := uuid.New()
+	withNote := func(body string) []PlanItem {
+		return []PlanItem{task, {ID: noteID, Description: body, Type: "note", Scope: "longterm"}}
+	}
+
+	short := NewPlanTree(withNote("short"))
+	long := NewPlanTree(withNote(strings.Repeat("a long body ", 500)))
+	none := NewPlanTree([]PlanItem{task})
+
+	for _, tr := range []PlanTree{short, long} {
+		for _, it := range tr.Items {
+			if it.ID == noteID {
+				t.Fatalf("the note is in the tree: %+v", it)
+			}
+		}
+	}
+	if short.StateHash() != none.StateHash() || long.StateHash() != none.StateHash() {
+		t.Fatal("a note changed the plan tree's state hash")
 	}
 }

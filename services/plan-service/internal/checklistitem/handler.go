@@ -196,6 +196,13 @@ func (h *Handler) UpdateItem(ctx context.Context, req *pb.UpdateItemRequest) (*p
 		in.Intention = req.Intention
 	}
 
+	// Summary: the same set-or-leave. The service trims it and holds the
+	// note-only rule (FS-PGG2N R2, R3).
+	if req.Summary != nil {
+		in.SetSummary = true
+		in.Summary = req.Summary
+	}
+
 	// Parent_id three-state: clear_parent_id wins (clears column); else if
 	// parent_id is set, re-parent; else leave alone.
 	if req.ClearParentId {
@@ -334,6 +341,7 @@ func itemToProto(i *Item) *pb.ChecklistItem {
 		CreatedAt:   timestamppb.New(i.CreatedAt),
 		UpdatedAt:   timestamppb.New(i.UpdatedAt),
 		Intention:   i.Intention,
+		Summary:     i.Summary,
 	}
 	if i.ParentID != nil {
 		s := i.ParentID.String()

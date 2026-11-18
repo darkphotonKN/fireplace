@@ -24,10 +24,13 @@ type PlanContext struct {
 }
 
 // ChecklistItem is the slim projection of a plan-service checklist item used
-// purely as prompt context.
+// purely as prompt context. Type is "task" or "note"; Summary is a note's
+// short form, nil when it has none (FS-PGG2N R45).
 type ChecklistItem struct {
 	Description string
 	Scope       string
+	Type        string
+	Summary     *string
 }
 
 // create from req

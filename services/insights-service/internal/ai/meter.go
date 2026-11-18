@@ -21,6 +21,9 @@ const (
 	KindChecklistSuggestion Kind = "checklist_suggestion"
 	KindVideoTerms          Kind = "video_terms"
 	KindDayPlan             Kind = "day_plan"
+	// KindNoteSummary is a summary of one note's body, written on request
+	// (FS-PGG2N R41).
+	KindNoteSummary Kind = "note_summary"
 	// "daily_suggestions" was the legacy daily set, removed with its endpoint
 	// (FS-DF4ZB R55), and "daily_brief" the retired daily brief (FS-02JBZ
 	// R92). The generations CHECK still admits both because ledger rows

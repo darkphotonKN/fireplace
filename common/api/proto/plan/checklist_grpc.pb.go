@@ -33,6 +33,11 @@ const (
 	ChecklistService_UpdateItemDates_FullMethodName       = "/plan.ChecklistService/UpdateItemDates"
 	ChecklistService_ArchiveItem_FullMethodName           = "/plan.ChecklistService/ArchiveItem"
 	ChecklistService_DeleteItem_FullMethodName            = "/plan.ChecklistService/DeleteItem"
+	ChecklistService_ListNoteComments_FullMethodName      = "/plan.ChecklistService/ListNoteComments"
+	ChecklistService_CreateNoteComment_FullMethodName     = "/plan.ChecklistService/CreateNoteComment"
+	ChecklistService_GetNoteComment_FullMethodName        = "/plan.ChecklistService/GetNoteComment"
+	ChecklistService_UpdateNoteComment_FullMethodName     = "/plan.ChecklistService/UpdateNoteComment"
+	ChecklistService_DeleteNoteComment_FullMethodName     = "/plan.ChecklistService/DeleteNoteComment"
 )
 
 // ChecklistServiceClient is the client API for ChecklistService service.
@@ -68,6 +73,32 @@ type ChecklistServiceClient interface {
 	UpdateItemDates(ctx context.Context, in *UpdateItemDatesRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
 	ArchiveItem(ctx context.Context, in *ArchiveItemRequest, opts ...grpc.CallOption) (*ChecklistItem, error)
 	DeleteItem(ctx context.Context, in *DeleteItemRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// ListNoteComments returns every comment on the note item_id in plan_id,
+	// oldest first (created_at, then id), and none as an empty list
+	// (FS-65B3N R11). An item that is missing or in another plan is NotFound;
+	// an item whose type is task is FailedPrecondition with ErrorInfo reason
+	// ITEM_NOT_A_NOTE (R2, R3). Who may read is the gateway's decision (ADR-0015).
+	ListNoteComments(ctx context.Context, in *ListNoteCommentsRequest, opts ...grpc.CallOption) (*ListNoteCommentsResponse, error)
+	// CreateNoteComment adds a comment to the note item_id in plan_id, authored
+	// by user_id, the caller (R6). The body is trimmed and must then be 1-2000
+	// characters, else InvalidArgument (R8, R9). The item's type is checked
+	// under a lock on its row in the same transaction as the insert (R5).
+	// Refusals are ListNoteComments' NotFound and ITEM_NOT_A_NOTE.
+	CreateNoteComment(ctx context.Context, in *CreateNoteCommentRequest, opts ...grpc.CallOption) (*NoteComment, error)
+	// GetNoteComment reads one comment, so the gateway can decide edit and
+	// delete from its author_id (FS-65B3N R18). A comment that is missing, not
+	// on item_id, or whose item is not in plan_id is NotFound (R2).
+	GetNoteComment(ctx context.Context, in *GetNoteCommentRequest, opts ...grpc.CallOption) (*NoteComment, error)
+	// UpdateNoteComment replaces a comment's body and sets edited_at (R16). The
+	// body is trimmed and must then be 1-2000 characters, else InvalidArgument
+	// (R10). The same trimmed body as stored is a no-op: the comment comes back
+	// unchanged, edited_at untouched. A caller who is not the author is
+	// PermissionDenied (R19 backstop). Scope refusals are GetNoteComment's.
+	UpdateNoteComment(ctx context.Context, in *UpdateNoteCommentRequest, opts ...grpc.CallOption) (*NoteComment, error)
+	// DeleteNoteComment removes a comment for good (R17). A caller who is
+	// neither its author nor the plan's owner is PermissionDenied (R19
+	// backstop). Scope refusals are GetNoteComment's.
+	DeleteNoteComment(ctx context.Context, in *DeleteNoteCommentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type checklistServiceClient struct {
@@ -208,6 +239,56 @@ func (c *checklistServiceClient) DeleteItem(ctx context.Context, in *DeleteItemR
 	return out, nil
 }
 
+func (c *checklistServiceClient) ListNoteComments(ctx context.Context, in *ListNoteCommentsRequest, opts ...grpc.CallOption) (*ListNoteCommentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNoteCommentsResponse)
+	err := c.cc.Invoke(ctx, ChecklistService_ListNoteComments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *checklistServiceClient) CreateNoteComment(ctx context.Context, in *CreateNoteCommentRequest, opts ...grpc.CallOption) (*NoteComment, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NoteComment)
+	err := c.cc.Invoke(ctx, ChecklistService_CreateNoteComment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *checklistServiceClient) GetNoteComment(ctx context.Context, in *GetNoteCommentRequest, opts ...grpc.CallOption) (*NoteComment, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NoteComment)
+	err := c.cc.Invoke(ctx, ChecklistService_GetNoteComment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *checklistServiceClient) UpdateNoteComment(ctx context.Context, in *UpdateNoteCommentRequest, opts ...grpc.CallOption) (*NoteComment, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NoteComment)
+	err := c.cc.Invoke(ctx, ChecklistService_UpdateNoteComment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *checklistServiceClient) DeleteNoteComment(ctx context.Context, in *DeleteNoteCommentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ChecklistService_DeleteNoteComment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChecklistServiceServer is the server API for ChecklistService service.
 // All implementations must embed UnimplementedChecklistServiceServer
 // for forward compatibility.
@@ -241,6 +322,32 @@ type ChecklistServiceServer interface {
 	UpdateItemDates(context.Context, *UpdateItemDatesRequest) (*ChecklistItem, error)
 	ArchiveItem(context.Context, *ArchiveItemRequest) (*ChecklistItem, error)
 	DeleteItem(context.Context, *DeleteItemRequest) (*emptypb.Empty, error)
+	// ListNoteComments returns every comment on the note item_id in plan_id,
+	// oldest first (created_at, then id), and none as an empty list
+	// (FS-65B3N R11). An item that is missing or in another plan is NotFound;
+	// an item whose type is task is FailedPrecondition with ErrorInfo reason
+	// ITEM_NOT_A_NOTE (R2, R3). Who may read is the gateway's decision (ADR-0015).
+	ListNoteComments(context.Context, *ListNoteCommentsRequest) (*ListNoteCommentsResponse, error)
+	// CreateNoteComment adds a comment to the note item_id in plan_id, authored
+	// by user_id, the caller (R6). The body is trimmed and must then be 1-2000
+	// characters, else InvalidArgument (R8, R9). The item's type is checked
+	// under a lock on its row in the same transaction as the insert (R5).
+	// Refusals are ListNoteComments' NotFound and ITEM_NOT_A_NOTE.
+	CreateNoteComment(context.Context, *CreateNoteCommentRequest) (*NoteComment, error)
+	// GetNoteComment reads one comment, so the gateway can decide edit and
+	// delete from its author_id (FS-65B3N R18). A comment that is missing, not
+	// on item_id, or whose item is not in plan_id is NotFound (R2).
+	GetNoteComment(context.Context, *GetNoteCommentRequest) (*NoteComment, error)
+	// UpdateNoteComment replaces a comment's body and sets edited_at (R16). The
+	// body is trimmed and must then be 1-2000 characters, else InvalidArgument
+	// (R10). The same trimmed body as stored is a no-op: the comment comes back
+	// unchanged, edited_at untouched. A caller who is not the author is
+	// PermissionDenied (R19 backstop). Scope refusals are GetNoteComment's.
+	UpdateNoteComment(context.Context, *UpdateNoteCommentRequest) (*NoteComment, error)
+	// DeleteNoteComment removes a comment for good (R17). A caller who is
+	// neither its author nor the plan's owner is PermissionDenied (R19
+	// backstop). Scope refusals are GetNoteComment's.
+	DeleteNoteComment(context.Context, *DeleteNoteCommentRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedChecklistServiceServer()
 }
 
@@ -289,6 +396,21 @@ func (UnimplementedChecklistServiceServer) ArchiveItem(context.Context, *Archive
 }
 func (UnimplementedChecklistServiceServer) DeleteItem(context.Context, *DeleteItemRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteItem not implemented")
+}
+func (UnimplementedChecklistServiceServer) ListNoteComments(context.Context, *ListNoteCommentsRequest) (*ListNoteCommentsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListNoteComments not implemented")
+}
+func (UnimplementedChecklistServiceServer) CreateNoteComment(context.Context, *CreateNoteCommentRequest) (*NoteComment, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateNoteComment not implemented")
+}
+func (UnimplementedChecklistServiceServer) GetNoteComment(context.Context, *GetNoteCommentRequest) (*NoteComment, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetNoteComment not implemented")
+}
+func (UnimplementedChecklistServiceServer) UpdateNoteComment(context.Context, *UpdateNoteCommentRequest) (*NoteComment, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateNoteComment not implemented")
+}
+func (UnimplementedChecklistServiceServer) DeleteNoteComment(context.Context, *DeleteNoteCommentRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteNoteComment not implemented")
 }
 func (UnimplementedChecklistServiceServer) mustEmbedUnimplementedChecklistServiceServer() {}
 func (UnimplementedChecklistServiceServer) testEmbeddedByValue()                          {}
@@ -545,6 +667,96 @@ func _ChecklistService_DeleteItem_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChecklistService_ListNoteComments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNoteCommentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChecklistServiceServer).ListNoteComments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChecklistService_ListNoteComments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChecklistServiceServer).ListNoteComments(ctx, req.(*ListNoteCommentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChecklistService_CreateNoteComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateNoteCommentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChecklistServiceServer).CreateNoteComment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChecklistService_CreateNoteComment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChecklistServiceServer).CreateNoteComment(ctx, req.(*CreateNoteCommentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChecklistService_GetNoteComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNoteCommentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChecklistServiceServer).GetNoteComment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChecklistService_GetNoteComment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChecklistServiceServer).GetNoteComment(ctx, req.(*GetNoteCommentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChecklistService_UpdateNoteComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateNoteCommentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChecklistServiceServer).UpdateNoteComment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChecklistService_UpdateNoteComment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChecklistServiceServer).UpdateNoteComment(ctx, req.(*UpdateNoteCommentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChecklistService_DeleteNoteComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteNoteCommentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChecklistServiceServer).DeleteNoteComment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChecklistService_DeleteNoteComment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChecklistServiceServer).DeleteNoteComment(ctx, req.(*DeleteNoteCommentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChecklistService_ServiceDesc is the grpc.ServiceDesc for ChecklistService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -603,6 +815,26 @@ var ChecklistService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteItem",
 			Handler:    _ChecklistService_DeleteItem_Handler,
+		},
+		{
+			MethodName: "ListNoteComments",
+			Handler:    _ChecklistService_ListNoteComments_Handler,
+		},
+		{
+			MethodName: "CreateNoteComment",
+			Handler:    _ChecklistService_CreateNoteComment_Handler,
+		},
+		{
+			MethodName: "GetNoteComment",
+			Handler:    _ChecklistService_GetNoteComment_Handler,
+		},
+		{
+			MethodName: "UpdateNoteComment",
+			Handler:    _ChecklistService_UpdateNoteComment_Handler,
+		},
+		{
+			MethodName: "DeleteNoteComment",
+			Handler:    _ChecklistService_DeleteNoteComment_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

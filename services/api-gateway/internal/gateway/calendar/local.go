@@ -93,6 +93,8 @@ func (c *LocalClient) GetCalendar(ctx context.Context, planID, userID uuid.UUID,
 		formatted = append(formatted, CalendarItem{
 			ID:          id,
 			Description: item.Description,
+			Type:        item.Type,
+			Summary:     item.Summary,
 			Scope:       item.Scope,
 			Done:        item.Done,
 			StartDate:   startDate,

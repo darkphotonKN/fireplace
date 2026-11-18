@@ -12,6 +12,7 @@ import (
 	videodiscovery "github.com/darkphotonKN/fireplace/services/insights-service/internal/discovery"
 	"github.com/darkphotonKN/fireplace/services/insights-service/internal/guided"
 	"github.com/darkphotonKN/fireplace/services/insights-service/internal/insights"
+	"github.com/darkphotonKN/fireplace/services/insights-service/internal/notesummary"
 	"github.com/darkphotonKN/fireplace/services/insights-service/internal/rag"
 	"github.com/jmoiron/sqlx"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -67,7 +68,11 @@ func SetupServices(db *sqlx.DB, _ *amqp.Channel, registry discovery.Registry, re
 	dayPlanService := dayplan.NewService(planClient, dayPlanGen,
 		guided.NewSnippetSource(guided.NoRetrieval{}, memory), dayPlanRepo, dayPlanRepo, refreshes)
 
-	handler := insights.NewHandler(service, dayPlanService)
+	// The note summary (FS-PGG2N R38-R44) is one metered call of its own kind
+	// on its own prompt, behind the plan-access check. It stores nothing.
+	noteSummaries := notesummary.NewService(planClient, ai.NewNoteSummaryGen(meter))
+
+	handler := insights.NewHandler(service, dayPlanService, noteSummaries)
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterInsightsServiceServer(grpcServer, handler)

@@ -24,6 +24,8 @@ type CalendarClient interface {
 type CalendarItemResponse struct {
 	ID          uuid.UUID `json:"id"`
 	Description string    `json:"description"`
+	Type        string    `json:"type" enum:"task,note" example:"note"`
+	Summary     *string   `json:"summary,omitempty" doc:"The short summary a note carries; omitted when unset. Only a note has one. A note's calendar text is the first line of its summary, else of its description (FS-PGG2N R11)." example:"Three ideas for the launch, ranked"`
 	Scope       string    `json:"scope"`
 	Done        bool      `json:"done"`
 	StartDate   string    `json:"startDate"`
@@ -110,6 +112,8 @@ func toCalendarResponse(in *GetCalendarResp) CalendarResponse {
 		out.Items = append(out.Items, CalendarItemResponse{
 			ID:          it.ID,
 			Description: it.Description,
+			Type:        it.Type,
+			Summary:     it.Summary,
 			Scope:       it.Scope,
 			Done:        it.Done,
 			StartDate:   it.StartDate,

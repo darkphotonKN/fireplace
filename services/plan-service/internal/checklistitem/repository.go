@@ -53,7 +53,7 @@ const orderBySequence = " ORDER BY sequence ASC" + tieBreak
 func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-	       intention, archived, created_at, updated_at, plan_id
+	       intention, summary, archived, created_at, updated_at, plan_id
 	FROM checklist_items WHERE id = $1`
 	var item Item
 	if err := r.db.GetContext(ctx, &item, query, id); err != nil {
@@ -67,7 +67,7 @@ func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*Item, error) {
 func (r *repository) GetInPlan(ctx context.Context, planID, id uuid.UUID) (*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-	       intention, archived, created_at, updated_at, plan_id
+	       intention, summary, archived, created_at, updated_at, plan_id
 	FROM checklist_items WHERE id = $1 AND plan_id = $2`
 	var item Item
 	if err := r.db.GetContext(ctx, &item, query, id, planID); err != nil {
@@ -79,7 +79,7 @@ func (r *repository) GetInPlan(ctx context.Context, planID, id uuid.UUID) (*Item
 func (r *repository) ListByPlanID(ctx context.Context, in ListItemsInput) ([]*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-	       intention, archived, created_at, updated_at, plan_id
+	       intention, summary, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1 AND archived = false`
 
@@ -111,7 +111,7 @@ func (r *repository) ListByPlanID(ctx context.Context, in ListItemsInput) ([]*It
 func (r *repository) ListArchivedByPlanID(ctx context.Context, planID uuid.UUID, scope *string) ([]*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-	       intention, archived, created_at, updated_at, plan_id
+	       intention, summary, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1 AND archived = true`
 	args := []interface{}{planID}
@@ -142,7 +142,7 @@ func (r *repository) ListSiblings(ctx context.Context, in SiblingSetInput) ([]*I
 func selectSiblings(ctx context.Context, q sqlx.QueryerContext, in SiblingSetInput) ([]*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-	       intention, archived, created_at, updated_at, plan_id
+	       intention, summary, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
 	  AND scope = $2
@@ -179,7 +179,7 @@ func (r *repository) Reorder(ctx context.Context, ids []uuid.UUID) ([]*Item, err
 
 		if err := tx.SelectContext(ctx, &items, `
 		SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-		       intention, archived, created_at, updated_at, plan_id
+		       intention, summary, archived, created_at, updated_at, plan_id
 		FROM checklist_items
 		WHERE id = ANY($1::uuid[])
 		ORDER BY sequence ASC`+tieBreak, pq.Array(idStrings)); err != nil {
@@ -230,7 +230,7 @@ func writeDenseSequences(ctx context.Context, tx *sqlx.Tx, op string, ids []uuid
 // starts, and the lock makes two duplicates of one source queue up, so the
 // later copy lands between the source and the earlier one.
 //
-// Copies carry description, intention, type, scope, parent and dates. They are
+// Copies carry description, intention, summary, type, scope, parent and dates. They are
 // never done and never archived, whatever the source's state.
 func (r *repository) Duplicate(ctx context.Context, planID, id uuid.UUID) ([]*Item, error) {
 	var created []*Item
@@ -238,7 +238,7 @@ func (r *repository) Duplicate(ctx context.Context, planID, id uuid.UUID) ([]*It
 		var source Item
 		if err := tx.GetContext(ctx, &source, `
 		SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-		       intention, archived, created_at, updated_at, plan_id
+		       intention, summary, archived, created_at, updated_at, plan_id
 		FROM checklist_items WHERE id = $1 AND plan_id = $2
 		FOR UPDATE`, id, planID); err != nil {
 			return wrapDBErr("duplicate: lock source "+id.String(), err)
@@ -251,8 +251,8 @@ func (r *repository) Duplicate(ctx context.Context, planID, id uuid.UUID) ([]*It
 		var copyID uuid.UUID
 		if err := tx.GetContext(ctx, &copyID, `
 		INSERT INTO checklist_items
-			(plan_id, description, intention, done, sequence, scope, type, parent_id, start_date, due_date)
-		SELECT plan_id, description, intention, false, sequence, scope, type, parent_id, start_date, due_date
+			(plan_id, description, intention, summary, done, sequence, scope, type, parent_id, start_date, due_date)
+		SELECT plan_id, description, intention, summary, false, sequence, scope, type, parent_id, start_date, due_date
 		FROM checklist_items WHERE id = $1
 		RETURNING id`, source.ID); err != nil {
 			return wrapDBErr("duplicate: insert copy", err)
@@ -268,8 +268,8 @@ func (r *repository) Duplicate(ctx context.Context, planID, id uuid.UUID) ([]*It
 		if source.ParentID == nil {
 			if _, err := tx.ExecContext(ctx, `
 			INSERT INTO checklist_items
-				(plan_id, description, intention, done, sequence, scope, type, parent_id, start_date, due_date)
-			SELECT plan_id, description, intention, false,
+				(plan_id, description, intention, summary, done, sequence, scope, type, parent_id, start_date, due_date)
+			SELECT plan_id, description, intention, summary, false,
 			       row_number() OVER (ORDER BY sequence ASC`+tieBreak+`),
 			       scope, type, $2, start_date, due_date
 			FROM checklist_items
@@ -293,7 +293,7 @@ func (r *repository) Duplicate(ctx context.Context, planID, id uuid.UUID) ([]*It
 
 		if err := tx.SelectContext(ctx, &created, `
 		SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-		       intention, archived, created_at, updated_at, plan_id
+		       intention, summary, archived, created_at, updated_at, plan_id
 		FROM checklist_items
 		WHERE id = $1 OR parent_id = $1
 		ORDER BY (id = $1) DESC, sequence ASC`+tieBreak, copyID); err != nil {
@@ -351,7 +351,7 @@ func (r *repository) Create(ctx context.Context, in CreateItemInput, sequenceNo 
 	INSERT INTO checklist_items (description, done, sequence, scope, type, parent_id, plan_id)
 	VALUES (:description, :done, :sequence, :scope, :type, :parent_id, :plan_id)
 	RETURNING id, description, done, sequence, plan_id, scope, type, parent_id, start_date,
-	          due_date, intention, archived, created_at, updated_at`
+	          due_date, intention, summary, archived, created_at, updated_at`
 
 	scope := ScopeLongterm
 	if in.Scope != nil {
@@ -429,13 +429,53 @@ func (r *repository) Update(ctx context.Context, in UpdateItemInput) error {
 		params["intention"] = in.Intention
 	}
 
-	query := `UPDATE checklist_items SET ` + setClause + ` WHERE id = :id AND plan_id = :plan_id`
-	res, err := r.db.NamedExecContext(ctx, query, params)
-	if err != nil {
-		return wrapDBErr("update item "+in.ID.String(), err)
+	// Set with the type in one UPDATE, so note→task clears the summary without
+	// a moment the note-only CHECK would refuse (FS-PGG2N R6).
+	if in.SetSummary {
+		setClause += `, summary = :summary`
+		params["summary"] = in.Summary
 	}
-	if rows, _ := res.RowsAffected(); rows == 0 {
-		return commonconstants.ErrNotFound
+
+	query := `UPDATE checklist_items SET ` + setClause + ` WHERE id = :id AND plan_id = :plan_id`
+	return commonhelpers.ExecTx(ctx, r.db, func(tx *sqlx.Tx) error {
+		if in.Type != nil && *in.Type == TypeTask {
+			if err := refuseCommentedNote(ctx, tx, in.PlanID, in.ID); err != nil {
+				return err
+			}
+		}
+		res, err := tx.NamedExecContext(ctx, query, params)
+		if err != nil {
+			return wrapDBErr("update item "+in.ID.String(), err)
+		}
+		if rows, _ := res.RowsAffected(); rows == 0 {
+			return commonconstants.ErrNotFound
+		}
+		return nil
+	})
+}
+
+// refuseCommentedNote holds the item row FOR UPDATE until the write commits
+// and answers ErrNoteHasComments when it is a note with a comment (FS-65B3N
+// R4). A comment create holds the same row FOR SHARE from its type check to
+// its insert, so whichever commits second sees the other's result (R5). The
+// comment check is its own statement, after the lock is held: under READ
+// COMMITTED it then reads a snapshot that includes a create it waited for.
+func refuseCommentedNote(ctx context.Context, tx *sqlx.Tx, planID, id uuid.UUID) error {
+	var itemType string
+	if err := tx.GetContext(ctx, &itemType,
+		`SELECT type FROM checklist_items WHERE id = $1 AND plan_id = $2 FOR UPDATE`, id, planID); err != nil {
+		return wrapDBErr("lock item "+id.String(), err)
+	}
+	if itemType != TypeNote {
+		return nil
+	}
+	var hasComments bool
+	if err := tx.GetContext(ctx, &hasComments,
+		`SELECT EXISTS (SELECT 1 FROM note_comments WHERE item_id = $1)`, id); err != nil {
+		return wrapDBErr("check comments on "+id.String(), err)
+	}
+	if hasComments {
+		return fmt.Errorf("item %s: %w", id, ErrNoteHasComments)
 	}
 	return nil
 }
@@ -469,7 +509,7 @@ func (r *repository) Delete(ctx context.Context, planID, id uuid.UUID) error {
 func (r *repository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item, error) {
 	query := `
 	SELECT ci.id, ci.description, ci.done, ci.sequence, ci.scope, ci.type, ci.parent_id,
-	       ci.start_date, ci.due_date, ci.intention, ci.archived, ci.created_at, ci.updated_at, ci.plan_id
+	       ci.start_date, ci.due_date, ci.intention, ci.summary, ci.archived, ci.created_at, ci.updated_at, ci.plan_id
 	FROM checklist_items ci
 	JOIN plans p ON ci.plan_id = p.id
 	WHERE p.user_id = $1 AND ci.archived = false
@@ -488,7 +528,7 @@ func (r *repository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Item
 func (r *repository) ListInDateWindow(ctx context.Context, planID uuid.UUID, windowStart, windowEnd time.Time) ([]*Item, error) {
 	query := `
 	SELECT id, description, done, sequence, scope, type, parent_id, start_date, due_date,
-	       intention, archived, created_at, updated_at, plan_id
+	       intention, summary, archived, created_at, updated_at, plan_id
 	FROM checklist_items
 	WHERE plan_id = $1
 	  AND archived = false

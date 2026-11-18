@@ -253,11 +253,36 @@ Current checklist items for this task:
 Please use this information to now provide exactly 3 relevant search terms.`, pc.Focus, formatChecklist(pc))
 }
 
+// NotePromptCap is how many characters of a note's body a prompt carries
+// when the note has no summary (FS-PGG2N R45, C20): a long note must not grow
+// what a suggestion spends.
+const NotePromptCap = 280
+
 // formatChecklist flattens checklist items into prompt lines.
 func formatChecklist(pc *PlanContext) string {
 	var b strings.Builder
 	for _, item := range pc.ChecklistItems {
-		fmt.Fprintf(&b, "A %s task: %s\n", item.Scope, item.Description)
+		b.WriteString(promptLine(item))
+		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// promptLine is one item's line in a prompt. A task is its full description.
+// A note is its summary, else the first NotePromptCap characters of its body
+// (R45). A note's text has its whitespace collapsed to single spaces first,
+// so a multi-line body or summary stays on the item's one line.
+func promptLine(item ChecklistItem) string {
+	if item.Type != "note" {
+		return fmt.Sprintf("A %s task: %s", item.Scope, item.Description)
+	}
+	text := item.Description
+	if item.Summary != nil && strings.TrimSpace(*item.Summary) != "" {
+		text = *item.Summary
+	}
+	text = strings.Join(strings.Fields(text), " ")
+	if r := []rune(text); len(r) > NotePromptCap {
+		text = string(r[:NotePromptCap])
+	}
+	return fmt.Sprintf("A %s note: %s", item.Scope, text)
 }

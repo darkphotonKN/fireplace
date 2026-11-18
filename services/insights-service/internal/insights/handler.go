@@ -12,6 +12,7 @@ import (
 	"github.com/darkphotonKN/fireplace/services/insights-service/internal/ai"
 	"github.com/darkphotonKN/fireplace/services/insights-service/internal/dayplan"
 	"github.com/darkphotonKN/fireplace/services/insights-service/internal/guided"
+	"github.com/darkphotonKN/fireplace/services/insights-service/internal/notesummary"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -34,14 +35,21 @@ type DayPlanService interface {
 	SetItemRevisions(ctx context.Context, planID, userID, itemID uuid.UUID, enabled bool) error
 }
 
-type Handler struct {
-	pb.UnimplementedInsightsServiceServer
-	service  InsightsService
-	dayPlans DayPlanService
+// NoteSummaryService writes a note's summary on request and returns it
+// (FS-PGG2N R38-R44); notesummary.Service implements it.
+type NoteSummaryService interface {
+	Summarize(ctx context.Context, planID, userID, itemID uuid.UUID) (string, error)
 }
 
-func NewHandler(s InsightsService, dayPlans DayPlanService) *Handler {
-	return &Handler{service: s, dayPlans: dayPlans}
+type Handler struct {
+	pb.UnimplementedInsightsServiceServer
+	service       InsightsService
+	dayPlans      DayPlanService
+	noteSummaries NoteSummaryService
+}
+
+func NewHandler(s InsightsService, dayPlans DayPlanService, noteSummaries NoteSummaryService) *Handler {
+	return &Handler{service: s, dayPlans: dayPlans, noteSummaries: noteSummaries}
 }
 
 // badUUID builds an InvalidArgument-class domain error for a malformed id so it
@@ -182,6 +190,42 @@ func (h *Handler) SetItemRevisions(ctx context.Context, req *pb.SetItemRevisions
 		return nil, commongrpc.Fail(ctx, op, err)
 	}
 	return &pb.SetItemRevisionsResponse{}, nil
+}
+
+// SummarizeNote serves FS-PGG2N's AI summary (R38-R44): the text only, with
+// nothing stored.
+func (h *Handler) SummarizeNote(ctx context.Context, req *pb.SummarizeNoteRequest) (*pb.SummarizeNoteResponse, error) {
+	const op = "insights: summarize note"
+	planID, userID, err := parseIDs(req.GetPlanId(), req.GetUserId())
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	itemID, err := uuid.Parse(req.GetItemId())
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, badUUID("item_id", req.GetItemId()))
+	}
+	summary, err := h.noteSummaries.Summarize(ctx, planID, userID, itemID)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, noteSummaryStatus(err))
+	}
+	return &pb.SummarizeNoteResponse{Summary: summary}, nil
+}
+
+// noteSummaryStatus gives a note summary's refusals their wire form
+// (FS-PGG2N §API surface): a task is FailedPrecondition with ITEM_NOT_A_NOTE
+// (400 at the gateway), a failed model call is Unavailable with
+// NOTE_SUMMARY_FAILED (503, told apart from an unreachable service by code),
+// and the budget refusal is the generators' own. A NotFound goes to the
+// shared mapper as is.
+func noteSummaryStatus(err error) error {
+	switch {
+	case errors.Is(err, notesummary.ErrNotANote):
+		return commongrpc.WithCode(codes.FailedPrecondition, errcode.ItemNotANote, err.Error())
+	case errors.Is(err, notesummary.ErrFailed):
+		return commongrpc.WithCode(codes.Unavailable, errcode.NoteSummaryFailed, err.Error())
+	default:
+		return generationStatus(err)
+	}
 }
 
 // parseEntryIDs parses the (entry_id, user_id) pair of a day tick request.

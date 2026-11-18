@@ -2,6 +2,7 @@ package plangw
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -406,8 +407,8 @@ func (c *Client) UpdateChecklist(ctx context.Context, planID, id, userID uuid.UU
 }
 
 // updateItemRequest maps the PATCH body onto the proto. parentId is three-state
-// (omit, null, value); intention is two-state (omit leaves it, any string sets
-// it, and plan-service trims and clears an empty result).
+// (omit, null, value); intention and summary are two-state (omit leaves it, any
+// string sets it, and plan-service trims and clears an empty result).
 func updateItemRequest(planID, id, userID uuid.UUID, req UpdateChecklistReq) *pb.UpdateItemRequest {
 	pbReq := &pb.UpdateItemRequest{
 		Id:          id.String(),
@@ -418,6 +419,7 @@ func updateItemRequest(planID, id, userID uuid.UUID, req UpdateChecklistReq) *pb
 		Type:        req.Type,
 		Scope:       req.Scope,
 		Intention:   req.Intention,
+		Summary:     req.Summary,
 	}
 	if req.ParentID.Present {
 		if req.ParentID.Valid {
@@ -579,7 +581,7 @@ func checklistFromProto(c *pb.ChecklistItem) *ChecklistResp {
 		Description: c.Description, Done: c.Done, Sequence: c.Sequence,
 		Type: c.Type, Scope: c.Scope, Archived: c.Archived,
 		CreatedAt: c.CreatedAt.AsTime(), UpdatedAt: c.UpdatedAt.AsTime(),
-		Intention: c.Intention,
+		Intention: c.Intention, Summary: c.Summary,
 	}
 	if c.ParentId != nil {
 		pid, err := uuid.Parse(*c.ParentId)
@@ -605,4 +607,126 @@ func checklistSliceFromProto(items []*pb.ChecklistItem) []*ChecklistResp {
 		out = append(out, checklistFromProto(c))
 	}
 	return out
+}
+
+// --- note comments (FS-65B3N) ----------------------------------------------
+
+// ListNoteComments answers the note's comments in plan-service's order,
+// oldest first. userID is the caller.
+func (c *Client) ListNoteComments(ctx context.Context, planID, itemID, userID uuid.UUID) ([]NoteComment, error) {
+	items, err := c.checklistClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := items.ListNoteComments(ctx, &pb.ListNoteCommentsRequest{
+		PlanId: planID.String(), ItemId: itemID.String(), UserId: userID.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]NoteComment, 0, len(resp.GetComments()))
+	for _, cm := range resp.GetComments() {
+		n, err := noteCommentFromProto(cm)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+// CreateNoteComment adds a comment by userID, the caller, who plan-service
+// makes its author (R6).
+func (c *Client) CreateNoteComment(ctx context.Context, planID, itemID, userID uuid.UUID, body string) (*NoteComment, error) {
+	items, err := c.checklistClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := items.CreateNoteComment(ctx, &pb.CreateNoteCommentRequest{
+		PlanId: planID.String(), ItemId: itemID.String(), UserId: userID.String(), Body: body,
+	})
+	if err != nil {
+		return nil, err
+	}
+	n, err := noteCommentFromProto(resp)
+	if err != nil {
+		return nil, err
+	}
+	return &n, nil
+}
+
+// noteCommentFromProto maps a comment. A malformed id from plan-service is a
+// server fault, not something to pass on.
+func noteCommentFromProto(cm *pb.NoteComment) (NoteComment, error) {
+	id, err := uuid.Parse(cm.GetId())
+	if err != nil {
+		return NoteComment{}, fmt.Errorf("plan client: comment id %q: %w", cm.GetId(), err)
+	}
+	itemID, err := uuid.Parse(cm.GetItemId())
+	if err != nil {
+		return NoteComment{}, fmt.Errorf("plan client: comment item id %q: %w", cm.GetItemId(), err)
+	}
+	authorID, err := uuid.Parse(cm.GetAuthorId())
+	if err != nil {
+		return NoteComment{}, fmt.Errorf("plan client: comment author id %q: %w", cm.GetAuthorId(), err)
+	}
+	out := NoteComment{ID: id, ItemID: itemID, AuthorID: authorID, Body: cm.GetBody(), CreatedAt: cm.GetCreatedAt().AsTime()}
+	if cm.EditedAt != nil {
+		edited := cm.GetEditedAt().AsTime()
+		out.EditedAt = &edited
+	}
+	return out, nil
+}
+
+// GetNoteComment reads one comment under its note and plan; out of scope is
+// plan-service's NotFound (R2).
+func (c *Client) GetNoteComment(ctx context.Context, planID, itemID, commentID, userID uuid.UUID) (*NoteComment, error) {
+	items, err := c.checklistClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := items.GetNoteComment(ctx, &pb.GetNoteCommentRequest{
+		PlanId: planID.String(), ItemId: itemID.String(), CommentId: commentID.String(), UserId: userID.String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	n, err := noteCommentFromProto(resp)
+	if err != nil {
+		return nil, err
+	}
+	return &n, nil
+}
+
+// UpdateNoteComment replaces the body as userID, whom plan-service holds to
+// being the author (R19 backstop).
+func (c *Client) UpdateNoteComment(ctx context.Context, planID, itemID, commentID, userID uuid.UUID, body string) (*NoteComment, error) {
+	items, err := c.checklistClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := items.UpdateNoteComment(ctx, &pb.UpdateNoteCommentRequest{
+		PlanId: planID.String(), ItemId: itemID.String(), CommentId: commentID.String(), UserId: userID.String(), Body: body,
+	})
+	if err != nil {
+		return nil, err
+	}
+	n, err := noteCommentFromProto(resp)
+	if err != nil {
+		return nil, err
+	}
+	return &n, nil
+}
+
+// DeleteNoteComment removes the comment as userID, whom plan-service holds to
+// being its author or the plan's owner (R19 backstop).
+func (c *Client) DeleteNoteComment(ctx context.Context, planID, itemID, commentID, userID uuid.UUID) error {
+	items, err := c.checklistClient(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = items.DeleteNoteComment(ctx, &pb.DeleteNoteCommentRequest{
+		PlanId: planID.String(), ItemId: itemID.String(), CommentId: commentID.String(), UserId: userID.String(),
+	})
+	return err
 }

@@ -264,7 +264,14 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient, access *Acces
 			"null to clear, or omit to leave unchanged. `intention` is free text: omit it to " +
 			"leave it unchanged or send a string to set it; the server trims it, an empty " +
 			"result clears it, and more than 280 characters after trimming is 400 " +
-			"VALIDATION_FAILED. Conversion, re-parenting and the intention length rules are " +
+			"VALIDATION_FAILED. `summary` is the short text a note carries, set the same way: " +
+			"omit to leave it, send a string to set it, an empty result after trimming clears " +
+			"it. More than 280 characters after trimming, or a non-empty summary for an item " +
+			"that is a task or that this update makes a task, is 400 VALIDATION_FAILED. " +
+			"Setting `type: task` on a note clears its summary in the same update. " +
+			"Setting `type: task` on a note that has comments is refused with 400 " +
+			"NOTE_HAS_COMMENTS and changes nothing. " +
+			"Conversion, re-parenting and the intention and summary rules are " +
 			"enforced downstream. The daily scope is retired: `scope: daily` is well-formed " +
 			"but refused with 400 DAILY_SCOPE_RETIRED.",
 		Errors: writeErrs,
@@ -286,7 +293,7 @@ func RegisterChecklistOperations(api huma.API, c ChecklistsClient, access *Acces
 		DefaultStatus: http.StatusCreated,
 		Middlewares:   mw, Security: secured,
 		Summary: "Duplicate a checklist item",
-		Description: "Copies a live item with its description, intention, type, scope, parent " +
+		Description: "Copies a live item with its description, intention, summary, type, scope, parent " +
 			"and dates; the copy is never done. A top-level item brings a copy of each of " +
 			"its non-archived children, in their order. The copy is placed directly after " +
 			"the source in its sibling set, and everything is written in one transaction. " +

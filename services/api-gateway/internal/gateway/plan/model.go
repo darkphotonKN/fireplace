@@ -98,6 +98,12 @@ type UpdateChecklistReq struct {
 	// rejects a trimmed value over 280 characters with 400 (a domain rule, so
 	// deliberately not a schema maxLength — ADR-0005).
 	Intention *string `json:"intention,omitempty" doc:"Free text the item carries. Omit to leave it unchanged; send a string to set it. The server trims it, an empty result clears it, and more than 280 characters after trimming is rejected with 400." example:"Prove the plan works end to end"`
+	// The short summary a note carries (FS-PGG2N R2, R3). Omit to leave it
+	// unchanged; send a string to set it. plan-service trims it and stores an
+	// empty result as null. A trimmed value over 280 characters, or a non-empty
+	// value for an item that is or becomes a task, is 400. Both are domain
+	// rules, so deliberately not a schema maxLength (ADR-0005).
+	Summary *string `json:"summary,omitempty" doc:"The short summary a note carries. Omit to leave it unchanged; send a string to set it. The server trims it and an empty result clears it. More than 280 characters after trimming, or a non-empty summary for an item that is or becomes a task, is rejected with 400." example:"Three ideas for the launch, ranked"`
 }
 
 // UpdateDatesReq is the body for PATCH /plans/{id}/checklists/{checklist_id}/dates.
@@ -244,6 +250,7 @@ type ChecklistResp struct {
 	StartDate   *time.Time `json:"startDate,omitempty" format:"date-time"`
 	DueDate     *time.Time `json:"dueDate,omitempty" format:"date-time"`
 	Intention   *string    `json:"intention,omitempty" doc:"Free text the item carries; omitted when unset." example:"Prove the plan works end to end"`
+	Summary     *string    `json:"summary,omitempty" doc:"The short summary a note carries; omitted when unset. Only a note has one." example:"Three ideas for the launch, ranked"`
 	Scope       string     `json:"scope" enum:"daily,longterm" example:"daily"`
 	Archived    bool       `json:"archived" example:"false"`
 	// camelCase, matching every other published entity. This type already spelled
