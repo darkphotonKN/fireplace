@@ -103,6 +103,29 @@ today") is a separate per-user fact stored there and never changes `done`, and `
 changes it. Recurrence is not a concept in this service; the only recurrence on the platform is
 insights-service's revision ladder.
 
+## Notes (FS-PGG2N, FS-65B3N)
+
+**Note** — a checklist item with `type = 'note'`: text only, `done` always false, never a parent
+(it may be a child). The only item type with a **body**, a **summary** and **comments**. Not the
+gateway's `notes` table, a separate legacy system in another database.
+
+**Body** — a note's full text, any length, stored as the item's `description` (FS-PGG2N). It
+starts as whatever the user first wrote as the note's one line. Every reader of `description`
+therefore reads the whole note; insights-service's prompts use the summary or the first 280
+characters instead.
+
+**Summary** — the short form of a note, shown on its card: the nullable item field `summary`
+(≤ 280 chars, trimmed, blank clears). Notes only: a non-empty summary on a task is refused, and
+converting a note to a task clears it. Stored, never derived: this service neither truncates nor
+generates. Changed only by an explicit write (a user's edit, or saving an
+AI result the user asked for); a body edit never touches it.
+
+**Comment** — a dated entry on a note, its author taken from the caller's identity (ADR-0001),
+never from the request. Belongs to exactly one note. Not "update": in this service *update*
+already names the item mutation (`UpdateChecklistItem`). Who may edit or delete one is FS-65B3N's
+rule. A note that has comments cannot become a task (`NOTE_HAS_COMMENTS`); the check holds the
+item row so a comment can never land on a task.
+
 ## Access
 
 **Relation** — a user's relation to one plan, exactly one of **owner**, **member** or **none**
