@@ -21,6 +21,14 @@ import {
   resolveWindow,
   stepAnchor,
 } from "@/lib/calendar";
+import { itemName } from "@/lib/noteText";
+
+/**
+ * One line per item: a dated note shows its card text's first line, summary
+ * before body, never its whole body; a task shows its description
+ * (FS-PGG2N R4, R11, G20).
+ */
+const calendarLabel = (item: CalendarItem) => itemName(item);
 
 interface CalendarProps {
   planId: string;
@@ -258,7 +266,7 @@ function WeekRow({ days, items, window, rowCellMinHeight, dimOutOfMonth }: WeekR
                 key={p.item.id}
                 className="pointer-events-auto"
                 style={{ gridColumn: `${startCol + 1} / span 1`, transform: `translateY(${stackOffset}px)` }}
-                title={p.item.description}
+                title={calendarLabel(p.item)}
               >
                 <div
                   className={`mx-1 px-1.5 py-0.5 text-[11px] rounded truncate ${
@@ -267,7 +275,7 @@ function WeekRow({ days, items, window, rowCellMinHeight, dimOutOfMonth }: WeekR
                       : "bg-amber-500/20 text-amber-200"
                   }`}
                 >
-                  {p.item.description}
+                  {calendarLabel(p.item)}
                 </div>
               </div>
             );
@@ -278,7 +286,7 @@ function WeekRow({ days, items, window, rowCellMinHeight, dimOutOfMonth }: WeekR
               key={p.item.id}
               className="pointer-events-auto"
               style={{ gridColumn: `${startCol + 1} / span ${span}`, transform: `translateY(${stackOffset}px)` }}
-              title={p.item.description}
+              title={calendarLabel(p.item)}
             >
               <div
                 className={`mx-1 px-1.5 py-0.5 text-[11px] rounded truncate flex items-center gap-1 ${
@@ -290,7 +298,7 @@ function WeekRow({ days, items, window, rowCellMinHeight, dimOutOfMonth }: WeekR
                 }`}
               >
                 {p.clipsLeft && <span aria-hidden>‹</span>}
-                <span className="truncate">{p.item.description}</span>
+                <span className="truncate">{calendarLabel(p.item)}</span>
                 {p.clipsRight && <span aria-hidden>›</span>}
               </div>
             </div>

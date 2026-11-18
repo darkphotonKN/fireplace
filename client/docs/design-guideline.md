@@ -111,6 +111,22 @@ authoritative**; hex values below are for reference/approximation.
 - Never introduce a new raw colour. If you need one, add a semantic token here + in `globals.css`
   for **both** themes.
 
+### Note paper (FS-PGG2N)
+
+| Role | Token | Light HSL | Dark HSL |
+|---|---|---|---|
+| Note surface | `--note-paper` / `note-paper` | `42 70% 95%` (≈ `#FBF6E9`) | `38 22% 17%` (≈ `#352E22`) |
+
+- **Usage rule: the surface of a note, and nothing else.** The note card's fill, the small chip a
+  note row's text sits in, and the sheet the body is written on, on the note page. Never a task,
+  a milestone, a panel or a highlight, so the warmth keeps meaning "this is a note".
+- Notes are set **upright**: no italics on a note anywhere. The paper sets them apart from tasks,
+  where a slant and an icon used to. Text on paper is `foreground/88` on the card and the sheet.
+- Shapes: the card keeps the milestone tile's radius and hover glow; a row's chip is `rounded-md`
+  (6px) with `px-2 py-0.5`; the page's sheet is `rounded-xl` (12px) with `p-7` (`p-5` below `md`).
+- The sheet's text is `text-note` (17px on a 1.75 line), the one reading size off the scale: long
+  writing wants a little less than `text-base` and more room between lines.
+
 ---
 
 ## Typography

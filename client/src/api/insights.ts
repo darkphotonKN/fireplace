@@ -149,6 +149,31 @@ export const setItemRevisions = async (
   if (error) throw apiErrorFrom(error, response.status);
 };
 
+/**
+ * Summarize with AI (FS-PGG2N R30, R38): asks insights for a summary of one
+ * note's body and resolves to the text, one paragraph of 1–280 characters.
+ * NOTHING is saved: keep it by sending it as the note's `summary` through
+ * `updateChecklistItem`. Call it only on the user's press (ADR-0019, R44).
+ *
+ * THROWS an `ApiError`. Callers switch on its `code` (ADR-0004):
+ * `NOT_FOUND` (404) means the note is gone (deleted, archived, or not in the
+ * plan); `ITEM_NOT_A_NOTE` (400) means it is now a task;
+ * `LLM_BUDGET_EXHAUSTED` (429) means AI is paused until the next UTC day;
+ * `NOTE_SUMMARY_FAILED` (503, the model failed) and `SERVICE_UNAVAILABLE`
+ * (503, insights unreachable) are both worth retrying.
+ */
+export const summarizeNote = async (
+  planId: string,
+  itemId: string,
+): Promise<string> => {
+  const { data, error, response } = await api.POST(
+    "/api/insights/note-summary",
+    { body: { planId, itemId } },
+  );
+  if (error) throw apiErrorFrom(error, response.status);
+  return data!.summary;
+};
+
 export const getSuggestedVideos = async (
   planId: string,
 ): Promise<VideoSuggestion[]> => {

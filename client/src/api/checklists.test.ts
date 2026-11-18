@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const api = vi.hoisted(() => ({ POST: vi.fn() }));
+const api = vi.hoisted(() => ({ POST: vi.fn(), PATCH: vi.fn() }));
 
 vi.mock('./client', () => ({
   api,
@@ -8,7 +8,7 @@ vi.mock('./client', () => ({
     Object.assign(new Error(`request failed with ${status}`), { code: error.code, status }),
 }));
 
-import { duplicateChecklistItem } from './checklists';
+import { duplicateChecklistItem, updateChecklistItem } from './checklists';
 
 /**
  * FS-F6AEE R19: duplicating goes through the generated client only, and hands
@@ -51,6 +51,28 @@ describe('duplicateChecklistItem', () => {
     await expect(duplicateChecklistItem('plan-1', 'item-1')).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
       status: 400,
+    });
+  });
+});
+
+/**
+ * FS-PGG2N R2, R5: a note's summary is set only through the item PATCH, and the
+ * item that comes back carries it.
+ */
+describe('updateChecklistItem', () => {
+  beforeEach(() => api.PATCH.mockReset());
+
+  it('should send summary in the PATCH body and return the item with it', async () => {
+    const item = { id: 'item-1', type: 'note', summary: 'gist' };
+    api.PATCH.mockResolvedValue({ data: item, error: undefined, response: { status: 200 } });
+
+    await expect(
+      updateChecklistItem('plan-1', 'item-1', { summary: '  gist  ' }),
+    ).resolves.toEqual(item);
+
+    expect(api.PATCH).toHaveBeenCalledWith('/api/plans/{id}/checklists/{checklist_id}', {
+      params: { path: { id: 'plan-1', checklist_id: 'item-1' } },
+      body: { summary: '  gist  ' },
     });
   });
 });

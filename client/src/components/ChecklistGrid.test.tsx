@@ -387,7 +387,7 @@ describe('ChecklistGrid the way into a milestone (FS-043WP R5–R7)', () => {
     ).toBeInTheDocument();
   });
 
-  it('should give note cards and steps no way in', () => {
+  it('should give note cards and steps no milestone link', () => {
     renderGrid({ milestoneHref: href });
     expect(within(card('p3')).queryByRole('link')).toBeNull();
     // p1's only link is its own; its steps carry none.
@@ -497,5 +497,189 @@ describe('ChecklistGrid duplicate (FS-F6AEE R14, R16)', () => {
     );
     expect(card('p1').hasAttribute('data-traced')).toBe(true);
     expect(card('d1').hasAttribute('data-traced')).toBe(false);
+  });
+});
+
+describe('ChecklistGrid notes on paper (FS-PGG2N R10, R11, R47, R48)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const noteGroups = [
+    {
+      item: mk('n1', 'The whole long body\nwith a second line', {
+        type: 'note',
+        summary: 'The gist',
+      }),
+      children: [],
+    },
+    {
+      item: mk('n2', 'First line\nsecond line', { type: 'note' }),
+      children: [],
+    },
+    {
+      item: mk('m1', 'Learn Go'),
+      children: [
+        mk('s1', 'a task step', { parentId: 'm1' }),
+        mk('s2', 'a child note\nover two lines', {
+          parentId: 'm1',
+          type: 'note',
+          summary: 'child gist',
+        }),
+      ],
+    },
+  ];
+
+  const textOf = (id: string) =>
+    document.querySelector(`[data-note-text="${id}"]`) as HTMLElement;
+
+  it('should show the summary on a note card, not the body', () => {
+    renderGrid({ groups: noteGroups });
+    expect(within(card('n1')).getByText('The gist')).toBeInTheDocument();
+    expect(within(card('n1')).queryByText(/whole long body/)).toBeNull();
+  });
+
+  it('should show the body, line breaks kept and clamped to 4 lines, with no summary', () => {
+    renderGrid({ groups: noteGroups });
+    const text = textOf('n2');
+    expect(text.textContent).toBe('First line\nsecond line');
+    expect(text.className).toContain('whitespace-pre-line');
+    expect(text.className).toContain('line-clamp-4');
+    // A long unbroken URL wraps rather than widening the card (FS-49CQ2 R23).
+    expect(text.className).toContain('break-words');
+  });
+
+  it('should fill a note card with paper and drop the icon and the slant', () => {
+    renderGrid({ groups: noteGroups });
+    const c = card('n1');
+    expect(c.className).toContain('bg-note-paper');
+    expect(c.querySelector('.lucide-file-text')).toBeNull();
+    expect(textOf('n1').className).toContain('text-foreground/88');
+    expect(c.querySelector('.italic')).toBeNull();
+  });
+
+  it('should keep the milestone tile shape and hover glow on a note card', () => {
+    renderGrid({ groups: noteGroups });
+    const note = card('n1').className;
+    const milestone = card('m1').className;
+    for (const cls of ['rounded-xl', 'px-4', 'py-4', 'hover:shadow-[0_2px_18px_-12px_rgba(247,111,83,0.55)]']) {
+      expect(note).toContain(cls);
+      expect(milestone).toContain(cls);
+    }
+  });
+
+  it('should leave a milestone card on its own fill', () => {
+    renderGrid({ groups: noteGroups });
+    expect(card('m1').className).not.toContain('bg-note-paper');
+    expect(card('m1').className).toContain('bg-foreground/[0.04]');
+  });
+
+  it('should set a child note row upright in a paper chip, clamped to 2 lines', () => {
+    renderGrid({ groups: noteGroups });
+    const chip = textOf('s2');
+    expect(chip.textContent).toBe('child gist');
+    for (const cls of ['bg-note-paper', 'rounded-md', 'px-2', 'py-0.5', 'line-clamp-2', 'whitespace-pre-line', 'break-words']) {
+      expect(chip.className).toContain(cls);
+    }
+    expect(card('m1').querySelector('.italic')).toBeNull();
+  });
+
+  it('should leave a task step as it was', () => {
+    renderGrid({ groups: noteGroups });
+    const step = within(card('m1')).getByText('a task step');
+    expect(step.className).not.toContain('bg-note-paper');
+    expect(step.className).toContain('text-foreground/80');
+  });
+
+  it("should name a note's menu by its card text's first line (R11)", () => {
+    renderGrid({ groups: noteGroups });
+    expect(
+      screen.getByRole('button', { name: 'Actions for First line' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Actions for The gist' })
+    ).toBeInTheDocument();
+  });
+});
+
+describe('ChecklistGrid ways into a note (FS-PGG2N R12–R14)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const noteHref = (id: string) => `/plan/p/n/${id}`;
+  const milestoneHref = (id: string) => `/plan/p/m/${id}`;
+  const groups = [
+    { item: mk('n1', 'Launch ideas\nA waitlist', { type: 'note' }), children: [] },
+    {
+      item: mk('m1', 'Learn Go'),
+      children: [
+        mk('s1', 'a task step', { parentId: 'm1' }),
+        mk('s2', 'a child note', { parentId: 'm1', type: 'note', summary: 'child gist' }),
+      ],
+    },
+  ];
+
+  it('should make the whole note card a link named for its first line', () => {
+    renderGrid({ groups, noteHref, milestoneHref });
+    const link = within(card('n1')).getByRole('link', { name: 'Open note: Launch ideas' });
+    expect(link.getAttribute('href')).toBe('/plan/p/n/n1');
+    // Stretched over the card, under its controls.
+    expect(link.className).toContain('absolute');
+    expect(link.className).toContain('inset-0');
+  });
+
+  it("should keep the card's menu and its entries clear of the link", () => {
+    const onEditNote = vi.fn();
+    renderGrid({ groups, noteHref, onEditNote });
+    const menu = screen.getByRole('button', { name: 'Actions for Launch ideas' });
+    expect(menu.closest('a')).toBeNull();
+    fireEvent.click(menu);
+    expect(screen.getAllByRole('menuitem').map((r) => r.textContent)).toEqual([
+      'Set dates',
+      'Rename',
+      'Make a task',
+      'Archive',
+      'Delete',
+    ]);
+  });
+
+  it("should open the note page in writing mode from a note's menu Rename (R14)", () => {
+    const onEditNote = vi.fn();
+    const { onRename } = renderGrid({ groups, noteHref, onEditNote });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Launch ideas' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    expect(onEditNote).toHaveBeenCalledWith('n1');
+    expect(screen.queryByRole('textbox', { name: /^Rename/ })).toBeNull();
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it('should never rename a note inline when its text is clicked', () => {
+    renderGrid({ groups, noteHref });
+    fireEvent.click(screen.getByText(/Launch ideas/));
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it("should make a child note row's text a link to its page (R13)", () => {
+    renderGrid({ groups, noteHref, milestoneHref });
+    const link = within(card('m1')).getByRole('link', { name: 'child gist' });
+    expect(link.getAttribute('href')).toBe('/plan/p/n/s2');
+  });
+
+  it('should still rename task steps and milestone titles inline', () => {
+    const { onRename } = renderGrid({ groups, noteHref, milestoneHref });
+    fireEvent.click(screen.getByText('a task step'));
+    const step = screen.getByRole('textbox', { name: 'Rename a task step' });
+    fireEvent.change(step, { target: { value: 'a better step' } });
+    fireEvent.keyDown(step, { key: 'Enter' });
+    expect(onRename).toHaveBeenCalledWith('s1', 'a better step');
+
+    fireEvent.click(screen.getByText('Learn Go'));
+    expect(screen.getByRole('textbox', { name: 'Rename Learn Go' })).toBeInTheDocument();
+  });
+
+  it("should keep a task's menu Rename inline", () => {
+    const onEditNote = vi.fn();
+    renderGrid({ groups, noteHref, onEditNote, milestoneHref });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for a task step' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    expect(onEditNote).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox', { name: 'Rename a task step' })).toBeInTheDocument();
   });
 });

@@ -55,6 +55,10 @@ export interface ChecklistItem {
   /** Free text the item carries (at most 280 characters after trimming).
    *  Set only through the item PATCH; omitted by the server when unset. */
   intention?: string | null;
+  /** The short summary a note carries (at most 280 characters after trimming).
+   *  Only a note has one. Set only through the item PATCH; omitted by the
+   *  server when unset (FS-PGG2N R2, R3). */
+  summary?: string | null;
   /** The wire always carries it; live lists hold only false. Read where a
    *  handler must not be offered on an archived item (FS-F6AEE R15). */
   archived?: boolean;
@@ -119,6 +123,9 @@ export interface UpdateChecklistItemRequest {
   parentId?: string | null;
   /** Omit to leave it alone; the server trims it, and empty clears it. */
   intention?: string;
+  /** A note's summary. Omit to leave it alone; the server trims it, and empty
+   *  clears it. A non-empty summary for a task is refused with 400. */
+  summary?: string;
 }
 
 export interface DeleteChecklistItemResponse {

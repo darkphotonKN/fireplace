@@ -9,8 +9,9 @@ import { SIDEBAR_HEAD_SCRIPT } from '@/lib/sidebarState';
 // headings at 700 all come from the one file.
 const lora = Lora({
   subsets: ['latin'],
-  // Note rows and the add-bar placeholder are italic; without this next/font
-  // ships only the roman and the browser fakes a slant.
+  // The add-bar placeholder is italic, and since notes went upright on paper
+  // (FS-PGG2N R50) it is the face's only user; without this next/font ships
+  // only the roman and the browser fakes a slant.
   style: ['normal', 'italic'],
   display: 'swap',
   variable: '--font-lora',

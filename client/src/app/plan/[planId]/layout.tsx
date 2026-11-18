@@ -23,7 +23,8 @@ const getYouTubeThumbnail = (url: string) => {
  * Everything on a plan's page but its middle card (FS-043WP R2, G1): the title
  * card and the Day plan above, the Calendar and Recommended videos below. The middle
  * card holds the route: the long-term Items at `/plan/<id>`, a milestone's
- * page at `/plan/<id>/m/<milestoneId>`. A layout persists across its routes,
+ * page at `/plan/<id>/m/<milestoneId>`, a note's page at
+ * `/plan/<id>/n/<noteId>` (FS-PGG2N R16). A layout persists across its routes,
  * so moving between them swaps only the middle; nothing here refetches or
  * remounts (R3).
  */
@@ -160,7 +161,7 @@ export default function PlanLayout({ children }: { children: ReactNode }) {
           </Card>
 
           {/* PRIMARY — the middle card, full width: the plan's long-term Items,
-              or one milestone's page. Only what is inside it changes with the
+              one milestone's page, or one note's. Only what is inside it changes with the
               route; the card itself stays put. */}
           <Card className="backdrop-blur-sm border-0">
             <div className="p-6">{children}</div>

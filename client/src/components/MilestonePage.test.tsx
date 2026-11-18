@@ -387,6 +387,31 @@ describe('MilestonePage steps and next step', () => {
     expect(stepBox('channels')).toBeChecked();
   });
 
+  it('should set a note step upright in a paper chip showing its card text (FS-PGG2N R11, R48)', async () => {
+    fetchChecklist.mockResolvedValue([
+      mk('m1', 'Learn Go'),
+      mk('n1', 'a long body\nwith lines', {
+        parentId: 'm1',
+        type: 'note',
+        summary: 'the gist',
+      }),
+      mk('n2', 'first\nsecond', { parentId: 'm1', type: 'note' }),
+      mk('s1', 'a task', { parentId: 'm1' }),
+    ]);
+    renderPage();
+    await ready();
+
+    const gist = within(list()).getByText('the gist');
+    expect(within(list()).queryByText(/a long body/)).toBeNull();
+    for (const cls of ['bg-note-paper', 'rounded-md', 'px-2', 'py-0.5', 'line-clamp-2', 'whitespace-pre-line', 'break-words']) {
+      expect(gist.className).toContain(cls);
+    }
+    expect(within(list()).getByText('first second', { normalizer: (t) => t.replace(/\s+/g, ' ') })).toBeInTheDocument();
+    expect(list().querySelector('.italic')).toBeNull();
+    // A task step is untouched.
+    expect(within(list()).getByText('a task').className).not.toContain('bg-note-paper');
+  });
+
   describe('rename (R30)', () => {
     const startRename = async (text: string) => {
       renderPage();
@@ -410,18 +435,27 @@ describe('MilestonePage steps and next step', () => {
       expect(within(slot()).getByText('chans')).toBeInTheDocument();
     });
 
-    it('should save on blur, notes included', async () => {
-      const input = await startRename('a thought');
-      fireEvent.change(input, { target: { value: 'a better thought' } });
+    it('should save on blur', async () => {
+      const input = await startRename('channels');
+      fireEvent.change(input, { target: { value: 'chans' } });
       await act(async () => fireEvent.blur(input));
 
       expect(updateChecklistItem).toHaveBeenCalledWith(
-        'n1',
-        { description: 'a better thought' },
+        's2',
+        { description: 'chans' },
         'plan-1',
         'longterm'
       );
-      expect(within(list()).getByText('a better thought')).toBeInTheDocument();
+      expect(within(list()).getByText('chans')).toBeInTheDocument();
+    });
+
+    it("should open a note step's page from its text rather than rename it (FS-PGG2N R13)", async () => {
+      renderPage();
+      await ready();
+      const link = within(list()).getByRole('link', { name: 'a thought' });
+      expect(link.getAttribute('href')).toBe('/plan/plan-1/n/n1');
+      fireEvent.click(link);
+      expect(screen.queryByRole('textbox', { name: 'Rename a thought' })).toBeNull();
     });
 
     it('should cancel on Esc, and keep the old text on an empty rename', async () => {

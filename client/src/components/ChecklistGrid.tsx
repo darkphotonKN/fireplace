@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ChevronRight, FileText, Maximize2, Plus } from 'lucide-react';
+import { ChevronRight, Maximize2, Plus } from 'lucide-react';
 import {
   SortableContext,
   rectSortingStrategy,
@@ -16,6 +16,14 @@ import CompletionNudge, { useCompletionNudges } from '@/components/CompletionNud
 import ProgressMeter from '@/components/ProgressMeter';
 import { cn } from '@/lib/utils';
 import { isComplete, readMilestones, type Milestone } from '@/lib/milestones';
+import {
+  cardText,
+  clampClass,
+  itemName,
+  NOTE_CARD_LINES,
+  NOTE_ROW_CHIP,
+  NOTE_ROW_LINK,
+} from '@/lib/noteText';
 import type { ChecklistGroup } from '@/lib/nesting';
 import type { ChecklistItem } from '@/services/api';
 
@@ -93,6 +101,17 @@ export interface ChecklistGridProps {
    * it, and on any archived item (R15), the menu offers no Duplicate.
    */
   onDuplicate?: (id: string) => unknown;
+  /**
+   * Where a note's own page lives (FS-PGG2N R12, R13). Given it, a note card
+   * is one link there and a child note row's text is another. The caller
+   * knows the plan and its URLs.
+   */
+  noteHref?: (id: string) => string;
+  /**
+   * The menu's Rename on a note: its page, in writing mode (R14). Navigation
+   * stays with the caller, as the URLs do.
+   */
+  onEditNote?: (id: string) => void;
 }
 
 const isNote = (item: ChecklistItem) => (item.type ?? 'task') === 'note';
@@ -122,6 +141,8 @@ export default function ChecklistGrid({
   milestoneHref,
   onOpenMilestone,
   onDuplicate,
+  noteHref,
+  onEditNote,
 }: ChecklistGridProps) {
   // Rename and add live here rather than in the list's shared edit state: the
   // two views are never on screen together, and a card's input has nothing to
@@ -175,34 +196,90 @@ export default function ChecklistGrid({
   const duplicateFor = (item: ChecklistItem) =>
     onDuplicate && !item.archived ? () => onDuplicate(item.id) : undefined;
 
+  const startEdit = (item: ChecklistItem) => {
+    setEditingId(item.id);
+    setEditText(item.description);
+  };
+
+  const renderInput = (item: ChecklistItem, className: string) => (
+    <input
+      autoFocus
+      value={editText}
+      onChange={(e) => setEditText(e.target.value)}
+      onBlur={() => commitEdit(item.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commitEdit(item.id);
+        if (e.key === 'Escape') setEditingId(null);
+      }}
+      aria-label={`Rename ${itemName(item)}`}
+      className={cn(
+        className,
+        'min-w-0 flex-1 border-b border-primary/50 bg-transparent caret-primary focus:outline-none'
+      )}
+    />
+  );
+
   const renderText = (item: ChecklistItem, className: string) =>
     editingId === item.id ? (
-      <input
-        autoFocus
-        value={editText}
-        onChange={(e) => setEditText(e.target.value)}
-        onBlur={() => commitEdit(item.id)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') commitEdit(item.id);
-          if (e.key === 'Escape') setEditingId(null);
-        }}
-        aria-label={`Rename ${item.description}`}
-        className={cn(
-          className,
-          'min-w-0 flex-1 border-b border-primary/50 bg-transparent caret-primary focus:outline-none'
-        )}
-      />
+      renderInput(item, className)
     ) : (
       <span
-        onClick={() => {
-          setEditingId(item.id);
-          setEditText(item.description);
-        }}
+        onClick={() => startEdit(item)}
         className={cn(className, 'min-w-0 flex-1 cursor-text')}
       >
         {item.description}
       </span>
     );
+
+  /**
+   * A note's card text, upright on paper (FS-PGG2N R10, R11, R47, R48): the
+   * card is already paper, so its text is set straight on it; a row's text
+   * sits in a small chip of its own. Line breaks are kept and the text
+   * clamps, and a long unbroken URL wraps rather than widening the card
+   * (FS-49CQ2 R23). Clicking it never renames: notes are written on their
+   * page, so a row's chip is a link there (R13) and the card has its own
+   * stretched link (R12).
+   */
+  const renderNoteText = (item: ChecklistItem, place: 'card' | 'row') => {
+    const size = place === 'card' ? 'text-base leading-6' : 'text-sm leading-5';
+    if (editingId === item.id) return renderInput(item, cn(size, 'text-foreground/88'));
+    if (place === 'card') {
+      return (
+        <span
+          data-note-text={item.id}
+          className={cn(
+            size,
+            'min-w-0 flex-1 whitespace-pre-line break-words text-foreground/88',
+            clampClass(NOTE_CARD_LINES)
+          )}
+        >
+          {cardText(item)}
+        </span>
+      );
+    }
+    const href = !item.archived && noteHref?.(item.id);
+    return (
+      <span className="min-w-0 flex-1">
+        {href ? (
+          <Link
+            href={href}
+            data-note-text={item.id}
+            className={cn(NOTE_ROW_LINK, 'text-sm leading-5')}
+          >
+            {cardText(item)}
+          </Link>
+        ) : (
+          <span data-note-text={item.id} className={cn(NOTE_ROW_CHIP, 'text-sm leading-5')}>
+            {cardText(item)}
+          </span>
+        )}
+      </span>
+    );
+  };
+
+  /** A note's Rename opens its page in writing mode, where there is one (R14). */
+  const editFor = (item: ChecklistItem) =>
+    isNote(item) && onEditNote ? () => onEditNote(item.id) : () => startEdit(item);
 
   return (
     // items-start so a one-line block stays one line instead of stretching to
@@ -221,12 +298,13 @@ export default function ChecklistGrid({
         const complete = !!milestone && isComplete(milestone);
         const traced = item.id === tracedId;
         const openHref = milestone && milestoneHref?.(item.id);
+        const noteOpenHref = isNote(item) && !item.archived && noteHref?.(item.id);
 
         return (
           <SortableItem
             key={item.id}
             id={item.id}
-            label={item.description}
+            label={itemName(item)}
             disabled={!canDrag(item.id)}
             // The card is its own hover group; the shared grip waits on a row.
             handleClassName="group-hover/card:opacity-100"
@@ -239,12 +317,16 @@ export default function ChecklistGrid({
             data-traced={traced || undefined}
             data-actions-anchor
             className={cn(
-              'group/card rounded-xl bg-foreground/[0.04] px-4 py-4 backdrop-blur-sm',
+              'group/card relative rounded-xl px-4 py-4 backdrop-blur-sm',
               'transition-[background-color,box-shadow] duration-300',
               // No border to thicken on hover — the fill lifts instead, and
               // an ember glow sits under it, the same one the Add button
-              // wears once there is something to add.
-              'hover:bg-foreground/[0.06] hover:shadow-[0_2px_18px_-12px_rgba(247,111,83,0.55)]',
+              // wears once there is something to add. A note is paper: the
+              // same tile and glow, its own fill (FS-PGG2N R47).
+              isNote(item)
+                ? 'bg-note-paper'
+                : 'bg-foreground/[0.04] hover:bg-foreground/[0.06]',
+              'hover:shadow-[0_2px_18px_-12px_rgba(247,111,83,0.55)]',
               // Complete: the hover glow, held, with a hairline of ember so
               // it reads as a state rather than a hover.
               complete &&
@@ -255,15 +337,21 @@ export default function ChecklistGrid({
               arriving[item.id] && 'animate-fadeIn'
             )}
           >
+            {/* The way into a note: the whole card, as one real link that
+                opens in a new tab and copies (R12). Stretched under the
+                card's controls, which sit above it; a drag starts only on
+                the grip, so it never opens. */}
+            {noteOpenHref && (
+              <Link
+                href={noteOpenHref}
+                aria-label={`Open note: ${itemName(item)}`}
+                className="absolute inset-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              />
+            )}
             {/* Head: what the block is, and how far along it is. */}
             <div className="flex items-start gap-2.5">
-              {isNote(item) ? (
-                <FileText
-                  aria-hidden
-                  strokeWidth={1.75}
-                  className="mt-[3px] h-[18px] w-[18px] shrink-0 text-foreground/35"
-                />
-              ) : (
+              {/* A note has no checkbox and, on paper, no icon either. */}
+              {!isNote(item) && (
                 <span className="mt-[3px] shrink-0">
                   <Checkbox
                     id={`card-${item.id}`}
@@ -273,15 +361,16 @@ export default function ChecklistGrid({
                   />
                 </span>
               )}
-              {renderText(
-                item,
-                cn(
-                  'text-base leading-6 text-foreground',
-                  children.length > 0 && 'font-medium',
-                  item.done && 'line-through text-foreground/50',
-                  isNote(item) && 'italic font-normal text-foreground/75'
-                )
-              )}
+              {isNote(item)
+                ? renderNoteText(item, 'card')
+                : renderText(
+                    item,
+                    cn(
+                      'text-base leading-6 text-foreground',
+                      children.length > 0 && 'font-medium',
+                      item.done && 'line-through text-foreground/50'
+                    )
+                  )}
               {traced && (
                 <span
                   aria-hidden
@@ -306,14 +395,14 @@ export default function ChecklistGrid({
               )}
               {handle && (
                 <span
-                  className="mt-[1px] shrink-0"
+                  className="relative z-10 mt-[1px] shrink-0"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {handle}
                 </span>
               )}
               <span
-                className="mt-[1px] shrink-0"
+                className="relative z-10 mt-[1px] shrink-0"
                 onClick={(e) => e.stopPropagation()}
               >
                 <ItemActions
@@ -323,10 +412,7 @@ export default function ChecklistGrid({
                       ? () => onOpenMilestone(item.id)
                       : undefined
                   }
-                  onEdit={() => {
-                    setEditingId(item.id);
-                    setEditText(item.description);
-                  }}
+                  onEdit={editFor(item)}
                   onToggleType={() => onToggleType(item.id)}
                   onDuplicate={duplicateFor(item)}
                   onArchive={() => onArchive(item.id)}
@@ -339,9 +425,9 @@ export default function ChecklistGrid({
                 <button
                   type="button"
                   aria-expanded={!collapsed}
-                  aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${item.description}`}
+                  aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${itemName(item)}`}
                   onClick={() => onToggleCollapsed(item.id)}
-                  className="-mr-1 mt-[1px] grid h-6 w-6 shrink-0 place-items-center rounded-md text-foreground/35 outline-none transition-colors hover:text-primary focus-visible:text-primary"
+                  className="relative z-10 -mr-1 mt-[1px] grid h-6 w-6 shrink-0 place-items-center rounded-md text-foreground/35 outline-none transition-colors hover:text-primary focus-visible:text-primary"
                 >
                   <ChevronRight
                     aria-hidden
@@ -392,12 +478,12 @@ export default function ChecklistGrid({
                 items={children.map((c) => c.id)}
                 strategy={verticalListSortingStrategy}
               >
-              <ul className="mt-3 space-y-0.5 border-t border-foreground/[0.07] pt-2.5">
+              <ul className="relative z-10 mt-3 space-y-0.5 border-t border-foreground/[0.07] pt-2.5">
                 {children.map((child) => (
                   <SortableItem
                     key={child.id}
                     id={child.id}
-                    label={child.description}
+                    label={itemName(child)}
                     disabled={!canDrag(child.id)}
                   >
                   {({ bind, handle: childHandle }) => (
@@ -408,7 +494,7 @@ export default function ChecklistGrid({
                     {isNote(child) ? (
                       <span
                         aria-hidden
-                        className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-foreground/30"
+                        className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-foreground/30"
                       />
                     ) : (
                       <span className="mt-[2px] shrink-0">
@@ -420,16 +506,17 @@ export default function ChecklistGrid({
                         />
                       </span>
                     )}
-                    {renderText(
-                      child,
-                      cn(
-                        'text-sm leading-5',
-                        child.done
-                          ? 'text-foreground/40 line-through'
-                          : 'text-foreground/80',
-                        isNote(child) && 'italic text-foreground/60'
-                      )
-                    )}
+                    {isNote(child)
+                      ? renderNoteText(child, 'row')
+                      : renderText(
+                          child,
+                          cn(
+                            'text-sm leading-5',
+                            child.done
+                              ? 'text-foreground/40 line-through'
+                              : 'text-foreground/80'
+                          )
+                        )}
                     <ItemDateChip item={child} className="self-center" />
                     {childHandle && (
                       <span
@@ -445,10 +532,7 @@ export default function ChecklistGrid({
                     >
                       <ItemActions
                         item={child}
-                        onEdit={() => {
-                          setEditingId(child.id);
-                          setEditText(child.description);
-                        }}
+                        onEdit={editFor(child)}
                         onToggleType={() => onToggleType(child.id)}
                         onDuplicate={duplicateFor(child)}
                         onArchive={() => onArchive(child.id)}

@@ -30,6 +30,7 @@ import {
 import { cn } from '@/lib/utils';
 import { parseDateOnly, toDateOnly } from '@/lib/itemDates';
 import { placePanel, type PanelPlacement } from '@/lib/panelPlacement';
+import { itemName } from '@/lib/noteText';
 import type { ChecklistItem } from '@/services/api';
 
 /**
@@ -56,13 +57,18 @@ export interface ItemActionsHandle {
 
 export interface ItemActionsProps {
   item: ChecklistItem;
-  onEdit: () => void;
+  /**
+   * Rename, Archive and Dates are offered wherever they are handed over, which
+   * is everywhere but a note's own page: that menu is Make a task and Delete
+   * only (FS-PGG2N R20).
+   */
+  onEdit?: () => void;
   /** Offered only where it is handed over: a milestone's page has none (FS-043WP R17). */
   onToggleType?: () => void;
-  onArchive: () => void;
+  onArchive?: () => void;
   onDelete: () => void;
   /** Both ends together: null clears that end. */
-  onSetDates: (startDate: string | null, dueDate: string | null) => void;
+  onSetDates?: (startDate: string | null, dueDate: string | null) => void;
   /** List view only — the card has no row above to nest under. */
   onIndent?: () => void;
   onOutdent?: () => void;
@@ -222,7 +228,7 @@ export default function ItemActions({
     const [start, end] = range;
     // A range picked but not finished is a single day, which is what the
     // calendar already makes of one date on its own.
-    onSetDates(toDateOnly(start), toDateOnly(end ?? start));
+    onSetDates?.(toDateOnly(start), toDateOnly(end ?? start));
     close();
   };
 
@@ -236,7 +242,7 @@ export default function ItemActions({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Actions for ${item.description}`}
+        aria-label={`Actions for ${itemName(item)}`}
         onClick={(e) => {
           e.stopPropagation();
           setPicking(false);
@@ -244,11 +250,13 @@ export default function ItemActions({
           // right spot rather than a flight in from the corner. Outside the
           // state updater, which has to stay free of side effects.
           if (!open) {
-            // Four rows are always there (dates, rename, archive, delete);
-            // the rest, Duplicate among them, are offered only where they
+            // Delete is always there; the rest are offered only where they
             // are handed over.
             const rows =
-              4 +
+              1 +
+              (onSetDates ? 1 : 0) +
+              (onEdit ? 1 : 0) +
+              (onArchive ? 1 : 0) +
               (onToggleType ? 1 : 0) +
               (onOpen ? 1 : 0) +
               (onDuplicate ? 1 : 0) +
@@ -314,7 +322,7 @@ export default function ItemActions({
                   <button
                     type="button"
                     onClick={() => {
-                      onSetDates(null, null);
+                      onSetDates?.(null, null);
                       close();
                     }}
                     className="rounded-lg px-2.5 py-1.5 text-sm text-foreground/50 transition-colors hover:text-primary"
@@ -344,14 +352,18 @@ export default function ItemActions({
                     Open
                   </button>
                 )}
-                <button type="button" role="menuitem" className={rowClass} onClick={openPicker}>
-                  <CalendarDays aria-hidden strokeWidth={1.75} className="h-4 w-4" />
-                  {item.startDate || item.dueDate ? 'Change dates' : 'Set dates'}
-                </button>
-                <button type="button" role="menuitem" className={rowClass} onClick={run(onEdit)}>
-                  <Pencil aria-hidden strokeWidth={1.75} className="h-4 w-4" />
-                  Rename
-                </button>
+                {onSetDates && (
+                  <button type="button" role="menuitem" className={rowClass} onClick={openPicker}>
+                    <CalendarDays aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+                    {item.startDate || item.dueDate ? 'Change dates' : 'Set dates'}
+                  </button>
+                )}
+                {onEdit && (
+                  <button type="button" role="menuitem" className={rowClass} onClick={run(onEdit)}>
+                    <Pencil aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+                    Rename
+                  </button>
+                )}
                 {onDuplicate && (
                   <button
                     type="button"
@@ -418,15 +430,17 @@ export default function ItemActions({
                   </button>
                 )}
                 <div className="my-1 h-px bg-foreground/[0.07]" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={rowClass}
-                  onClick={run(onArchive)}
-                >
-                  <Archive aria-hidden strokeWidth={1.75} className="h-4 w-4" />
-                  Archive
-                </button>
+                {onArchive && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={rowClass}
+                    onClick={run(onArchive)}
+                  >
+                    <Archive aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+                    Archive
+                  </button>
+                )}
                 <button
                   type="button"
                   role="menuitem"

@@ -36,6 +36,14 @@ module.exports = {
         '7xl': ['74px', { lineHeight: '1' }],
         '8xl': ['98px', { lineHeight: '1' }],
         '9xl': ['130px', { lineHeight: '1' }],
+        // The note page's body (FS-PGG2N R49): a reading size between sm and
+        // base, with room between the lines for long writing.
+        note: ['17px', { lineHeight: '1.75' }],
+      },
+      // Off Tailwind's 5-step opacity scale, so it has to be named here or
+      // `text-foreground/88` (a note's text, FS-PGG2N R47) emits no CSS at all.
+      opacity: {
+        88: '0.88',
       },
       colors: {
         border: 'hsl(var(--border))',
@@ -45,6 +53,8 @@ module.exports = {
         foreground: 'hsl(var(--foreground))',
         // Carries its own alpha (both themes); no `/opacity` modifier.
         scrim: 'hsl(var(--scrim))',
+        // A note's surface and nothing else (FS-PGG2N R46): `bg-note-paper`.
+        'note-paper': 'hsl(var(--note-paper))',
         primary: {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',

@@ -118,7 +118,7 @@ describe('PlanLayout', () => {
     expect(planMyDay).not.toHaveBeenCalled();
   });
 
-  it('should swap only the slot: plan, Day plan, Calendar and videos load once (R3)', async () => {
+  it('should swap only the slot: plan, Day plan, Calendar and videos load once (R3; FS-PGG2N R16)', async () => {
     const { rerender } = render(
       <PlanLayout>
         <div data-testid="items" />
@@ -136,6 +136,14 @@ describe('PlanLayout', () => {
         <div data-testid="items" />
       </PlanLayout>
     );
+    // Plan → note → milestone → note → plan (FS-PGG2N R16).
+    for (const slot of ['note', 'milestone', 'note', 'items']) {
+      rerender(
+        <PlanLayout>
+          <div data-testid={slot} />
+        </PlanLayout>
+      );
+    }
 
     expect(screen.getByTestId('items')).toBeInTheDocument();
     expect(getPlan).toHaveBeenCalledTimes(1);

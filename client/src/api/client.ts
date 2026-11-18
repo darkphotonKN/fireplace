@@ -57,7 +57,16 @@ export type ErrorCode =
   | "SERVICE_UNAVAILABLE"
   | "PROFILE_NAME_EMPTY"
   | "NO_ACCOUNT_FOR_EMAIL"
-  | "MEMBER_IS_OWNER";
+  | "MEMBER_IS_OWNER"
+  | "ITEM_NOT_A_NOTE"
+  | "NOTE_HAS_COMMENTS";
+
+/**
+ * Why a note with comments stays a note when asked to become a task
+ * (FS-65B3N R31). Every place that offers Make a task says it in these words.
+ */
+export const NOTE_HAS_COMMENTS_MESSAGE =
+  "This note has comments. Delete them to make it a task.";
 
 /**
  * User-facing message per domain code.
@@ -83,6 +92,9 @@ const MESSAGES: Record<ErrorCode, string> = {
   // on, so each gets its own words rather than VALIDATION_FAILED's.
   NO_ACCOUNT_FOR_EMAIL: "No Fireplace account uses that email.",
   MEMBER_IS_OWNER: "That's you. You already own this plan.",
+  // A note-only operation (comments, summarize) on an item that is a task now.
+  ITEM_NOT_A_NOTE: "That's a task now, not a note.",
+  NOTE_HAS_COMMENTS: NOTE_HAS_COMMENTS_MESSAGE,
 };
 
 export function messageFor(problem: Problem | undefined): string {
@@ -108,6 +120,15 @@ export class ApiError extends Error {
   get code() {
     return this.problem?.code;
   }
+}
+
+/**
+ * An error's domain code, typed, for callers to branch on (ADR-0004): a
+ * comparison against a code the union does not know fails at `tsc`. Anything
+ * not an ApiError has none.
+ */
+export function errorCode(err: unknown): ErrorCode | undefined {
+  return err instanceof ApiError ? (err.code as ErrorCode | undefined) : undefined;
 }
 
 /** Builds an ApiError from openapi-fetch's untyped `error` channel. */
