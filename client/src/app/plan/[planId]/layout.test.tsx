@@ -64,6 +64,8 @@ describe('PlanLayout', () => {
       status: 'not_planned',
       refreshesRemaining: 3,
       groups: [],
+      // Asked already, so the card is the plain Plan my day (R108).
+      settings: { asked: true },
     });
     planMyDay.mockReset();
     fetchChecklist.mockReset().mockResolvedValue([]);

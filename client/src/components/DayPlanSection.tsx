@@ -17,9 +17,11 @@ import {
   untickDayPlanEntry,
   type DayPlan,
   type DayPlanEntry,
+  type DayPlanSettings,
 } from '@/api/insights';
 import { readMilestones } from '@/lib/milestones';
 import {
+  hoursInWords,
   resolveDayPlan,
   type ResolvedEntry,
   type ResolvedGroup,
@@ -28,6 +30,14 @@ import { announcePlanItemsChanged } from '@/lib/planItemsChanged';
 import { toDateOnly } from '@/lib/itemDates';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  HoursSettings,
+  QUIET_CARD,
+  SettingsCog,
+  saveHours,
+  useHoursSaver,
+  type HoursAnswer,
+} from '@/components/DayPlanHours';
 
 /**
  * The Day plan section (FS-02JBZ R62–R74): where the plan page's Daily card
@@ -51,6 +61,10 @@ import { Checkbox } from '@/components/ui/checkbox';
  * and an existing item's entry carries a small "Don't revise" switch for that
  * item (R80). Both come from the server; the client never decides timing.
  *
+ * Hours a day (§Change: Hours a day) is split out into `DayPlanHours`: the
+ * one save the first ask and the cog share, the cog's queue, and its view.
+ * The first ask itself stays here, since it plans.
+ *
  * The middle card's `<Todo>` keeps its own copy of the items, so every item
  * write here (Add, Also mark done) is announced through `planItemsChanged`
  * and the card re-reads.
@@ -67,8 +81,21 @@ type Status = 'loading' | 'ready' | 'failed' | 'gone';
 /** The redraw cap is spent (R15). The client's `ErrorCode` list predates it. */
 const REFRESH_LIMIT_REACHED = 'BRIEF_REFRESH_LIMIT_REACHED';
 
-/** What the last Plan my day / Plan again said, until the next one. */
-type PlanNotice = 'unchanged' | 'failed' | null;
+/**
+ * What the last Plan my day / Plan again said, until the next one.
+ * `hours-unsaved`: the first ask's save failed but the plan was drawn (R110).
+ */
+type PlanNotice = 'unchanged' | 'failed' | 'hours-unsaved' | null;
+
+const HOUR_CHIPS: readonly { label: string; minutes: number }[] = [
+  { label: '30m', minutes: 30 },
+  { label: '1h', minutes: 60 },
+  { label: '2h', minutes: 120 },
+  { label: '3h', minutes: 180 },
+  { label: '4h', minutes: 240 },
+];
+
+const HOURS_QUESTION = 'How much time do you have for this plan each day?';
 
 /** The checklist's copy for a failed create, reused as is (R73). */
 const ADD_FAILED = 'Failed to add suggested task. Please try again.';
@@ -105,6 +132,8 @@ export default function DayPlanSection({ planId }: { planId: string }) {
   const [planning, setPlanning] = useState(false);
   const [notice, setNotice] = useState<PlanNotice>(null);
   const [error, setError] = useState<string | null>(null);
+  // The cog's settings view, in place of the body (R116).
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // The date the day plan on screen belongs to, and a counter so a read that
   // lost a race never writes over a newer one.
@@ -124,6 +153,7 @@ export default function DayPlanSection({ planId }: { planId: string }) {
 
   const toggleShown = () => {
     setAsk(null);
+    setSettingsOpen(false);
     const next = !shown;
     setShown(next);
     try {
@@ -379,20 +409,42 @@ export default function DayPlanSection({ planId }: { planId: string }) {
     }
   };
 
-  // Plan my day and Plan again are the same call (R65, R68). The first draw of
-  // the day is free; the server says what is left in `refreshesRemaining`.
-  const plan = async () => {
-    if (!dayPlan || planning || dayPlan.refreshesRemaining <= 0) return;
-    // Past local midnight the plan on screen is yesterday's; today's is a
-    // read, not a redraw of the old one.
+  // The settings this tab saved last, and how many saves there have been. A
+  // draw reads the settings when it starts, so one that a save overtook would
+  // bring the older ones back: the newer save wins when it lands (R114).
+  const savedRef = useRef<{ count: number; settings: DayPlanSettings | null }>(
+    { count: 0, settings: null }
+  );
+  const settingsSaved = (settings: DayPlanSettings) => {
+    savedRef.current = { count: savedRef.current.count + 1, settings };
+    setDayPlan((prev) => prev && { ...prev, settings });
+  };
+
+  // The first ask's last answer, so its retry sends it again (R110).
+  const [lastAnswer, setLastAnswer] = useState<{ minutes: HoursAnswer } | null>(
+    null
+  );
+
+  // Takes the planning state if a draw can start now, and returns the read
+  // it owns; null if not. Past local midnight the plan on screen is
+  // yesterday's, and today's is a read, not a redraw of the old one.
+  const startPlanning = (): number | null => {
+    if (!dayPlan || planning || dayPlan.refreshesRemaining <= 0) return null;
     if (localDay() !== dayRef.current) {
       startDay();
-      return;
+      return null;
     }
-    const read = ++readRef.current;
     setPlanning(true);
     setNotice(null);
     setAsk(null);
+    return ++readRef.current;
+  };
+
+  // The draw itself (R65, R68), under a planning state already taken. The
+  // first draw of the day is free; the server says what is left in
+  // `refreshesRemaining`. True when the new day plan was applied.
+  const draw = async (read: number): Promise<boolean> => {
+    const savesBefore = savedRef.current.count;
     try {
       // The items are read again alongside, so a step created since the last
       // read resolves. Best effort: a counted draw is already spent, so a
@@ -401,9 +453,9 @@ export default function DayPlanSection({ planId }: { planId: string }) {
         planMyDay(planId, dayRef.current),
         fetchChecklist(planId, 'longterm').catch(() => null),
       ]);
-      if (read !== readRef.current) return;
+      if (read !== readRef.current) return false;
       if (nextItems) setItems(nextItems);
-      if (isUnchangedRedraw(dayPlan, next)) {
+      if (dayPlan && isUnchangedRedraw(dayPlan, next)) {
         setNotice('unchanged');
       } else {
         // New entries replace the old; what was added or dismissed belonged
@@ -414,20 +466,36 @@ export default function DayPlanSection({ planId }: { planId: string }) {
         setAdded((prev) => keepOnlyKeys(prev, kept));
         setDismissed((prev) => keepOnly(prev, kept));
       }
-      setDayPlan(next);
+      const saved = savedRef.current;
+      setDayPlan(
+        saved.count !== savesBefore && saved.settings
+          ? { ...next, settings: saved.settings }
+          : next
+      );
+      return true;
     } catch (err) {
-      if (read !== readRef.current) return;
+      if (read !== readRef.current) return false;
       // Switch on the domain code, never on `detail` (ADR-0004).
       if (err instanceof ApiError && err.code === REFRESH_LIMIT_REACHED) {
         // Another tab spent the last one; the stored plan is unchanged, so
         // the entries on screen stay and only the action retires (R68).
         setDayPlan((prev) => prev && { ...prev, refreshesRemaining: 0 });
-        return;
+        return false;
       }
       // Quiet, like a failed read (R71): the entries stay and the stored plan
       // is untouched, so retrying is correct (a 503 spends nothing).
       console.error('Failed to plan the day:', err);
       setNotice('failed');
+      return false;
+    }
+  };
+
+  // Plan my day and Plan again are the same call (R65, R68).
+  const plan = async () => {
+    const read = startPlanning();
+    if (read === null) return;
+    try {
+      await draw(read);
     } finally {
       // Unconditional: a read that superseded this draw must not leave the
       // action stuck. Only one draw is ever in flight.
@@ -435,10 +503,44 @@ export default function DayPlanSection({ planId }: { planId: string }) {
     }
   };
 
+  // The first ask (R109): the answer is saved, then the day is drawn, under
+  // one planning state. A failed save still plans, with whatever the server
+  // holds (R110); a saved answer stops the ask even if the draw then fails
+  // (R111).
+  const answerAndPlan = async (minutes: HoursAnswer) => {
+    const read = startPlanning();
+    if (read === null) return;
+    setLastAnswer({ minutes });
+    try {
+      const saved = await saveHours(planId, minutes);
+      if (read !== readRef.current) return;
+      if (saved.outcome === 'gone') {
+        setStatus('gone'); // R70
+        return;
+      }
+      if (saved.outcome === 'saved') settingsSaved(saved.settings);
+      const drawn = await draw(read);
+      if (drawn && saved.outcome === 'failed') setNotice('hours-unsaved');
+    } finally {
+      setPlanning(false);
+    }
+  };
+
+  // The cog's saves (R117). A success lands in the day plan's settings, which
+  // the tooltip and the first ask read (R114, R118).
+  const hours = useHoursSaver({
+    planId,
+    onSaved: settingsSaved,
+    onGone: () => setStatus('gone'), // R70
+  });
+
   if (status === 'gone') return null;
 
   const isPlanned = dayPlan?.status === 'planned';
   const isBasic = isPlanned && dayPlan?.source === 'rules';
+  // The value comes from the read, so the cog waits for one (R116).
+  const loaded = status === 'ready' && dayPlan !== null;
+  const inSettings = shown && loaded && settingsOpen;
 
   return (
     <section aria-labelledby="day-plan-heading">
@@ -447,18 +549,38 @@ export default function DayPlanSection({ planId }: { planId: string }) {
           <h2 id="day-plan-heading" className="text-lg font-semibold">
             Day plan
           </h2>
-          <DayPlanInfo />
+          <DayPlanInfo settings={dayPlan?.settings} />
         </div>
-        <button
-          type="button"
-          onClick={toggleShown}
-          className="text-sm text-foreground/45 transition-colors hover:text-foreground"
-        >
-          {shown ? 'Hide' : 'Show'}
-        </button>
+        {/* The header's controls. The cog sits left of Hide/Show, so the
+            toggle that is always there never moves when it comes and goes. */}
+        <div className="flex items-center gap-2">
+          {shown && loaded && !settingsOpen && (
+            <SettingsCog
+              onOpen={() => {
+                setAsk(null);
+                hours.clearFailed();
+                setSettingsOpen(true);
+              }}
+            />
+          )}
+          <button
+            type="button"
+            onClick={toggleShown}
+            className="text-sm text-foreground/45 transition-colors hover:text-foreground"
+          >
+            {shown ? 'Hide' : 'Show'}
+          </button>
+        </div>
       </div>
 
-      {shown && (
+      {inSettings ? (
+        <HoursSettings
+          minutes={hours.readout(dayPlan.settings)}
+          failed={hours.failed}
+          onChange={hours.save}
+          onBack={() => setSettingsOpen(false)}
+        />
+      ) : shown && (
         <div className="space-y-4">
           {error && (
             <div className="p-2 text-base text-red-600 bg-red-50 rounded-md">
@@ -486,7 +608,12 @@ export default function DayPlanSection({ planId }: { planId: string }) {
               <NotPlanned
                 failed={notice === 'failed'}
                 retired={dayPlan.refreshesRemaining <= 0}
-                onPlan={plan}
+                askHours={!dayPlan.settings.asked}
+                onPlan={() => plan()}
+                onAnswer={answerAndPlan}
+                onRetryAnswer={() =>
+                  lastAnswer ? answerAndPlan(lastAnswer.minutes) : plan()
+                }
               />
             )
           ) : (
@@ -560,7 +687,7 @@ export default function DayPlanSection({ planId }: { planId: string }) {
                 remaining={dayPlan.refreshesRemaining}
                 planning={planning}
                 notice={notice}
-                onPlan={plan}
+                onPlan={() => plan()}
               />
             </>
           )}
@@ -576,7 +703,7 @@ export default function DayPlanSection({ planId }: { planId: string }) {
  * so the layout lifts this card above the middle card (see its comment).
  * Centred under the icon so its 16rem fits a 375px screen (FS-49CQ2 R22).
  */
-function DayPlanInfo() {
+function DayPlanInfo({ settings }: { settings?: DayPlanSettings }) {
   return (
     <div className="relative group">
       <button
@@ -609,6 +736,17 @@ function DayPlanInfo() {
             Plan your day, then tick what you did today. What&apos;s left, and
             anything due for revision, comes back on its own.
           </p>
+          {/* What the day is sized for, so the cog is remembered (R114). Read
+              from state, so a save shows here at once. The same quiet text as
+              the line above: this box is shared markup with the plan-focus
+              tooltip, and keeps its colours. */}
+          {settings && (
+            <p className="mt-2 text-xs text-gray-400">
+              {settings.dailyMinutes
+                ? `Sized for ${hoursInWords(settings.dailyMinutes)} a day. Change it with the cog.`
+                : 'Sized for a typical day. Set your hours with the cog.'}
+            </p>
+          )}
         </div>
         <div className="absolute left-1/2 -translate-x-1/2 -top-1 w-2 h-2 bg-gray-900 border-l border-t border-gray-700 transform rotate-45"></div>
       </div>
@@ -619,14 +757,32 @@ function DayPlanInfo() {
 function NotPlanned({
   failed,
   retired,
+  askHours,
   onPlan,
+  onAnswer,
+  onRetryAnswer,
 }: {
   failed: boolean;
   retired: boolean;
+  /** Never asked on this plan (R108). Retired wins: a chip must be able to plan (R112). */
+  askHours: boolean;
   onPlan: () => void;
+  onAnswer: (answer: HoursAnswer) => void;
+  /** The ask's retry: the last answer, saved again, then the draw (R110). */
+  onRetryAnswer: () => void;
 }) {
+  if (askHours && !retired) {
+    return (
+      <HoursAsk failed={failed} onAnswer={onAnswer} onRetry={onRetryAnswer} />
+    );
+  }
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-foreground/[0.04] px-4 py-4 backdrop-blur-sm">
+    <div
+      className={cn(
+        QUIET_CARD,
+        'flex flex-wrap items-center justify-between gap-3'
+      )}
+    >
       <p
         aria-live="polite"
         className="flex items-center gap-2 text-sm text-foreground/50"
@@ -645,6 +801,66 @@ function NotPlanned({
       >
         Plan my day
       </button>
+    </div>
+  );
+}
+
+/**
+ * The first ask (R108, R113): the question, five chips and a quiet skip, on
+ * the not-planned card's surface. Every answer plans; there is no "save only"
+ * here (the cog is for that).
+ */
+function HoursAsk({
+  failed,
+  onAnswer,
+  onRetry,
+}: {
+  failed: boolean;
+  onAnswer: (answer: HoursAnswer) => void;
+  onRetry: () => void;
+}) {
+  return (
+    <div className={cn(QUIET_CARD, 'space-y-3')}>
+      <p id="day-plan-hours-ask" className="text-base leading-6 text-foreground">
+        {HOURS_QUESTION}
+      </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div
+          role="group"
+          aria-labelledby="day-plan-hours-ask"
+          className="flex flex-wrap gap-2"
+        >
+          {HOUR_CHIPS.map(({ label, minutes }) => (
+            <button
+              key={minutes}
+              type="button"
+              onClick={() => onAnswer(minutes)}
+              // Compact on screen, in words to a screen reader (R115).
+              aria-label={hoursInWords(minutes)}
+              className={HOURS_CHIP}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => onAnswer(null)}
+          className="text-sm text-foreground/45 underline-offset-4 outline-none transition-colors hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline"
+        >
+          Skip, plan anyway
+        </button>
+      </div>
+      {failed && (
+        // A draw that failed after a failed save: the ask stays, and its
+        // retry sends the answer again (R110).
+        <p
+          aria-live="polite"
+          className="flex items-center gap-2 text-sm text-foreground/50"
+        >
+          <PlanFailed onRetry={onRetry} />
+        </p>
+      )}
     </div>
   );
 }
@@ -921,6 +1137,8 @@ function PlanBar({
         {notice === 'unchanged' &&
           'Nothing has changed since this plan was made.'}
         {notice === 'failed' && <PlanFailed onRetry={onPlan} />}
+        {notice === 'hours-unsaved' &&
+          "Couldn't save your hours, so this plan uses a typical day."}
       </p>
       <button
         type="button"
@@ -958,6 +1176,12 @@ function DayPlanSkeleton({ label }: { label: string }) {
 /** The primary action, in the ember the rest of the plan page uses. */
 const PRIMARY_ACTION =
   'shrink-0 rounded-control bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-primary/15 disabled:opacity-50 disabled:hover:bg-primary/10';
+
+/** A first-ask chip (R113): the primary action's look, sized to sit in a row. */
+const HOURS_CHIP = cn(
+  PRIMARY_ACTION,
+  'min-w-12 tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
+);
 
 /**
  * Today's date and how much of the day is ticked: the day plan's answer to

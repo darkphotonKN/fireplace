@@ -186,3 +186,15 @@ export function findAddedStep(
       normalize(i.description) === wanted
   )?.id;
 }
+
+/**
+ * A daily time in words, as hours with halves (FS-02JBZ R115): 30 →
+ * "30 minutes", 60 → "1 hour", 90 → "1½ hours", 720 → "12 hours". Takes the
+ * stored values, whole minutes in 30-minute steps (R94).
+ */
+export function hoursInWords(minutes: number): string {
+  if (minutes < 60) return `${minutes} minutes`;
+  const whole = Math.floor(minutes / 60);
+  const half = minutes % 60 >= 30 ? '½' : '';
+  return whole === 1 && !half ? '1 hour' : `${whole}${half} hours`;
+}

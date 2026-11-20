@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { MilestoneSourceItem } from './milestones';
 import {
   findAddedStep,
+  hoursInWords,
   resolveDayPlan,
   type DayPlanEntrySource,
 } from './dayPlan';
@@ -230,5 +231,20 @@ describe('findAddedStep', () => {
       kids
     );
     expect(group.entries[0].addedItemId).toBe('K1');
+  });
+});
+
+describe('hoursInWords (FS-02JBZ R115)', () => {
+  it.each([
+    [30, '30 minutes'],
+    [60, '1 hour'],
+    [90, '1½ hours'],
+    [120, '2 hours'],
+    [150, '2½ hours'],
+    [240, '4 hours'],
+    [690, '11½ hours'],
+    [720, '12 hours'],
+  ])('should say %i minutes as "%s"', (minutes, words) => {
+    expect(hoursInWords(minutes)).toBe(words);
   });
 });
