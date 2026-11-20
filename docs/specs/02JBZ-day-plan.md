@@ -829,3 +829,292 @@ Not decided on the owner's behalf. None blocks the slices.
 - **O3. Prod budget.** 2,000,000 tokens a day is the charter's production default. At
   `gpt-5-mini` prices that is a small, bounded daily spend, but the owner should confirm it
   against expected users before the first prod deploy.
+
+## Change: Hours a day
+Status: work-order
+Date: 2026-11-20
+
+The day plan sizes a day by count (at most 6 entries in 3 groups, D2), but a day also has a length,
+and today the model guesses it. This change lets each user say, per plan, how much time a day
+they spend on that plan; when they have said, the prompt asks the model to fit the day's minutes
+inside it. When they have not, nothing changes. The question is asked once per plan, on the
+"not planned" card, at the moment it matters; afterwards a cog in the section's header changes
+it, and the "i" tooltip says what the day is sized for. The owner's words, paraphrased: the LLM
+day plan is good but implicitly assumes a day means some number of hours; keep today's behaviour
+as the default, ask the first time per plan in the app's cozy, slick style, mention the value in
+the "i" tooltip so they remember it can be changed, and add a settings cog like the Items card's.
+
+This lifts the parked Out-of-Scope line "The capacity knob" (D2) for **time** only: 6 entries,
+3 groups and R4's 5–240 minutes stay as they are, as the ceiling. Every requirement R1–R92 stands
+unchanged except where a requirement below says it extends one: R96–R98 extend R7 (the prompt),
+R99 extends R17 (the rule gate), R101 extends R2/§API surface (DayPlan gains `settings`), and
+R108–R117 extend R63 and R65 on the client. Nothing in plan-service, the home roll-up (R85–R90),
+the rules draw (R36–R40), output validation (R9) or the refresh cap (R15) changes.
+
+Decisions marked **(charter default)** were pre-answered by the owner's charter for this run, each
+with its reason. Where the charter was silent this section chose, marked **(spec default)** with
+its reason; each is cheap to change before the slice that implements it. None was run through
+challenge-me (not challenged). The expensive ones: the contract change (a new op and a new field
+on DayPlan, ADR-0002) and a new insights-service table.
+
+### Requirements
+
+#### The setting (insights-service)
+
+- **R93.** A **day plan setting** belongs to one (user, plan) and is stored in
+  `fireplace_insights` beside the day plan, not in plan-service. On a shared plan (FS-12ZMF) each
+  member has their own. *(charter default. Reason: a shared plan's members each plan their own day,
+  R23, D1; no plan-service change.)*
+- **R94.** It carries `dailyMinutes`, the user's daily time on this plan, in whole minutes: 30–720
+  in steps of 30, or unset. *(charter default. Reason: integer validation, no float drift; the UI
+  says hours.)* It also carries whether the user has been **asked**. A user who has never answered
+  and never saved has no setting: `asked = false`, `dailyMinutes` unset. Any save, including one
+  that clears `dailyMinutes`, makes `asked = true` for good. *(charter default. Reason: "asked" is
+  stored server-side so a second device doesn't re-ask; null still counts as asked.)*
+- **R95.** Storage is one table, `day_plan_settings`, keyed (plan_id, user_id), with a nullable
+  `daily_minutes` whose CHECK enforces R94's range and step, in a new migration (000014). A row's
+  existence is "asked"; a row with `daily_minutes` NULL is "asked, no budget". *(spec default.
+  Reason: one table and one column carry both facts, and the CHECK makes an off-step value
+  unrepresentable.)*
+
+#### The prompt and the gate (insights-service)
+
+- **R96.** **Unset means today's behaviour exactly.** With no `dailyMinutes`, the prompt is
+  byte-identical to what it is before this change. *(charter default. Reason: the owner said
+  default it like it is now.)*
+- **R97.** **Set**, the user message states the user's daily time on this plan and asks that the
+  minutes of the day's entries sum within it, and says fewer entries is fine. The time is stated
+  in the plan data / request part of the user message (DF4ZB R2's order), **never** in
+  `systemRules`, which stays byte-identical across calls. *(charter default for the ask; spec
+  default for the placement. Reason: the static rules are the cacheable prefix, and the existing
+  AC holds them byte-identical.)*
+- **R98.** **Ticked entries count against the time** (R12). When entries are ticked today, the
+  ALREADY TICKED TODAY block gives each one's `minutes` where it has one, and the request asks that
+  the entries the model adds fit within the time left (the daily time minus the ticked entries'
+  known minutes). With no time left, the request says so and that adding nothing is fine; a draw
+  that adds nothing is a valid plan (R9 already allows zero new entries). *(spec default. Reason:
+  the budget is for the day, and a redraw after ticking two hours of work should not plan another
+  full day; listed for the owner, O4.)*
+- **R99.** **Rule gate.** `dailyMinutes` is part of the day plan's plan-state hash (R17), omitted
+  from the hash input when unset, so an unset setting hashes exactly as before and plans drawn
+  before this change stay gated. A changed setting therefore makes the next Plan again redraw, and
+  that redraw counts as usual (R15: free if the free draw is still unused). *(charter default for
+  the hash; spec default for the omission. Reason: the hash says "would the model be asked the same
+  question", and a budget changes the question; omitting unset keeps the deploy from invalidating
+  every stored plan's gate, the same way R17's ticked and revisions fields are omitted when empty.)*
+- **R100.** The budget **constrains the ask, not the output.** The server never trims, drops or
+  reorders entries to fit the time; R9's validation is unchanged. The 6 / 3 / 5–240 bounds remain
+  the ceiling whatever the setting. The rules draw (R36–R40) ignores the setting; its entries carry
+  no minutes. The home roll-up (R85–R90) is unchanged. *(charter default. Reason: estimates are
+  rough; a smaller v1; validation stays drop-never-repair about shape.)*
+
+#### Reads and the new operation (insights-service + gateway)
+
+- **R101.** `getDayPlan` and `planMyDay` return the caller's setting for the plan as `settings`
+  on DayPlan, in every status (`not_planned` and `planned`, `ai` and `rules`). Reading the setting
+  never draws (R14 unchanged). *(charter default. Reason: the client needs `asked` exactly on the
+  not-planned card and the value for the tooltip, with no extra request.)*
+- **R102.** **`setDayPlanSettings`** (`PUT /api/insights/day-plan/settings`) saves the caller's
+  setting for a plan: `planId` and `dailyMinutes` (an integer per R94, or `null` to go back to the
+  default). It responds `200` with the saved **DayPlanSettings**. It is idempotent, and a later save
+  replaces the earlier one. *(charter default.)*
+- **R103.** **Saving never draws.** `setDayPlanSettings` makes no model call and no rules draw,
+  writes nothing to the stored day plan, touches no counter and records nothing in the ledger. The
+  new value applies the next time the user plans their day. *(charter default. Reason: ADR-0019:
+  generation happens only on Plan my day.)*
+- **R104.** `dailyMinutes` is a **required, nullable** member of the body: an omitted
+  `dailyMinutes` is `422 · VALIDATION_FAILED`, an explicit `null` clears. *(spec default. Reason: an
+  omitted field must never silently clear a saved value; contract-patterns §5, and the gateway
+  already declares required nullable members, e.g. `parentId`.)*
+- **R105.** Shape failures are `422 · VALIDATION_FAILED` at the boundary: a malformed `planId`, an
+  unknown member, a missing `dailyMinutes`, or a value that is not an integer, below 30, above 720
+  or not a multiple of 30. The contract declares the range and the step (minimum, maximum,
+  multipleOf). insights-service refuses the same values with `InvalidArgument` for any other
+  gRPC caller; the gateway never forwards one. *(charter default for 422; spec default for the
+  service-side guard. Reason: integer validation at the edge; the table's CHECK and the RPC guard
+  keep a non-gateway caller from storing an off-step value.)*
+- **R106.** A plan the caller cannot access is `404 · NOT_FOUND`, enforced as the other day plan
+  operations enforce it: the gateway's plan-access check, and insights-service asking plan-service
+  as the caller (ADR-0015, R23). *(charter default.)*
+- **R107.** insights-service gains one RPC, `SetDayPlanSettings`, on `insights.InsightsService`,
+  and `DayPlan` gains a `DayPlanSettings settings` field. Identity travels as gRPC metadata and
+  `user_id`, as on every insights RPC (ADR-0001). `openapi.yaml`, `client/src/api/generated/` and
+  the Go under `common/api/proto` are regenerated together, never hand-edited (R57). No new error
+  code (R58 unchanged). *(charter default.)*
+
+#### Client: the first ask (Day plan section)
+
+- **R108.** **The ask.** When the section shows the "not planned" card (R65) and the plan's
+  `settings.asked` is false, the card asks "How much time do you have for this plan each day?"
+  with five chips, **30m · 1h · 2h · 3h · 4h** (30, 60, 120, 180 and 240 minutes), and a quiet
+  "Skip, plan anyway". It replaces the card's line and its Plan my day button for that state.
+  *(charter default. Reason: the question matters exactly at plan time and adds no extra step.)*
+- **R109.** **A chip** saves the setting (`setDayPlanSettings` with that value) and then plans
+  (`planMyDay`), as one click, showing the section's planning state (R65) throughout. **Skip** saves
+  `dailyMinutes: null` and then plans with the default. After either, the plan is never asked on
+  again for this user, on any device. *(charter default.)*
+- **R110.** **The save fails** (any error but 404): the click still plans, with whatever setting
+  the server holds (the default, since the user was never asked), and the section says quietly, in
+  the PlanBar's notice line, "Couldn't save your hours, so this plan uses a typical day." The ask
+  comes back the next time the card shows, because the server never recorded it. A 404 follows
+  R70. *(spec default. Reason: the user asked to plan, so a settings hiccup must not block the
+  plan; the card cannot mark "asked" on the server's behalf.)*
+- **R111.** **The save succeeds and the plan fails:** the plan failure is shown as today (R65,
+  quiet retry) and the card does not ask again, because `asked` is now true. *(spec default.)*
+- **R112.** When Plan my day is retired on the not-planned card (`refreshesRemaining` 0), the card
+  is shown as today, without the ask. *(spec default. Reason: a chip whose plan step cannot run
+  would save and then do nothing visible; the cog can still set the value.)*
+- **R113.** The ask's style follows `client/docs/design-guideline.md` and the card's current
+  styling (the card surface, `PRIMARY_ACTION` and the muted text), with chips as a row of rounded
+  controls that wraps at narrow widths (FS-49CQ2) and with "Skip, plan anyway" as a quiet text
+  action. *(spec default. Reason: "cozy, slick" in the app's own vocabulary is the guideline.)*
+
+#### Client: the tooltip and the cog
+
+- **R114.** **The "i" tooltip** (R63) adds one line after its existing text: "Sized for 2 hours a
+  day. Change it with the cog." when `dailyMinutes` is set (with the value in words), or "Sized for
+  a typical day. Set your hours with the cog." when unset. It reflects a save at once, without a
+  reload. *(charter default.)*
+- **R115.** **Hours in words.** Minutes are shown as hours with halves: 30 → "30 minutes", 60 →
+  "1 hour", 90 → "1½ hours", 120 → "2 hours", 150 → "2½ hours", … 720 → "12 hours". The chips use the
+  compact forms of R108. *(charter default for "2½ hours a day"; spec default for the edges.)*
+- **R116.** **The cog** sits in the Day plan header beside Hide/Show, with the same glyph and
+  pattern as the Items card's settings button (`client/src/components/Todo.tsx`). It shows only
+  while the section is shown and its day plan has loaded (the value comes from the read). It opens
+  a settings view inside the card, in place of the section's body, with "Back to day plan" and one
+  row, **Hours a day**: a −/+ stepper in 30-minute steps from 30 minutes to 12 hours with a readout
+  (R115), and "Use the default" to clear. Under the row: "Applies the next time you plan your day."
+  *(charter default.)*
+- **R117.** **Stepper behaviour.** Unset, the readout says "Typical day" and "Use the default" is
+  not offered; the first press of either − or + sets 2 hours. − is disabled at 30 minutes and + at
+  12 hours. Every change saves (`setDayPlanSettings`), optimistically; saves are sent one after
+  another and the last value pressed is what is stored. A failed save reverts the readout to the
+  last saved value and says quietly "Couldn't save. Try again." The client switches on `code`, never
+  on `detail` (ADR-0004). *(charter default for save-on-change and quiet errors; spec default for
+  the start value, ordering and copy. Reason: 2 hours is the middle chip; serial saves keep the
+  stored value equal to the readout.)*
+- **R118.** Saving from the cog marks the plan as asked (R94), so a user who sets hours before ever
+  planning is not asked on the card. Saving never re-plans; the day plan on screen stays until the
+  user presses Plan again (R103). *(charter default.)*
+
+### Acceptance Criteria
+
+#### Server
+
+- [ ] With no setting, the day plan prompt (system and user message) is byte-identical to the
+      prompt before this change, and the plan-state hash is identical too.
+- [ ] With `dailyMinutes` set, the user message states the daily time and asks that entry minutes
+      sum within it; `systemRules` is byte-identical with and without a setting.
+- [ ] With ticked entries and a setting, the ticked block carries their minutes and the request
+      states the time left; with none left, it says adding nothing is fine.
+- [ ] Changing `dailyMinutes` changes the plan-state hash: Plan again after a change draws (and
+      counts unless the free draw is unused); with no change it is gated as before.
+- [ ] Entries over the budget are not trimmed; 6 / 3 / 5–240 are unchanged; the rules draw
+      ignores the setting.
+- [ ] `getDayPlan` and `planMyDay` carry `settings` with `asked = false` and no `dailyMinutes`
+      for a user who never saved, in both `not_planned` and `planned` states.
+- [ ] `setDayPlanSettings` with 120 returns `200 {dailyMinutes: 120, asked: true}`; with `null`
+      returns `200 {asked: true}` and the next read has no `dailyMinutes` and `asked = true`.
+- [ ] `setDayPlanSettings` makes no model call, no rules draw, no ledger row, and leaves the stored
+      day plan and `refreshesRemaining` unchanged.
+- [ ] 0, 29, 45, 721, 750, `1.5`, a string or a missing `dailyMinutes` return `422 ·
+      VALIDATION_FAILED`; an unknown member or malformed `planId` too.
+- [ ] A plan the caller can't access returns `404 · NOT_FOUND`.
+- [ ] On a shared plan, one member's setting doesn't change another's.
+- [ ] Migration 000014 creates `day_plan_settings`; its CHECK refuses an off-step value; the down
+      migration drops it.
+- [ ] `openapi.yaml`, `client/src/api/generated/` and the proto Go are regenerated, never
+      hand-edited; `make gates` is green (additive change only).
+
+#### Client
+
+- [ ] On the not-planned card for a plan never asked, the question and the five chips and "Skip,
+      plan anyway" show instead of the plain line and button.
+- [ ] A chip calls `setDayPlanSettings` with its minutes and then `planMyDay`, in one click; Skip
+      sends `null` and then plans; neither card asks again after a reload.
+- [ ] A failed save still plans and shows the quiet notice; the ask comes back next time.
+- [ ] A retired not-planned card shows no ask.
+- [ ] The tooltip line reads the current value in words ("Sized for 2½ hours a day. Change it with
+      the cog.") or the unset line, and updates after a save.
+- [ ] The cog opens the settings view with "Back to day plan", the stepper, its readout and "Use the
+      default"; − stops at 30 minutes, + at 12 hours; from unset the first press sets 2 hours.
+- [ ] Each step saves; a failed save reverts the readout and shows the quiet error; errors are
+      matched by `code`.
+- [ ] Saving from the cog never calls `planMyDay`.
+- [ ] Tests pass (`npm test`, `npm run lint`, `npm run build`).
+
+### Edge States
+
+| Situation | Behavior |
+| --- | --- |
+| Never asked, never saved | `asked = false`; prompt and hash as before (R96, R99); the not-planned card asks (R108). |
+| Skip | Saved as asked with no budget; plans with the default; never asked again (R109). |
+| A chip, then the plan falls back to rules | Setting saved; the basic plan ignores it (R100); asked is true. |
+| Chip save fails | Plans anyway with the default; quiet notice; asked again next time (R110). |
+| Chip save succeeds, plan fails | Quiet retry as today; not asked again (R111). |
+| Second device after answering | Reads `asked = true`; no ask (R94). |
+| Not-planned card with Plan my day retired | No ask (R112). |
+| Set via the cog before ever planning | Counts as asked; the card shows the plain Plan my day (R118). |
+| "Use the default" | Saves `null`; still asked; tooltip shows the unset line (R102, R114). |
+| Setting changed after today's plan was drawn | The plan on screen stays; Plan again isn't gated and redraws, counted unless the free draw is unused (R99, R103). |
+| Setting changed while a Plan my day is in flight | The draw uses the value it read; the next Plan again sees the new one (hash differs). |
+| Ticked entries already use the whole budget | The model is told no time is left; zero added entries is a valid plan (R98). |
+| Model ignores the budget | Entries are kept as drawn; nothing is trimmed (R100). |
+| Rapid stepper presses | Saves go one after another; the last value pressed is stored (R117). |
+| Stepper save fails | Readout reverts to the last saved value; quiet "Couldn't save. Try again." (R117). |
+| Off-step or out-of-range value from an old or bad client | `422 · VALIDATION_FAILED` (R105). |
+| Plan not accessible | `404 · NOT_FOUND`; the section follows R70 (R106). |
+| Shared plan | Each member has their own setting and is asked once themselves (R93). |
+| Section hidden | No cog; the setting is untouched (R116). |
+| Day plan read failed | No cog until a read succeeds (R116). |
+| Home roll-up | Unchanged; ignores `settings` (R100). |
+| Plan or user deleted | The setting row stays, the same gap as DF4ZB O3 (Out of Scope). |
+
+### API surface
+
+Additive only. Common errors as in §API surface above (`401`, `403`, `503 · SERVICE_UNAVAILABLE`,
+`500`); the Errors column lists only what is specific.
+
+| Op | Method + Path | Query/Params | Request body | Response | Errors |
+|----|---------------|--------------|--------------|----------|--------|
+| setDayPlanSettings | `PUT /api/insights/day-plan/settings` | — | `planId` uuid, required · `dailyMinutes` int 30–720, multiple of 30, **required, nullable** (`null` = back to the default) | `200` **DayPlanSettings** | `404 · NOT_FOUND` (plan) · `422 · VALIDATION_FAILED` (range, step, type, missing member, unknown member) |
+| getDayPlan · planMyDay | unchanged | unchanged | unchanged | **DayPlan** gains `settings` | unchanged |
+
+**DayPlan** gains:
+
+| Field | Type | Notes |
+|---|---|---|
+| `settings` | **DayPlanSettings** | always present, in every status |
+
+**DayPlanSettings**
+
+| Field | Type | Notes |
+|---|---|---|
+| `dailyMinutes` | int 30–720, multiple of 30, optional | absent when unset |
+| `asked` | boolean | true once the user has saved anything for this plan, `null` included |
+
+**Plane 2 (gRPC).** `insights.InsightsService` gains `SetDayPlanSettings(SetDayPlanSettingsRequest)
+returns (SetDayPlanSettingsResponse)`, with `plan_id`, `user_id`, `optional int32 daily_minutes`
+in, and `DayPlanSettings settings` out. `DayPlan` gains `DayPlanSettings settings`.
+`DayPlanSettings` is `optional int32 daily_minutes`, `bool asked`. No plan-service change.
+
+### Out of Scope
+
+- **Trimming or re-ranking entries to fit the time** on the server: the budget is an ask, not a
+  rule (R100).
+- **Changing 6 entries / 3 groups or the 5–240 minutes bounds**, or deriving them from the time.
+- **A budget in the rules draw** or in the home roll-up's rule picks.
+- **A per-user default across plans**, per-weekday hours, or a calendar-aware day.
+- **Asking anywhere but the not-planned card** (no modal, no onboarding step, no nudge on a
+  planned day).
+- **Re-planning on save**, or any automatic draw (ADR-0019).
+- **Purging settings on plan or user deletion**: same gap as DF4ZB O3.
+
+### Open items for the owner
+
+- **O4. Do ticked entries count against the time?** R98 says yes: the budget is for the whole day,
+  so a redraw after ticking work asks the model to fit only the time left. The alternative is
+  that the budget applies only to what the model adds (simpler prompt, but a mid-day redraw can
+  plan a second full day). Spec default chosen; cheap to flip before the prompt slice.
+- **O5. Wording of the failed-save notice** (R110) and the stepper's start value of 2 hours
+  (R117) were chosen here; the charter fixed the question, chips, tooltip and cog copy only.
