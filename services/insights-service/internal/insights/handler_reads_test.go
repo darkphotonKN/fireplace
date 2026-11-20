@@ -27,6 +27,8 @@ var rpcClasses = map[string]string{
 	"TickDayPlanEntry":   rpcWrite,
 	"UntickDayPlanEntry": rpcWrite,
 	"SetItemRevisions":   rpcWrite,
+	// FS-02JBZ R103: saving the day plan setting never draws.
+	"SetDayPlanSettings": rpcWrite,
 	// FS-PGG2N R44: a model call made only on the user's press.
 	"SummarizeNote": rpcGenerate,
 }

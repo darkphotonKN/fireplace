@@ -79,7 +79,9 @@ type Group struct {
 // DrawID names the stored draw and TickVersion counts the ticks and unticks
 // on the key; a redraw replaces the plan only if neither moved since it
 // started (R21, Ref). FreeDrawUsed records that a successful AI draw has been
-// stored for the key (R15).
+// stored for the key (R15). Settings is the key's user's day plan setting for
+// the plan, read beside the plan when served, in every state (R101), never
+// stored on it.
 type DayPlan struct {
 	Key                guided.DayKey
 	Planned            bool
@@ -91,6 +93,7 @@ type DayPlan struct {
 	FreeDrawUsed       bool
 	Groups             []Group
 	RefreshesRemaining int
+	Settings           Settings
 }
 
 // DrawRef is the stored state a redraw starts from: the draw the key serves

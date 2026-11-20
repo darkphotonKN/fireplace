@@ -378,6 +378,9 @@ components:
           maximum: 3
           minimum: 0
           type: integer
+        settings:
+          $ref: "#/components/schemas/DayPlanSettingsResponse"
+          description: The caller's day plan setting for this plan, in every status
         source:
           description: How the plan was drawn; present iff status is planned. rules is the basic plan
           enum:
@@ -396,6 +399,23 @@ components:
         - status
         - refreshesRemaining
         - groups
+        - settings
+      type: object
+    DayPlanSettingsResponse:
+      additionalProperties: false
+      properties:
+        asked:
+          description: true once the caller has saved a setting for this plan, a null dailyMinutes included; false until then
+          type: boolean
+        dailyMinutes:
+          description: The caller's daily time on this plan, in whole minutes; absent when unset, and the day plan is sized for a typical day
+          format: int64
+          maximum: 720
+          minimum: 30
+          multipleOf: 30
+          type: integer
+      required:
+        - asked
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -752,6 +772,26 @@ components:
         - id
         - name
         - similarity
+      type: object
+    SetDayPlanSettingsRequest:
+      additionalProperties: false
+      properties:
+        dailyMinutes:
+          description: The caller's daily time on this plan in whole minutes, 30 to 720 in steps of 30; null goes back to the default, a typical day
+          format: int64
+          maximum: 720
+          minimum: 30
+          multipleOf: 30
+          type:
+            - integer
+            - "null"
+        planId:
+          description: Plan id
+          format: uuid
+          type: string
+      required:
+        - planId
+        - dailyMinutes
       type: object
     SetItemRevisionsRequest:
       additionalProperties: false
@@ -1496,6 +1536,62 @@ paths:
       security:
         - bearerAuth: []
       summary: Switch revisions for an item
+  /api/insights/day-plan/settings:
+    put:
+      description: "Saves the caller's day plan setting for the plan and returns it: dailyMinutes, the time a day the caller spends on this plan, or null to go back to the default, a typical day. Per user on a shared plan. Any save marks the plan asked for the caller, a null included; a later save replaces an earlier one. Saving never plans: no model call, no draw, the stored day plan and refreshesRemaining unchanged; the setting applies the next time the caller plans their day. A plan the caller cannot access is 404."
+      operationId: setDayPlanSettings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetDayPlanSettingsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayPlanSettingsResponse"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearerAuth: []
+      summary: Save the day plan setting for a plan
   /api/insights/note-summary:
     post:
       description: "Writes one plain paragraph of at most 280 characters summarizing the note's body and returns it. Nothing is stored: to keep it, save it as the note's summary with updateChecklist. The model reads only the first 8000 characters of the body. Each call is one metered model call. 404 NOT_FOUND: the note is missing, archived or in another plan. 400 ITEM_NOT_A_NOTE: the item is a task. 429 LLM_BUDGET_EXHAUSTED: the platform's daily token budget is spent; retry after the next UTC midnight. 503 NOTE_SUMMARY_FAILED: the model failed, timed out or wrote nothing; retrying is correct. 503 SERVICE_UNAVAILABLE: the insights service could not be reached; retrying is correct."

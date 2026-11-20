@@ -401,3 +401,42 @@ func TestMount_DuplicateChecklistRefusesAtTheEdge(t *testing.T) {
 		})
 	}
 }
+
+// FS-02JBZ §Change: Hours a day, R104, R105: every shape failure of
+// setDayPlanSettings is 422 VALIDATION_FAILED from the mounted gateway, decided
+// before the handler (which, with no plan-access seam here, would answer 403).
+func TestMount_SetDayPlanSettingsShapeFailuresAreValidationFailed(t *testing.T) {
+	t.Setenv("JWT_SECRET", testSecret)
+	plan := uuid.NewString()
+	for name, body := range map[string]string{
+		"0":                    `{"planId":"` + plan + `","dailyMinutes":0}`,
+		"29":                   `{"planId":"` + plan + `","dailyMinutes":29}`,
+		"45":                   `{"planId":"` + plan + `","dailyMinutes":45}`,
+		"721":                  `{"planId":"` + plan + `","dailyMinutes":721}`,
+		"750":                  `{"planId":"` + plan + `","dailyMinutes":750}`,
+		"1.5":                  `{"planId":"` + plan + `","dailyMinutes":1.5}`,
+		"a string":             `{"planId":"` + plan + `","dailyMinutes":"120"}`,
+		"missing dailyMinutes": `{"planId":"` + plan + `"}`,
+		"malformed planId":     `{"planId":"nope","dailyMinutes":120}`,
+		"unknown member":       `{"planId":"` + plan + `","dailyMinutes":120,"hours":2}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPut, "/api/insights/day-plan/settings", strings.NewReader(body))
+			req.Header.Set("Authorization", "Bearer "+token(t))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			buildEngine(fakeProfileClient{user: sampleUser()}).ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want 422: %s", rec.Code, rec.Body.String())
+			}
+			var p problemBody
+			if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+				t.Fatalf("decode problem: %v — %s", err, rec.Body.String())
+			}
+			if p.Code != string(errcode.ValidationFailed) {
+				t.Errorf("code = %q, want %s", p.Code, errcode.ValidationFailed)
+			}
+		})
+	}
+}

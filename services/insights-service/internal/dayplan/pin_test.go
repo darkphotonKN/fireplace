@@ -25,14 +25,6 @@ func tickedBFS(t *testing.T, f *fixture, tf treeFixture) Entry {
 	return e
 }
 
-func entryCount(p DayPlan) int {
-	n := 0
-	for _, g := range p.Groups {
-		n += len(g.Entries)
-	}
-	return n
-}
-
 func TestPlanMyDay_AITickedEntryKeepsItsPlaceGroupTextAndTickAndTheModelFillsTheRest(t *testing.T) {
 	tf := newTreeFixture()
 	f := newFixture(tf.items())
@@ -56,7 +48,7 @@ func TestPlanMyDay_AITickedEntryKeepsItsPlaceGroupTextAndTickAndTheModelFillsThe
 	if f.gen.calls() != 2 {
 		t.Fatalf("generator calls = %d: a tick changes the hash, so the redraw must reach the model", f.gen.calls())
 	}
-	if len(p.Groups) != 3 || entryCount(p) != MaxEntries {
+	if len(p.Groups) != 3 || entryCount(p.Groups) != MaxEntries {
 		t.Fatalf("groups = %+v, want 3 groups and 6 entries", p.Groups)
 	}
 	first := p.Groups[0]
@@ -150,7 +142,7 @@ func TestPlanMyDay_RulesRedrawKeepsTheTickedEntry(t *testing.T) {
 			}
 		}
 	}
-	if seen != 1 || len(p.Groups) > MaxGroups || entryCount(p) > MaxEntries {
+	if seen != 1 || len(p.Groups) > MaxGroups || entryCount(p.Groups) > MaxEntries {
 		t.Fatalf("groups = %+v, want BFS once within the bounds", p.Groups)
 	}
 }
@@ -203,7 +195,7 @@ func TestPlanMyDay_SixTickedEntriesLeaveNothingToDraw(t *testing.T) {
 	if f.gen.calls() != 1 || f.counter.spentFor(f.key()) != 0 {
 		t.Fatalf("calls %d spent %d: with every slot ticked there is nothing to ask the model", f.gen.calls(), f.counter.spentFor(f.key()))
 	}
-	if entryCount(again) != MaxEntries {
+	if entryCount(again.Groups) != MaxEntries {
 		t.Fatalf("groups = %+v, want the six ticked entries", again.Groups)
 	}
 	for _, e := range again.Groups[0].Entries {
@@ -218,10 +210,10 @@ func TestStateHash_CoversTheItemsTickedToday(t *testing.T) {
 	date := time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)
 	profile := PlanProfile{Type: "learning"}
 
-	none := stateHash(tree(tf), profile, date, nil, nil)
-	one := stateHash(tree(tf), profile, date, []uuid.UUID{tf.bfs}, nil)
-	two := stateHash(tree(tf), profile, date, []uuid.UUID{tf.bfs, tf.dp}, nil)
-	twoReordered := stateHash(tree(tf), profile, date, []uuid.UUID{tf.dp, tf.bfs}, nil)
+	none := planState{Tree: tree(tf), Profile: profile, Date: date}.hash()
+	one := planState{Tree: tree(tf), Profile: profile, Date: date, Ticked: []uuid.UUID{tf.bfs}}.hash()
+	two := planState{Tree: tree(tf), Profile: profile, Date: date, Ticked: []uuid.UUID{tf.bfs, tf.dp}}.hash()
+	twoReordered := planState{Tree: tree(tf), Profile: profile, Date: date, Ticked: []uuid.UUID{tf.dp, tf.bfs}}.hash()
 
 	if none == one || one == two {
 		t.Fatal("changing the ticked items must change the hash")
@@ -261,11 +253,11 @@ func TestStateHash_CoversTheSetOfDueRevisions(t *testing.T) {
 	a := dueRevision{ItemID: tf.bfs, Rung: 1, DueOn: oct(25)}
 	b := dueRevision{ItemID: tf.dfs, Rung: 2, DueOn: oct(24)}
 
-	none := stateHash(tree(tf), profile, date, nil, nil)
-	one := stateHash(tree(tf), profile, date, nil, []dueRevision{a})
-	both := stateHash(tree(tf), profile, date, nil, []dueRevision{a, b})
-	reordered := stateHash(tree(tf), profile, date, nil, []dueRevision{b, a})
-	nextRung := stateHash(tree(tf), profile, date, nil, []dueRevision{{ItemID: tf.bfs, Rung: 2, DueOn: oct(25)}})
+	none := planState{Tree: tree(tf), Profile: profile, Date: date}.hash()
+	one := planState{Tree: tree(tf), Profile: profile, Date: date, Due: []dueRevision{a}}.hash()
+	both := planState{Tree: tree(tf), Profile: profile, Date: date, Due: []dueRevision{a, b}}.hash()
+	reordered := planState{Tree: tree(tf), Profile: profile, Date: date, Due: []dueRevision{b, a}}.hash()
+	nextRung := planState{Tree: tree(tf), Profile: profile, Date: date, Due: []dueRevision{{ItemID: tf.bfs, Rung: 2, DueOn: oct(25)}}}.hash()
 
 	if none == one || one == both || one == nextRung {
 		t.Fatal("hash must change with the set of due revisions")

@@ -117,7 +117,12 @@ type memStore struct {
 	// applyFailures is how many of the next ApplyLadder calls fail, writing
 	// nothing.
 	applyFailures int
+	// settings are the day plan settings per (plan, user), as
+	// day_plan_settings holds them: a row is asked, its minutes may be nil.
+	settings map[settingsKey]*int
 }
+
+type settingsKey struct{ planID, userID uuid.UUID }
 
 var errLadderWrite = errors.New("ladder write failed")
 
@@ -141,6 +146,7 @@ func newMemStore() *memStore {
 	return &memStore{
 		plans: map[guided.DayKey]DayPlan{}, ticks: map[guided.DayKey]map[uuid.UUID]uuid.UUID{},
 		rungs: map[ladderKey][]rung{}, switches: map[ladderKey]bool{},
+		settings: map[settingsKey]*int{},
 	}
 }
 
@@ -351,6 +357,20 @@ func (m *memStore) SetRevisions(ctx context.Context, planID, userID, itemID uuid
 	return nil
 }
 
+func (m *memStore) DayPlanSettings(ctx context.Context, planID, userID uuid.UUID) (Settings, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	minutes, asked := m.settings[settingsKey{planID, userID}]
+	return Settings{DailyMinutes: minutes, Asked: asked}, nil
+}
+
+func (m *memStore) SaveDayPlanSettings(ctx context.Context, planID, userID uuid.UUID, dailyMinutes *int) (Settings, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.settings[settingsKey{planID, userID}] = dailyMinutes
+	return Settings{DailyMinutes: dailyMinutes, Asked: true}, nil
+}
+
 // ticksFor is the ticked items of key.
 func (m *memStore) ticksFor(key guided.DayKey) []uuid.UUID {
 	m.mu.Lock()
@@ -429,7 +449,8 @@ func newFixture(items []guided.PlanItem) *fixture {
 		store:   newMemStore(),
 		counter: newMemCounter(),
 	}
-	f.svc = NewService(f.plans, f.gen, guided.NewSnippetSource(guided.NoRetrieval{}, noMemory{}), f.store, f.store, f.counter)
+	f.svc = NewService(f.plans, f.gen, guided.NewSnippetSource(guided.NoRetrieval{}, noMemory{}),
+		Stores{DayPlans: f.store, Revisions: f.store, Settings: f.store, Refreshes: f.counter})
 	f.svc.now = func() time.Time { return today }
 	return f
 }

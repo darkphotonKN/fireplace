@@ -10,7 +10,16 @@ import (
 	"github.com/darkphotonKN/fireplace/services/insights-service/internal/ai"
 	"github.com/darkphotonKN/fireplace/services/insights-service/internal/guided"
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 )
+
+// newDBService is a day plan service on db's repository and the given refresh
+// counter, with no retrieval.
+func newDBService(db *sqlx.DB, plans PlanReader, gen Generator, refreshes guided.RefreshCounter) *Service {
+	repo := NewRepository(db)
+	return NewService(plans, gen, guided.NewSnippetSource(guided.NoRetrieval{}, noMemory{}),
+		Stores{DayPlans: repo, Revisions: repo, Settings: repo, Refreshes: refreshes})
+}
 
 // Plan my day's redraws are capped by the Postgres refresh counter: the key's
 // first AI draw is free, the next three each spend one, and a fourth is
@@ -23,7 +32,7 @@ func TestServiceIntegration_PlanMyDayIsCappedByThePostgresRefreshCounter(t *test
 	plans := &fakePlans{profile: PlanProfile{Type: "learning", Focus: "Graphs"}, items: tf.items()}
 	gen := &fakeGenerator{}
 	counter := guided.NewRefreshCounters(db)
-	svc := NewService(plans, gen, guided.NewSnippetSource(guided.NoRetrieval{}, noMemory{}), NewRepository(db), NewRepository(db), counter)
+	svc := newDBService(db, plans, gen, counter)
 	svc.now = func() time.Time { return key.Date.Add(12 * time.Hour) }
 	ctx := context.Background()
 	date := key.Date.Format(guided.DateLayout)
@@ -70,7 +79,7 @@ func TestServiceIntegration_RulesPlanIsStoredFreeAndTheModelIsTriedAfter(t *test
 	tf := newTreeFixture()
 	plans := &fakePlans{profile: PlanProfile{Type: "learning", Focus: "Graphs"}, items: tf.items()}
 	gen := &fakeGenerator{}
-	svc := NewService(plans, gen, guided.NewSnippetSource(guided.NoRetrieval{}, noMemory{}), NewRepository(db), NewRepository(db), guided.NewRefreshCounters(db))
+	svc := newDBService(db, plans, gen, guided.NewRefreshCounters(db))
 	ctx := context.Background()
 	date := key.Date.Format(guided.DateLayout)
 	svc.now = func() time.Time { return key.Date.Add(12 * time.Hour) }
@@ -111,7 +120,7 @@ func TestServiceIntegration_TickedEntrySurvivesAIAndRulesRedraws(t *testing.T) {
 	tf := newTreeFixture()
 	plans := &fakePlans{profile: PlanProfile{Type: "learning", Focus: "Graphs"}, items: tf.items()}
 	gen := &fakeGenerator{}
-	svc := NewService(plans, gen, guided.NewSnippetSource(guided.NoRetrieval{}, noMemory{}), NewRepository(db), NewRepository(db), guided.NewRefreshCounters(db))
+	svc := newDBService(db, plans, gen, guided.NewRefreshCounters(db))
 	ctx := context.Background()
 	date := key.Date.Format(guided.DateLayout)
 	svc.now = func() time.Time { return key.Date.Add(12 * time.Hour) }
@@ -169,7 +178,7 @@ func TestServiceIntegration_TheRevisionLadderThroughTicks(t *testing.T) {
 	plans := &fakePlans{profile: PlanProfile{Type: "learning", Focus: "Graphs"}, items: tf.items()}
 	gen := &fakeGenerator{}
 	repo := NewRepository(db)
-	svc := NewService(plans, gen, guided.NewSnippetSource(guided.NoRetrieval{}, noMemory{}), repo, repo, guided.NewRefreshCounters(db))
+	svc := newDBService(db, plans, gen, guided.NewRefreshCounters(db))
 	ctx := context.Background()
 	svc.now = func() time.Time { return key.Date.Add(12 * time.Hour) }
 	today, tomorrow := key.Date.Format(guided.DateLayout), key.Date.AddDate(0, 0, 1).Format(guided.DateLayout)

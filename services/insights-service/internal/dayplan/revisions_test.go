@@ -114,7 +114,7 @@ func TestRevisions_DueRevisionIsStampedPromptedAndHashed(t *testing.T) {
 	key.Date = oct(26)
 	stored, _ := f.store.stored(key)
 	withDue := stored.PlanStateHash
-	if withDue == stateHash(guided.NewPlanTree(tf.items()), f.plans.profile, oct(26), nil, nil) {
+	if withDue == (planState{Tree: guided.NewPlanTree(tf.items()), Profile: f.plans.profile, Date: oct(26)}).hash() {
 		t.Fatal("hash ignores the due revisions")
 	}
 }

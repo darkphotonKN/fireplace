@@ -19,6 +19,7 @@ export type VideoSuggestion = components["schemas"]["VideoSuggestionResponse"];
 export type DayPlan = components["schemas"]["DayPlanResponse"];
 export type DayPlanGroup = components["schemas"]["DayPlanGroupResponse"];
 export type DayPlanEntry = components["schemas"]["DayPlanEntryResponse"];
+export type DayPlanSettings = components["schemas"]["DayPlanSettingsResponse"];
 
 /** Fallback preserved from services/api.ts: a failed suggestion shows copy
  *  rather than nothing. Masks the error by design — pre-existing behaviour. */
@@ -147,6 +148,32 @@ export const setItemRevisions = async (
     },
   );
   if (error) throw apiErrorFrom(error, response.status);
+};
+
+/**
+ * Saves the caller's day plan setting for a plan (FS-02JBZ §Change: Hours a
+ * day, R102): `dailyMinutes` is whole minutes, 30–720 in steps of 30, or
+ * `null` to go back to the default, a typical day. `null` is sent explicitly:
+ * the server refuses an omitted member rather than clearing a saved value
+ * (R104). Any save marks the plan asked for this user, `null` included, so the
+ * not-planned card never asks again (R94). Saving NEVER plans (R103): the day
+ * plan on screen stays, and the value applies on the next Plan my day.
+ *
+ * THROWS an `ApiError`. Callers switch on its `code` (ADR-0004):
+ * `NOT_FOUND` (404) means the plan is not the caller's to see (R70, R106);
+ * `VALIDATION_FAILED` (422) means a value off the range or step was sent;
+ * anything else, 503 included, is worth retrying.
+ */
+export const setDayPlanSettings = async (
+  planId: string,
+  dailyMinutes: number | null,
+): Promise<DayPlanSettings> => {
+  const { data, error, response } = await api.PUT(
+    "/api/insights/day-plan/settings",
+    { body: { planId, dailyMinutes } },
+  );
+  if (error) throw apiErrorFrom(error, response.status);
+  return data!;
 };
 
 /**

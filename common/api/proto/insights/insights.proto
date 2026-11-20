@@ -69,6 +69,16 @@ service InsightsService {
   // On a project plan it is accepted and has no effect.
   rpc SetItemRevisions(SetItemRevisionsRequest) returns (SetItemRevisionsResponse);
 
+  // SetDayPlanSettings saves the caller's day plan setting for a plan
+  // (FS-02JBZ §Change: Hours a day, R102-R107) and returns it: daily_minutes,
+  // whole minutes 30-720 in steps of 30, or unset to go back to the default.
+  // Any save marks the plan asked for this user. A later save replaces an
+  // earlier one. It never draws: no model call, no rules draw, nothing
+  // written to the stored day plan, the refresh counter or the ledger.
+  // Refusals: daily_minutes off the range or step is InvalidArgument; a plan
+  // the caller cannot access is NotFound.
+  rpc SetDayPlanSettings(SetDayPlanSettingsRequest) returns (SetDayPlanSettingsResponse);
+
   // SummarizeNote writes one plain paragraph of at most 280 characters
   // summarizing a note's body, and returns it (FS-PGG2N R38-R44). It stores
   // nothing, writes nothing to plan-service and publishes no event: saving the
@@ -166,6 +176,29 @@ message SetItemRevisionsRequest {
 
 message SetItemRevisionsResponse {}
 
+message SetDayPlanSettingsRequest {
+  string plan_id = 1;
+  // user_id is the caller's verified identity, forwarded by the gateway.
+  string user_id = 2;
+  // daily_minutes is the caller's daily time on the plan, 30-720 in steps of
+  // 30; unset goes back to the default.
+  optional int32 daily_minutes = 3;
+}
+
+message SetDayPlanSettingsResponse {
+  DayPlanSettings settings = 1;
+}
+
+// DayPlanSettings is one user's day plan setting for one plan.
+message DayPlanSettings {
+  // daily_minutes is the user's daily time on the plan, 30-720 in steps of
+  // 30; unset when they have not given one.
+  optional int32 daily_minutes = 1;
+  // asked is true once the user has saved a setting for the plan, an unset
+  // daily_minutes included.
+  bool asked = 2;
+}
+
 // DayPlan is up to 6 entries in up to 3 groups for one user on one plan for
 // one local date.
 message DayPlan {
@@ -180,6 +213,8 @@ message DayPlan {
   google.protobuf.Timestamp generated_at = 5;
   int32 refreshes_remaining = 6;
   repeated DayPlanGroup groups = 7;
+  // settings is the caller's day plan setting for the plan, in every status.
+  DayPlanSettings settings = 8;
 }
 
 // DayPlanGroup is a short label over related entries. It has no id.

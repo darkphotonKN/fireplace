@@ -67,12 +67,27 @@ type Service struct {
 	snippets  guided.SnippetSource
 	store     Store
 	revisions RevisionStore
+	settings  SettingsStore
 	refreshes guided.RefreshCounter
 	now       func() time.Time
 }
 
-func NewService(plans PlanReader, gen Generator, snippets guided.SnippetSource, store Store, revisions RevisionStore, refreshes guided.RefreshCounter) *Service {
-	return &Service{plans: plans, gen: gen, snippets: snippets, store: store, revisions: revisions, refreshes: refreshes, now: time.Now}
+// Stores are what the day plan persists to, one narrow interface each. In
+// production one Repository is DayPlans, Revisions and Settings at once, so
+// they are named here rather than passed by position.
+type Stores struct {
+	DayPlans  Store
+	Revisions RevisionStore
+	Settings  SettingsStore
+	Refreshes guided.RefreshCounter
+}
+
+func NewService(plans PlanReader, gen Generator, snippets guided.SnippetSource, stores Stores) *Service {
+	return &Service{
+		plans: plans, gen: gen, snippets: snippets,
+		store: stores.DayPlans, revisions: stores.Revisions, settings: stores.Settings, refreshes: stores.Refreshes,
+		now: time.Now,
+	}
 }
 
 // GetDayPlan returns the stored day plan for (plan, user, date), or the
@@ -184,20 +199,24 @@ func (s *Service) PlanMyDay(ctx context.Context, planID, userID uuid.UUID, date 
 // draw reads. pinned are the stored plan's entries ticked today, in their
 // groups and order (R12). due are the revisions due on the plan date of items
 // still in the tree, oldest due first; none on a project plan (R41, R44).
+// dailyMinutes is the user's daily time on the plan as the draw read it, nil
+// when unset (R94); a save landing mid-draw applies to the next one.
 type draft struct {
-	key       guided.DayKey
-	profile   PlanProfile
-	tree      guided.PlanTree
-	updatedAt map[uuid.UUID]time.Time
-	hash      string
-	stored    DayPlan
-	pinned    []Group
-	due       []dueRevision
+	key          guided.DayKey
+	profile      PlanProfile
+	tree         guided.PlanTree
+	updatedAt    map[uuid.UUID]time.Time
+	hash         string
+	stored       DayPlan
+	pinned       []Group
+	due          []dueRevision
+	dailyMinutes *int
 }
 
 // startDraw reads the plan's profile and items from plan-service (which
 // answers NotFound for a plan the caller cannot access, R23), the key's stored
-// plan and, on a learning plan, the revisions due on the plan date.
+// plan, the user's day plan setting for the plan (R97, R99) and, on a
+// learning plan, the revisions due on the plan date.
 func (s *Service) startDraw(ctx context.Context, key guided.DayKey) (draft, error) {
 	profile, err := s.plans.GetPlanProfile(ctx, key.PlanID, key.UserID)
 	if err != nil {
@@ -211,6 +230,10 @@ func (s *Service) startDraw(ctx context.Context, key guided.DayKey) (draft, erro
 	if err != nil {
 		return draft{}, fmt.Errorf("dayplan: load: %w", err)
 	}
+	settings, err := s.settings.DayPlanSettings(ctx, key.PlanID, key.UserID)
+	if err != nil {
+		return draft{}, fmt.Errorf("dayplan: settings: %w", err)
+	}
 	tree := guided.NewPlanTree(items)
 	updatedAt := make(map[uuid.UUID]time.Time, len(items))
 	for _, it := range items {
@@ -223,7 +246,10 @@ func (s *Service) startDraw(ctx context.Context, key guided.DayKey) (draft, erro
 	pinned, ticked := tickedEntries(stored)
 	return draft{
 		key: key, profile: profile, tree: tree, updatedAt: updatedAt,
-		hash: stateHash(tree, profile, key.Date, ticked, due), stored: stored, pinned: pinned, due: due,
+		hash: planState{
+			Tree: tree, Profile: profile, Date: key.Date, Ticked: ticked, Due: due, DailyMinutes: settings.DailyMinutes,
+		}.hash(),
+		stored: stored, pinned: pinned, due: due, dailyMinutes: settings.DailyMinutes,
 	}, nil
 }
 
@@ -307,7 +333,7 @@ func (s *Service) save(ctx context.Context, d draft, p DayPlan) (DayPlan, bool, 
 func (s *Service) generate(ctx context.Context, d draft) ([]Group, error) {
 	prompt := buildPrompt(promptInput{
 		Tree: d.tree, Profile: d.profile, Date: d.key.Date, Snippets: s.snippets.Find(ctx, d.key, d.topLevelTexts()),
-		Ticked: d.pinned, Due: d.due,
+		Ticked: d.pinned, Due: d.due, DailyMinutes: d.dailyMinutes,
 	})
 	var generated []generatedGroup
 	_, err := s.gen.Generate(ctx, ai.StructuredRequest{
@@ -388,7 +414,8 @@ func (s *Service) returnRefresh(ctx context.Context, key guided.DayKey) {
 
 // present fills what is derived rather than stored: refreshesRemaining comes
 // from the refresh counter (R19), revisionsEnabled from the revisions
-// switches when the plan is a learning plan (R49), and groups are never nil.
+// switches when the plan is a learning plan (R49), settings from the user's
+// day plan setting for the plan (R101), and groups are never nil.
 func (s *Service) present(ctx context.Context, p DayPlan, learning bool) (DayPlan, error) {
 	if p.Groups == nil {
 		p.Groups = []Group{}
@@ -402,5 +429,8 @@ func (s *Service) present(ctx context.Context, p DayPlan, learning bool) (DayPla
 		return DayPlan{}, fmt.Errorf("dayplan: refreshes remaining: %w", err)
 	}
 	p.RefreshesRemaining = left
+	if p.Settings, err = s.settings.DayPlanSettings(ctx, p.Key.PlanID, p.Key.UserID); err != nil {
+		return DayPlan{}, fmt.Errorf("dayplan: settings: %w", err)
+	}
 	return p, nil
 }

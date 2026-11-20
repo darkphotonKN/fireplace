@@ -26,6 +26,7 @@ const (
 	InsightsService_TickDayPlanEntry_FullMethodName   = "/insights.InsightsService/TickDayPlanEntry"
 	InsightsService_UntickDayPlanEntry_FullMethodName = "/insights.InsightsService/UntickDayPlanEntry"
 	InsightsService_SetItemRevisions_FullMethodName   = "/insights.InsightsService/SetItemRevisions"
+	InsightsService_SetDayPlanSettings_FullMethodName = "/insights.InsightsService/SetDayPlanSettings"
 	InsightsService_SummarizeNote_FullMethodName      = "/insights.InsightsService/SummarizeNote"
 )
 
@@ -90,6 +91,15 @@ type InsightsServiceClient interface {
 	// plan the caller cannot access, or an item not in the plan, is NotFound.
 	// On a project plan it is accepted and has no effect.
 	SetItemRevisions(ctx context.Context, in *SetItemRevisionsRequest, opts ...grpc.CallOption) (*SetItemRevisionsResponse, error)
+	// SetDayPlanSettings saves the caller's day plan setting for a plan
+	// (FS-02JBZ §Change: Hours a day, R102-R107) and returns it: daily_minutes,
+	// whole minutes 30-720 in steps of 30, or unset to go back to the default.
+	// Any save marks the plan asked for this user. A later save replaces an
+	// earlier one. It never draws: no model call, no rules draw, nothing
+	// written to the stored day plan, the refresh counter or the ledger.
+	// Refusals: daily_minutes off the range or step is InvalidArgument; a plan
+	// the caller cannot access is NotFound.
+	SetDayPlanSettings(ctx context.Context, in *SetDayPlanSettingsRequest, opts ...grpc.CallOption) (*SetDayPlanSettingsResponse, error)
 	// SummarizeNote writes one plain paragraph of at most 280 characters
 	// summarizing a note's body, and returns it (FS-PGG2N R38-R44). It stores
 	// nothing, writes nothing to plan-service and publishes no event: saving the
@@ -183,6 +193,16 @@ func (c *insightsServiceClient) SetItemRevisions(ctx context.Context, in *SetIte
 	return out, nil
 }
 
+func (c *insightsServiceClient) SetDayPlanSettings(ctx context.Context, in *SetDayPlanSettingsRequest, opts ...grpc.CallOption) (*SetDayPlanSettingsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetDayPlanSettingsResponse)
+	err := c.cc.Invoke(ctx, InsightsService_SetDayPlanSettings_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *insightsServiceClient) SummarizeNote(ctx context.Context, in *SummarizeNoteRequest, opts ...grpc.CallOption) (*SummarizeNoteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SummarizeNoteResponse)
@@ -254,6 +274,15 @@ type InsightsServiceServer interface {
 	// plan the caller cannot access, or an item not in the plan, is NotFound.
 	// On a project plan it is accepted and has no effect.
 	SetItemRevisions(context.Context, *SetItemRevisionsRequest) (*SetItemRevisionsResponse, error)
+	// SetDayPlanSettings saves the caller's day plan setting for a plan
+	// (FS-02JBZ §Change: Hours a day, R102-R107) and returns it: daily_minutes,
+	// whole minutes 30-720 in steps of 30, or unset to go back to the default.
+	// Any save marks the plan asked for this user. A later save replaces an
+	// earlier one. It never draws: no model call, no rules draw, nothing
+	// written to the stored day plan, the refresh counter or the ledger.
+	// Refusals: daily_minutes off the range or step is InvalidArgument; a plan
+	// the caller cannot access is NotFound.
+	SetDayPlanSettings(context.Context, *SetDayPlanSettingsRequest) (*SetDayPlanSettingsResponse, error)
 	// SummarizeNote writes one plain paragraph of at most 280 characters
 	// summarizing a note's body, and returns it (FS-PGG2N R38-R44). It stores
 	// nothing, writes nothing to plan-service and publishes no event: saving the
@@ -297,6 +326,9 @@ func (UnimplementedInsightsServiceServer) UntickDayPlanEntry(context.Context, *U
 }
 func (UnimplementedInsightsServiceServer) SetItemRevisions(context.Context, *SetItemRevisionsRequest) (*SetItemRevisionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetItemRevisions not implemented")
+}
+func (UnimplementedInsightsServiceServer) SetDayPlanSettings(context.Context, *SetDayPlanSettingsRequest) (*SetDayPlanSettingsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetDayPlanSettings not implemented")
 }
 func (UnimplementedInsightsServiceServer) SummarizeNote(context.Context, *SummarizeNoteRequest) (*SummarizeNoteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SummarizeNote not implemented")
@@ -448,6 +480,24 @@ func _InsightsService_SetItemRevisions_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InsightsService_SetDayPlanSettings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetDayPlanSettingsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InsightsServiceServer).SetDayPlanSettings(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InsightsService_SetDayPlanSettings_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InsightsServiceServer).SetDayPlanSettings(ctx, req.(*SetDayPlanSettingsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _InsightsService_SummarizeNote_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SummarizeNoteRequest)
 	if err := dec(in); err != nil {
@@ -500,6 +550,10 @@ var InsightsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetItemRevisions",
 			Handler:    _InsightsService_SetItemRevisions_Handler,
+		},
+		{
+			MethodName: "SetDayPlanSettings",
+			Handler:    _InsightsService_SetDayPlanSettings_Handler,
 		},
 		{
 			MethodName: "SummarizeNote",

@@ -23,6 +23,7 @@ type DayPlanService interface {
 	TickDayPlanEntry(ctx context.Context, entryID, userID uuid.UUID, itemID *uuid.UUID) (DayPlanEntryResponse, error)
 	UntickDayPlanEntry(ctx context.Context, entryID, userID uuid.UUID) error
 	SetItemRevisions(ctx context.Context, planID, userID, itemID uuid.UUID, enabled bool) error
+	SetDayPlanSettings(ctx context.Context, planID, userID uuid.UUID, dailyMinutes *int) (DayPlanSettingsResponse, error)
 }
 
 // DayPlanResponse is FS-02JBZ's DayPlan, field for field.
@@ -34,6 +35,16 @@ type DayPlanResponse struct {
 	GeneratedAt        *time.Time             `json:"generatedAt,omitempty" format:"date-time" doc:"When the plan was drawn; present iff status is planned, and unchanged when a redraw was served from the stored plan"`
 	RefreshesRemaining int                    `json:"refreshesRemaining" minimum:"0" maximum:"3" doc:"Counted redraws left for this plan and date; 3 until the free first draw is used"`
 	Groups             []DayPlanGroupResponse `json:"groups" maxItems:"3" nullable:"false" doc:"Zero to three groups, six entries at most across them; never null, empty when not_planned"`
+	// No omitempty on purpose: settings is always present, in every status
+	// (FS-02JBZ R101), so the client never null-checks it.
+	Settings DayPlanSettingsResponse `json:"settings" doc:"The caller's day plan setting for this plan, in every status"`
+}
+
+// DayPlanSettingsResponse is FS-02JBZ's DayPlanSettings (§Change: Hours a day):
+// one user's day plan setting for one plan.
+type DayPlanSettingsResponse struct {
+	DailyMinutes *int `json:"dailyMinutes,omitempty" minimum:"30" maximum:"720" multipleOf:"30" doc:"The caller's daily time on this plan, in whole minutes; absent when unset, and the day plan is sized for a typical day"`
+	Asked        bool `json:"asked" doc:"true once the caller has saved a setting for this plan, a null dailyMinutes included; false until then"`
 }
 
 // DayPlanGroupResponse is FS-02JBZ's DayPlanGroup: a label over entries.
@@ -110,6 +121,24 @@ type SetItemRevisionsInput struct {
 	ItemID uuid.UUID `path:"itemId" format:"uuid" doc:"Item id"`
 	Body   SetItemRevisionsRequest
 }
+
+// SetDayPlanSettingsRequest is setDayPlanSettings' body: writable fields only,
+// identity from the JWT, never the body (ADR-0005 §3). dailyMinutes is
+// required AND nullable on purpose (contract-patterns §5, as parentId): null
+// goes back to the default, and an omitted member is a 422 rather than a
+// silent clear of a saved value (FS-02JBZ R104). The range and the step are
+// shape, decided here (R105); insights-service guards the same values for any
+// other caller.
+type SetDayPlanSettingsRequest struct {
+	PlanID       uuid.UUID `json:"planId" required:"true" format:"uuid" doc:"Plan id"`
+	DailyMinutes *int      `json:"dailyMinutes" required:"true" nullable:"true" minimum:"30" maximum:"720" multipleOf:"30" doc:"The caller's daily time on this plan in whole minutes, 30 to 720 in steps of 30; null goes back to the default, a typical day"`
+}
+
+type SetDayPlanSettingsInput struct {
+	Body SetDayPlanSettingsRequest
+}
+
+type DayPlanSettingsOutput struct{ Body DayPlanSettingsResponse }
 
 // RegisterDayPlanOperations registers the day plan operations.
 func RegisterDayPlanOperations(api huma.API, dayPlans DayPlanService, access PlanAccess,
@@ -257,6 +286,34 @@ func RegisterDayPlanOperations(api huma.API, dayPlans DayPlanService, access Pla
 			return nil, apierr.ProblemFor(op, err)
 		}
 		return &struct{}{}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "setDayPlanSettings", Method: http.MethodPut,
+		Path:        "/api/insights/day-plan/settings",
+		Middlewares: huma.Middlewares{protect}, Security: secured,
+		Summary: "Save the day plan setting for a plan",
+		Description: "Saves the caller's day plan setting for the plan and returns it: dailyMinutes, the time a day " +
+			"the caller spends on this plan, or null to go back to the default, a typical day. Per user on a " +
+			"shared plan. Any save marks the plan asked for the caller, a null included; a later save replaces " +
+			"an earlier one. Saving never plans: no model call, no draw, the stored day plan and " +
+			"refreshesRemaining unchanged; the setting applies the next time the caller plans their day. A " +
+			"plan the caller cannot access is 404.",
+		Errors: []int{
+			http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound,
+			http.StatusUnprocessableEntity, http.StatusServiceUnavailable,
+		},
+	}, func(ctx context.Context, in *SetDayPlanSettingsInput) (*DayPlanSettingsOutput, error) {
+		const op = "insights: set day plan settings"
+		userID, err := authorize(ctx, op, in.Body.PlanID)
+		if err != nil {
+			return nil, err
+		}
+		s, err := dayPlans.SetDayPlanSettings(ctx, in.Body.PlanID, userID, in.Body.DailyMinutes)
+		if err != nil {
+			return nil, apierr.ProblemFor(op, err)
+		}
+		return &DayPlanSettingsOutput{Body: s}, nil
 	})
 }
 
