@@ -32,6 +32,10 @@ type fakeDayPlans struct {
 	unticked bool
 
 	gotEnabled *bool
+
+	settings    dayplan.Settings
+	gotMinutes  *int
+	setSettings bool
 }
 
 func (f *fakeDayPlans) GetDayPlan(ctx context.Context, planID, userID uuid.UUID, date string) (dayplan.DayPlan, error) {
@@ -330,4 +334,122 @@ func TestHandlerSetItemRevisions_MapsErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (f *fakeDayPlans) SetDayPlanSettings(ctx context.Context, planID, userID uuid.UUID, dailyMinutes *int) (dayplan.Settings, error) {
+	f.gotPlan, f.gotUser, f.gotMinutes, f.setSettings = planID, userID, dailyMinutes, true
+	return f.settings, f.err
+}
+
+// FS-02JBZ R101: the setting is mapped onto both day plan responses, in
+// every status; unset minutes stay unset on the wire.
+func TestHandlerDayPlan_MapsTheSettings(t *testing.T) {
+	key := guided.DayKey{PlanID: uuid.New(), UserID: uuid.New(), Date: time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)}
+	tests := []struct {
+		name        string
+		settings    dayplan.Settings
+		wantAsked   bool
+		wantMinutes *int32
+	}{
+		{"never asked", dayplan.Settings{}, false, nil},
+		{"asked, no budget", dayplan.Settings{Asked: true}, true, nil},
+		{"asked, 2 hours", dayplan.Settings{Asked: true, DailyMinutes: ptrTo(120)}, true, ptrTo(int32(120))},
+	}
+	for _, tt := range tests {
+		for _, planned := range []bool{false, true} {
+			p := dayplan.DayPlan{Key: key, Planned: planned, Groups: []dayplan.Group{}, Settings: tt.settings}
+			if planned {
+				p.Source, p.GeneratedAt = dayplan.SourceAI, key.Date
+			}
+			h := NewHandler(nil, &fakeDayPlans{plan: p}, nil)
+			get, err := h.GetDayPlan(context.Background(), &pb.GetDayPlanRequest{PlanId: key.PlanID.String(), UserId: key.UserID.String(), Date: "2026-10-25"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			draw, err := h.PlanMyDay(context.Background(), &pb.PlanMyDayRequest{PlanId: key.PlanID.String(), UserId: key.UserID.String(), Date: "2026-10-25"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for op, got := range map[string]*pb.DayPlan{"GetDayPlan": get.GetDayPlan(), "PlanMyDay": draw.GetDayPlan()} {
+				s := got.GetSettings()
+				if s == nil || s.GetAsked() != tt.wantAsked || !equalInt32(s.DailyMinutes, tt.wantMinutes) {
+					t.Fatalf("%s %s (planned %v): settings = %v, want asked %v minutes %v", op, tt.name, planned, s, tt.wantAsked, tt.wantMinutes)
+				}
+			}
+		}
+	}
+}
+
+func TestHandlerSetDayPlanSettings_ForwardsTheCallAndMapsTheSavedSetting(t *testing.T) {
+	for _, minutes := range []*int32{ptrTo(int32(90)), nil} {
+		planID, userID := uuid.New(), uuid.New()
+		saved := dayplan.Settings{Asked: true}
+		if minutes != nil {
+			saved.DailyMinutes = ptrTo(int(*minutes))
+		}
+		plans := &fakeDayPlans{settings: saved}
+
+		resp, err := NewHandler(nil, plans, nil).SetDayPlanSettings(context.Background(), &pb.SetDayPlanSettingsRequest{
+			PlanId: planID.String(), UserId: userID.String(), DailyMinutes: minutes,
+		})
+
+		if err != nil || !plans.setSettings || plans.gotPlan != planID || plans.gotUser != userID {
+			t.Fatalf("err %v; service called %v with plan %s user %s", err, plans.setSettings, plans.gotPlan, plans.gotUser)
+		}
+		if (minutes == nil) != (plans.gotMinutes == nil) || (minutes != nil && int32(*plans.gotMinutes) != *minutes) {
+			t.Fatalf("service got minutes %v, want %v", plans.gotMinutes, minutes)
+		}
+		s := resp.GetSettings()
+		if !s.GetAsked() || !equalInt32(s.DailyMinutes, minutes) {
+			t.Fatalf("settings = %v, want asked with minutes %v", s, minutes)
+		}
+	}
+}
+
+func TestHandlerSetDayPlanSettings_MapsErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		svcErr   error
+		req      func(*pb.SetDayPlanSettingsRequest)
+		wantCode codes.Code
+	}{
+		{"daily minutes invalid", fmt.Errorf("x: %w", dayplan.ErrDailyMinutesInvalid), nil, codes.InvalidArgument},
+		{"plan not accessible", fmt.Errorf("x: %w", commonconstants.ErrNotFound), nil, codes.NotFound},
+		{"malformed plan id", nil, func(r *pb.SetDayPlanSettingsRequest) { r.PlanId = "nope" }, codes.InvalidArgument},
+		{"malformed user id", nil, func(r *pb.SetDayPlanSettingsRequest) { r.UserId = "nope" }, codes.InvalidArgument},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &pb.SetDayPlanSettingsRequest{PlanId: uuid.NewString(), UserId: uuid.NewString(), DailyMinutes: ptrTo(int32(120))}
+			if tt.req != nil {
+				tt.req(req)
+			}
+			_, err := NewHandler(nil, &fakeDayPlans{err: tt.svcErr}, nil).SetDayPlanSettings(context.Background(), req)
+
+			if status.Code(err) != tt.wantCode {
+				t.Fatalf("code = %s, want %s (err %v)", status.Code(err), tt.wantCode, err)
+			}
+		})
+	}
+}
+
+// R105: a gRPC caller other than the gateway sending an off-step or
+// out-of-range value is refused with InvalidArgument by the real service,
+// before anything is read or stored.
+func TestHandlerSetDayPlanSettings_TheRealServiceRefusesOffStepWithInvalidArgument(t *testing.T) {
+	svc := dayplan.NewService(nil, nil, guided.SnippetSource{}, dayplan.Stores{})
+	h := NewHandler(nil, svc, nil)
+	for _, minutes := range []int32{0, 29, 45, 721, 750} {
+		_, err := h.SetDayPlanSettings(context.Background(), &pb.SetDayPlanSettingsRequest{
+			PlanId: uuid.NewString(), UserId: uuid.NewString(), DailyMinutes: &minutes,
+		})
+
+		if status.Code(err) != codes.InvalidArgument {
+			t.Fatalf("%d: code = %s, want InvalidArgument (err %v)", minutes, status.Code(err), err)
+		}
+	}
+}
+
+func equalInt32(a, b *int32) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
 }

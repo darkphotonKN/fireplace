@@ -14,6 +14,7 @@ import (
 	"github.com/darkphotonKN/fireplace/common/errcode"
 	commongrpc "github.com/darkphotonKN/fireplace/common/grpcerror"
 	"github.com/darkphotonKN/fireplace/services/api-gateway/internal/auth"
+	plangw "github.com/darkphotonKN/fireplace/services/api-gateway/internal/gateway/plan"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -35,6 +36,10 @@ type fakeDayPlans struct {
 	unticked bool
 
 	gotEnabled *bool
+
+	settings    DayPlanSettingsResponse
+	gotMinutes  *int
+	setSettings bool
 }
 
 func (f *fakeDayPlans) SetItemRevisions(ctx context.Context, planID, userID, itemID uuid.UUID, enabled bool) error {
@@ -112,13 +117,13 @@ func TestGetDayPlan_ForwardsIdentityAndPublishesThePlan(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"planId", "date", "status", "source", "generatedAt", "refreshesRemaining", "groups"} {
+	for _, k := range []string{"planId", "date", "status", "source", "generatedAt", "refreshesRemaining", "groups", "settings"} {
 		if _, ok := body[k]; !ok {
 			t.Fatalf("body lacks %q: %s", k, resp.Body.String())
 		}
 	}
-	if len(body) != 7 {
-		t.Fatalf("body has %d members, want exactly 7: %s", len(body), resp.Body.String())
+	if len(body) != 8 {
+		t.Fatalf("body has %d members, want exactly 8: %s", len(body), resp.Body.String())
 	}
 	group := body["groups"].([]any)[0].(map[string]any)
 	existing, fresh := group["entries"].([]any)[0].(map[string]any), group["entries"].([]any)[1].(map[string]any)
@@ -458,3 +463,135 @@ func TestSetItemRevisions_ItemNotInThePlanIs404NotFound(t *testing.T) {
 		t.Fatalf("code = %q, want %q", p.Code, errcode.NotFound)
 	}
 }
+
+func (f *fakeDayPlans) SetDayPlanSettings(ctx context.Context, planID, userID uuid.UUID, dailyMinutes *int) (DayPlanSettingsResponse, error) {
+	f.calls++
+	f.gotPlan, f.gotUser, f.gotMinutes, f.setSettings = planID, userID, dailyMinutes, true
+	return f.settings, f.err
+}
+
+const settingsPath = dayPlanPath + "/settings"
+
+// FS-02JBZ R101: settings are always on the day plan, dailyMinutes only when set.
+func TestDayPlan_SettingsAreAlwaysPresentAndMinutesOnlyWhenSet(t *testing.T) {
+	for name, tc := range map[string]struct {
+		settings DayPlanSettingsResponse
+		want     string
+	}{
+		"never asked": {DayPlanSettingsResponse{}, `"settings":{"asked":false}`},
+		"no budget":   {DayPlanSettingsResponse{Asked: true}, `"settings":{"asked":true}`},
+		"2 hours":     {DayPlanSettingsResponse{Asked: true, DailyMinutes: ptrInt(120)}, `"settings":{"dailyMinutes":120,"asked":true}`},
+	} {
+		plan := DayPlanResponse{PlanID: uuid.New(), Date: "2026-10-25", Status: "not_planned", RefreshesRemaining: 3, Settings: tc.settings}
+		api := newDayPlanAPI(t, &fakeDayPlans{plan: plan}, uuid.New())
+
+		for op, resp := range map[string]*httptest.ResponseRecorder{
+			"getDayPlan": api.Get(dayPlanPath + "?planId=" + uuid.NewString() + "&date=2026-10-25"),
+			"planMyDay":  api.Post(dayPlanPath, map[string]any{"planId": uuid.NewString(), "date": "2026-10-25"}),
+		} {
+			if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), tc.want) {
+				t.Fatalf("%s %s: status %d body %s, want %s", op, name, resp.Code, resp.Body.String(), tc.want)
+			}
+		}
+	}
+}
+
+func TestSetDayPlanSettings_ForwardsIdentityPlanAndMinutesAndPublishesTheSetting(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body     any
+		want     *int
+		settings DayPlanSettingsResponse
+		wantBody string
+	}{
+		"120":  {120, ptrInt(120), DayPlanSettingsResponse{Asked: true, DailyMinutes: ptrInt(120)}, `{"dailyMinutes":120,"asked":true}`},
+		"null": {nil, nil, DayPlanSettingsResponse{Asked: true}, `{"asked":true}`},
+	} {
+		caller, planID := uuid.New(), uuid.New()
+		d := &fakeDayPlans{settings: tc.settings}
+
+		resp := newDayPlanAPI(t, d, caller).Put(settingsPath, map[string]any{"planId": planID.String(), "dailyMinutes": tc.body})
+
+		if resp.Code != http.StatusOK || strings.TrimSpace(resp.Body.String()) != tc.wantBody {
+			t.Fatalf("%s: status %d body %s, want 200 %s", name, resp.Code, resp.Body.String(), tc.wantBody)
+		}
+		if !d.setSettings || d.gotUser != caller || d.gotPlan != planID ||
+			(d.gotMinutes == nil) != (tc.want == nil) || (tc.want != nil && *d.gotMinutes != *tc.want) {
+			t.Fatalf("%s: service called %v with user %s plan %s minutes %v", name, d.setSettings, d.gotUser, d.gotPlan, d.gotMinutes)
+		}
+	}
+}
+
+// R104, R105: shape failures are 422 at the boundary and never forwarded.
+// The table is shared with the mounted test in config.
+func TestSetDayPlanSettings_ShapeFailuresAre422AtTheBoundary(t *testing.T) {
+	plan := uuid.NewString()
+	for name, body := range map[string]map[string]any{
+		"0":                    {"planId": plan, "dailyMinutes": 0},
+		"29":                   {"planId": plan, "dailyMinutes": 29},
+		"45":                   {"planId": plan, "dailyMinutes": 45},
+		"721":                  {"planId": plan, "dailyMinutes": 721},
+		"750":                  {"planId": plan, "dailyMinutes": 750},
+		"1.5":                  {"planId": plan, "dailyMinutes": 1.5},
+		"a string":             {"planId": plan, "dailyMinutes": "120"},
+		"missing dailyMinutes": {"planId": plan},
+		"missing planId":       {"dailyMinutes": 120},
+		"malformed planId":     {"planId": "nope", "dailyMinutes": 120},
+		"unknown member":       {"planId": plan, "dailyMinutes": 120, "hours": 2},
+		"identity in body":     {"planId": plan, "dailyMinutes": 120, "userId": uuid.NewString()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			d := &fakeDayPlans{}
+			resp := newDayPlanAPI(t, d, uuid.New()).Put(settingsPath, body)
+
+			// The VALIDATION_FAILED code is the gateway-wide mapper's, installed
+			// in config: TestMount_SetDayPlanSettingsShapeFailuresAreValidationFailed.
+			if resp.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want 422: %s", resp.Code, resp.Body.String())
+			}
+			if d.calls != 0 {
+				t.Fatal("a malformed request reached insights-service")
+			}
+		})
+	}
+}
+
+// R106: a plan the caller can't access is 404, whether the gateway's plan
+// access check refuses it (never forwarded) or insights-service does.
+func TestSetDayPlanSettings_APlanTheCallerCannotAccessIs404NotFound(t *testing.T) {
+	for name, tc := range map[string]struct {
+		access  PlanAccess
+		svcErr  error
+		reached bool
+	}{
+		"stranger at the gateway": {plangw.NewAccess(relations{rel: plangw.RelationNone}), nil, false},
+		"refused downstream":      {allowAccess{}, status.Error(codes.NotFound, "no plan"), true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			d := &fakeDayPlans{err: tc.svcErr}
+			cfg := huma.DefaultConfig("test", "1")
+			cfg.CreateHooks = nil
+			_, api := humatest.New(t, cfg)
+			RegisterDayPlanOperations(api, d, tc.access, func(ctx huma.Context, next func(huma.Context)) {
+				next(huma.WithContext(ctx, auth.WithUserID(ctx.Context(), uuid.New())))
+			}, nil)
+
+			resp := api.(humatest.TestAPI).Put(settingsPath, map[string]any{"planId": uuid.NewString(), "dailyMinutes": 120})
+
+			if resp.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want 404: %s", resp.Code, resp.Body.String())
+			}
+			var p struct {
+				Code errcode.Code `json:"code"`
+			}
+			json.Unmarshal(resp.Body.Bytes(), &p)
+			if p.Code != errcode.NotFound {
+				t.Fatalf("code = %q, want %q", p.Code, errcode.NotFound)
+			}
+			if d.setSettings != tc.reached {
+				t.Fatalf("insights-service reached = %v, want %v", d.setSettings, tc.reached)
+			}
+		})
+	}
+}
+
+func ptrInt(v int) *int { return &v }

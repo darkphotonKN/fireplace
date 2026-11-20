@@ -58,6 +58,10 @@ type promptInput struct {
 	// Due are the revisions due on the plan date (R44), oldest due first,
 	// each of an item in Tree.
 	Due []dueRevision
+	// DailyMinutes is the user's daily time on this plan (FS-02JBZ R94), nil
+	// when unset. Unset, the prompt is exactly as it was before the setting
+	// existed (R96).
+	DailyMinutes *int
 }
 
 // buildPrompt assembles the prompt in DF4ZB R2's order: system rules, then
@@ -69,6 +73,13 @@ type promptInput struct {
 // (ADR-0019 clause 5). Ticked entries are listed as fixed and done with their
 // group labels, and the request asks only for the slots left (R12); with none
 // ticked, the request is the plain one.
+//
+// A daily time is stated once, in the request, never in the system rules
+// (R97): the request asks that the entries' minutes sum within it. Ticked
+// entries count against it (R98), so with a daily time the ticked lines carry
+// their minutes and the request asks the added entries to fit the time left,
+// or says adding nothing is fine when none is left. With no daily time
+// neither changes (R96).
 func buildPrompt(in promptInput) Prompt {
 	var b strings.Builder
 	guided.WriteSnippets(&b, in.Snippets)
@@ -79,7 +90,7 @@ func buildPrompt(in promptInput) Prompt {
 	b.WriteString("\nPLAN TREE (one JSON object per line):\n")
 	b.WriteString(serializeTree(in.Tree))
 	writeDue(&b, in.Tree, in.Due)
-	ticked := writeTicked(&b, in.Ticked)
+	ticked := writeTicked(&b, in.Ticked, in.DailyMinutes)
 	b.WriteString("REQUEST: Today is ")
 	b.WriteString(in.Date.Format(guided.DateLayout))
 	if ticked == 0 {
@@ -88,7 +99,53 @@ func buildPrompt(in promptInput) Prompt {
 		fmt.Fprintf(&b, ". Plan today: at most %d more entries, in at most 3 groups counting the ticked entries' groups. "+
 			"To add to a ticked entry's group, use its label exactly.", MaxEntries-ticked)
 	}
+	if in.DailyMinutes != nil {
+		writeDailyTime(&b, *in.DailyMinutes, in.Ticked)
+	}
 	return Prompt{System: systemRules, User: b.String()}
+}
+
+// writeDailyTime ends the request with the user's daily time (R97, R98):
+// the entries' minutes are to sum within it, or, with entries ticked today,
+// the added entries' within the time the ticked ones' known minutes leave.
+// The budget is an ask; nothing trims the output to it (R100).
+func writeDailyTime(b *strings.Builder, daily int, ticked []Group) {
+	fmt.Fprintf(b, " The user has %d minutes a day for this plan", daily)
+	spent := tickedMinutes(ticked)
+	switch {
+	case entryCount(ticked) == 0:
+		b.WriteString(": make the entries' minutes sum to at most that. Fewer entries is fine.")
+	case spent >= daily:
+		fmt.Fprintf(b, ", and the ticked entries already take %d, so no time is left: adding nothing is fine.", spent)
+	case spent > 0:
+		fmt.Fprintf(b, ", and the ticked entries already take %d of them: make the added entries' minutes sum to at most "+
+			"the %d minutes left. Fewer entries is fine.", spent, daily-spent)
+	default:
+		b.WriteString(": make the added entries' minutes sum to at most that. Fewer entries is fine.")
+	}
+}
+
+// tickedMinutes is the sum of the ticked entries' known minutes; an entry
+// with no estimate counts as none (R98).
+func tickedMinutes(groups []Group) int {
+	minutes := 0
+	for _, g := range groups {
+		for _, e := range g.Entries {
+			if e.Minutes != nil {
+				minutes += *e.Minutes
+			}
+		}
+	}
+	return minutes
+}
+
+// entryCount is how many entries groups hold.
+func entryCount(groups []Group) int {
+	n := 0
+	for _, g := range groups {
+		n += len(g.Entries)
+	}
+	return n
 }
 
 // dueLine is one due revision as the model sees it: the item and its label.
@@ -121,16 +178,21 @@ func writeDue(b *strings.Builder, tree guided.PlanTree, due []dueRevision) {
 	b.Write(buf.Bytes())
 }
 
-// tickedLine is one entry ticked today as the model sees it.
+// tickedLine is one entry ticked today as the model sees it. Minutes is set
+// only when the prompt carries a daily time (R98), so without one the line is
+// as it was (R96).
 type tickedLine struct {
-	Group  string `json:"group"`
-	ItemID string `json:"item_id"`
-	Text   string `json:"text"`
+	Group   string `json:"group"`
+	ItemID  string `json:"item_id"`
+	Text    string `json:"text"`
+	Minutes *int   `json:"minutes,omitempty"`
 }
 
 // writeTicked writes the ALREADY TICKED TODAY block, one JSON object per
-// entry, or says none, and returns how many entries it listed.
-func writeTicked(b *strings.Builder, groups []Group) int {
+// entry, or says none, and returns how many entries it listed. With a daily
+// time (daily set) each line carries the entry's known minutes, which count
+// against it (R98); without one the lines are as they were (R96).
+func writeTicked(b *strings.Builder, groups []Group, daily *int) int {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -141,7 +203,10 @@ func writeTicked(b *strings.Builder, groups []Group) int {
 			if e.ItemID != nil {
 				line.ItemID = e.ItemID.String()
 			}
-			// Encoding a struct of strings cannot fail.
+			if daily != nil {
+				line.Minutes = e.Minutes
+			}
+			// Encoding a struct of strings and an int cannot fail.
 			_ = enc.Encode(line)
 			n++
 		}

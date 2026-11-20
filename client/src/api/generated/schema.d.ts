@@ -112,6 +112,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/insights/day-plan/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save the day plan setting for a plan
+         * @description Saves the caller's day plan setting for the plan and returns it: dailyMinutes, the time a day the caller spends on this plan, or null to go back to the default, a typical day. Per user on a shared plan. Any save marks the plan asked for the caller, a null included; a later save replaces an earlier one. Saving never plans: no model call, no draw, the stored day plan and refreshesRemaining unchanged; the setting applies the next time the caller plans their day. A plan the caller cannot access is 404.
+         */
+        put: operations["setDayPlanSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/insights/note-summary": {
         parameters: {
             query?: never;
@@ -942,6 +962,8 @@ export interface components {
              * @description Counted redraws left for this plan and date; 3 until the free first draw is used
              */
             refreshesRemaining: number;
+            /** @description The caller's day plan setting for this plan, in every status */
+            settings: components["schemas"]["DayPlanSettingsResponse"];
             /**
              * @description How the plan was drawn; present iff status is planned. rules is the basic plan
              * @enum {string}
@@ -952,6 +974,15 @@ export interface components {
              * @enum {string}
              */
             status: "planned" | "not_planned";
+        };
+        DayPlanSettingsResponse: {
+            /** @description true once the caller has saved a setting for this plan, a null dailyMinutes included; false until then */
+            asked: boolean;
+            /**
+             * Format: int64
+             * @description The caller's daily time on this plan, in whole minutes; absent when unset, and the day plan is sized for a typical day
+             */
+            dailyMinutes?: number;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -1150,6 +1181,18 @@ export interface components {
              * @description Relevance score for the query term
              */
             similarity: number;
+        };
+        SetDayPlanSettingsRequest: {
+            /**
+             * Format: int64
+             * @description The caller's daily time on this plan in whole minutes, 30 to 720 in steps of 30; null goes back to the default, a typical day
+             */
+            dailyMinutes: number | null;
+            /**
+             * Format: uuid
+             * @description Plan id
+             */
+            planId: string;
         };
         SetItemRevisionsRequest: {
             /** @description false switches the item's revisions off, cancelling its open revision; true switches them back on, and the item's next day tick schedules the next revision */
@@ -1859,6 +1902,84 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setDayPlanSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDayPlanSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayPlanSettingsResponse"];
+                };
             };
             /** @description Unauthorized */
             401: {

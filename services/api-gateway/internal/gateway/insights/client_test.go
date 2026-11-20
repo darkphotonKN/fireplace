@@ -86,3 +86,31 @@ func TestToDayPlanEntry_CarriesTheRevisionsSwitchOnlyWhenSet(t *testing.T) {
 		t.Fatalf("entry = %+v err %v, want revisionsEnabled absent when unset", e, err)
 	}
 }
+
+// FS-02JBZ R101: settings are always present on the day plan; unset minutes
+// stay absent.
+func TestToDayPlan_CarriesTheSettings(t *testing.T) {
+	minutes := int32(150)
+	for name, tc := range map[string]struct {
+		in          *pb.DayPlanSettings
+		wantAsked   bool
+		wantMinutes *int
+	}{
+		"none sent":        {nil, false, nil},
+		"never asked":      {&pb.DayPlanSettings{}, false, nil},
+		"asked, no budget": {&pb.DayPlanSettings{Asked: true}, true, nil},
+		"asked, 2½ hours":  {&pb.DayPlanSettings{Asked: true, DailyMinutes: &minutes}, true, ptr(150)},
+	} {
+		got, err := toDayPlan(&pb.DayPlan{PlanId: uuid.NewString(), Status: "not_planned", Settings: tc.in})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := got.Settings
+		if s.Asked != tc.wantAsked || (s.DailyMinutes == nil) != (tc.wantMinutes == nil) ||
+			(s.DailyMinutes != nil && *s.DailyMinutes != *tc.wantMinutes) {
+			t.Fatalf("%s: settings = %+v, want asked %v minutes %v", name, s, tc.wantAsked, tc.wantMinutes)
+		}
+	}
+}
+
+func ptr[T any](v T) *T { return &v }

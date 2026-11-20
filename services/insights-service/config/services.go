@@ -60,13 +60,13 @@ func SetupServices(db *sqlx.DB, _ *amqp.Channel, registry discovery.Registry, re
 	// counter (R17, R20). Retrieval runs on the stub until the human-owned
 	// Retriever lands (I-DF4ZB-14); the rag repository already tells the
 	// snippet source whether a user has personal memory. One repository holds
-	// day plans, day ticks and the revision ladder.
+	// day plans, day ticks, the revision ladder and the day plan settings.
 	memory := rag.NewRepository(db)
 	refreshes := guided.NewRefreshCounters(db)
 	dayPlanGen := ai.NewStructuredGenerator(ai.DayPlanConfig(), os.Getenv("OPENAI_API_KEY"), meter)
 	dayPlanRepo := dayplan.NewRepository(db)
-	dayPlanService := dayplan.NewService(planClient, dayPlanGen,
-		guided.NewSnippetSource(guided.NoRetrieval{}, memory), dayPlanRepo, dayPlanRepo, refreshes)
+	dayPlanService := dayplan.NewService(planClient, dayPlanGen, guided.NewSnippetSource(guided.NoRetrieval{}, memory),
+		dayplan.Stores{DayPlans: dayPlanRepo, Revisions: dayPlanRepo, Settings: dayPlanRepo, Refreshes: refreshes})
 
 	// The note summary (FS-PGG2N R38-R44) is one metered call of its own kind
 	// on its own prompt, behind the plan-access check. It stores nothing.

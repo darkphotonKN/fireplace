@@ -197,6 +197,38 @@ func (c *Client) SetItemRevisions(ctx context.Context, planID, userID, itemID uu
 	return err
 }
 
+// SetDayPlanSettings saves the caller's day plan setting for the plan
+// (FS-02JBZ §Change: Hours a day, R102): dailyMinutes, or nil for the default.
+// NotFound (plan) and InvalidArgument (off range or step, which the gateway
+// never forwards) are returned untouched for apierr to map.
+func (c *Client) SetDayPlanSettings(ctx context.Context, planID, userID uuid.UUID, dailyMinutes *int) (insightstransport.DayPlanSettingsResponse, error) {
+	conn, err := c.ensureConn(ctx)
+	if err != nil {
+		return insightstransport.DayPlanSettingsResponse{}, err
+	}
+	req := &pb.SetDayPlanSettingsRequest{PlanId: planID.String(), UserId: userID.String()}
+	if dailyMinutes != nil {
+		m := int32(*dailyMinutes)
+		req.DailyMinutes = &m
+	}
+	resp, err := pb.NewInsightsServiceClient(conn).SetDayPlanSettings(ctx, req)
+	if err != nil {
+		return insightstransport.DayPlanSettingsResponse{}, err
+	}
+	return toDayPlanSettings(resp.GetSettings()), nil
+}
+
+// toDayPlanSettings translates a proto day plan setting; nil (never sent) is
+// the zero setting, not asked, and unset minutes stay nil.
+func toDayPlanSettings(s *pb.DayPlanSettings) insightstransport.DayPlanSettingsResponse {
+	out := insightstransport.DayPlanSettingsResponse{Asked: s.GetAsked()}
+	if s != nil && s.DailyMinutes != nil {
+		m := int(s.GetDailyMinutes())
+		out.DailyMinutes = &m
+	}
+	return out
+}
+
 // toDayPlan translates the proto day plan into the gateway's transport mirror
 // (ADR-0003 §3). A malformed id from insights-service is a server fault.
 func toDayPlan(p *pb.DayPlan) (insightstransport.DayPlanResponse, error) {
@@ -211,6 +243,7 @@ func toDayPlan(p *pb.DayPlan) (insightstransport.DayPlanResponse, error) {
 		Source:             p.GetSource(),
 		RefreshesRemaining: int(p.GetRefreshesRemaining()),
 		Groups:             make([]insightstransport.DayPlanGroupResponse, 0, len(p.GetGroups())),
+		Settings:           toDayPlanSettings(p.GetSettings()),
 	}
 	if p.GeneratedAt != nil {
 		at := p.GetGeneratedAt().AsTime()

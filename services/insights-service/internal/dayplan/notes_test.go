@@ -25,7 +25,7 @@ func TestDayPlan_ANotesBodyChangesNeitherPromptNorHash(t *testing.T) {
 	}
 	before, after := guided.NewPlanTree(tf.items()), guided.NewPlanTree(withLongNote)
 
-	if stateHash(before, profile, date, nil, nil) != stateHash(after, profile, date, nil, nil) {
+	if (planState{Tree: before, Profile: profile, Date: date}).hash() != (planState{Tree: after, Profile: profile, Date: date}).hash() {
 		t.Fatal("a note's body changed the day plan's state hash")
 	}
 	a := buildPrompt(promptInput{Tree: before, Profile: profile, Date: date})

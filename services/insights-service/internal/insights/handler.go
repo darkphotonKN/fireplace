@@ -25,14 +25,15 @@ type InsightsService interface {
 }
 
 // DayPlanService is the day plan (FS-02JBZ) the handler serves: a read that
-// never generates, Plan my day, the day tick on an entry, and the per-item
-// revisions switch.
+// never generates, Plan my day, the day tick on an entry, the per-item
+// revisions switch, and the per (user, plan) day plan setting.
 type DayPlanService interface {
 	GetDayPlan(ctx context.Context, planID, userID uuid.UUID, date string) (dayplan.DayPlan, error)
 	PlanMyDay(ctx context.Context, planID, userID uuid.UUID, date string) (dayplan.DayPlan, error)
 	TickEntry(ctx context.Context, entryID, userID uuid.UUID, itemID *uuid.UUID) (dayplan.Entry, error)
 	UntickEntry(ctx context.Context, entryID, userID uuid.UUID) error
 	SetItemRevisions(ctx context.Context, planID, userID, itemID uuid.UUID, enabled bool) error
+	SetDayPlanSettings(ctx context.Context, planID, userID uuid.UUID, dailyMinutes *int) (dayplan.Settings, error)
 }
 
 // NoteSummaryService writes a note's summary on request and returns it
@@ -192,6 +193,27 @@ func (h *Handler) SetItemRevisions(ctx context.Context, req *pb.SetItemRevisions
 	return &pb.SetItemRevisionsResponse{}, nil
 }
 
+// SetDayPlanSettings serves FS-02JBZ's day plan setting (§Change: Hours a
+// day, R102-R107). Daily minutes off the range or step are InvalidArgument
+// (R105); a plan the caller cannot access is NotFound (R106).
+func (h *Handler) SetDayPlanSettings(ctx context.Context, req *pb.SetDayPlanSettingsRequest) (*pb.SetDayPlanSettingsResponse, error) {
+	const op = "insights: set day plan settings"
+	planID, userID, err := parseIDs(req.GetPlanId(), req.GetUserId())
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	var minutes *int
+	if req.DailyMinutes != nil {
+		m := int(req.GetDailyMinutes())
+		minutes = &m
+	}
+	saved, err := h.dayPlans.SetDayPlanSettings(ctx, planID, userID, minutes)
+	if err != nil {
+		return nil, commongrpc.Fail(ctx, op, err)
+	}
+	return &pb.SetDayPlanSettingsResponse{Settings: toPBSettings(saved)}, nil
+}
+
 // SummarizeNote serves FS-PGG2N's AI summary (R38-R44): the text only, with
 // nothing stored.
 func (h *Handler) SummarizeNote(ctx context.Context, req *pb.SummarizeNoteRequest) (*pb.SummarizeNoteResponse, error) {
@@ -292,6 +314,7 @@ func toPBDayPlan(p dayplan.DayPlan) *pb.DayPlan {
 		Status:             dayPlanNotPlanned,
 		RefreshesRemaining: int32(p.RefreshesRemaining),
 		Groups:             make([]*pb.DayPlanGroup, 0, len(p.Groups)),
+		Settings:           toPBSettings(p.Settings),
 	}
 	if p.Planned {
 		source := string(p.Source)
@@ -303,6 +326,16 @@ func toPBDayPlan(p dayplan.DayPlan) *pb.DayPlan {
 			group.Entries = append(group.Entries, toPBEntry(e))
 		}
 		out.Groups = append(out.Groups, group)
+	}
+	return out
+}
+
+// toPBSettings maps a day plan setting; unset daily minutes stay unset.
+func toPBSettings(s dayplan.Settings) *pb.DayPlanSettings {
+	out := &pb.DayPlanSettings{Asked: s.Asked}
+	if s.DailyMinutes != nil {
+		m := int32(*s.DailyMinutes)
+		out.DailyMinutes = &m
 	}
 	return out
 }

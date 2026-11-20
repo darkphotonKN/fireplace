@@ -589,3 +589,142 @@ func TestPlanMyDay_ACancelledRequestStillGivesItsSpendBack(t *testing.T) {
 		t.Fatalf("spent = %d after a cancelled counted draw, want the spend given back", spent)
 	}
 }
+
+// saveHours stores dailyMinutes as the fixture user's day plan setting.
+func saveHours(t *testing.T, f *fixture, dailyMinutes *int) {
+	t.Helper()
+	if _, err := f.store.SaveDayPlanSettings(context.Background(), f.planID, f.userID, dailyMinutes); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A changed daily time changes the question the model is asked, so Plan
+// again redraws, counted as usual; an unchanged one keeps the gate (R99).
+func TestPlanMyDay_ChangedDailyMinutesRedrawsAndCounts(t *testing.T) {
+	tf := newTreeFixture()
+	tests := []struct {
+		name        string
+		from, to    *int
+		wantRedraws bool
+	}{
+		{"unset to 120", nil, ptr(120), true},
+		{"120 to 180", ptr(120), ptr(180), true},
+		{"120 to unset", ptr(120), nil, true},
+		{"120 unchanged", ptr(120), ptr(120), false},
+		{"unset, saved as unset", nil, nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(tf.items())
+			if tt.from != nil {
+				saveHours(t, f, tt.from)
+			}
+			drawn(t, f, genGroup{Label: "Graphs", Entries: []genEntry{existing(tf.bfs, "x", 30)}})
+			saveHours(t, f, tt.to)
+
+			p, err := f.planMyDay()
+
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantCalls, wantSpent := 1, 0
+			if tt.wantRedraws {
+				wantCalls, wantSpent = 2, 1
+			}
+			if f.gen.calls() != wantCalls || f.counter.spentFor(f.key()) != wantSpent || p.RefreshesRemaining != 3-wantSpent {
+				t.Fatalf("calls %d spent %d remaining %d, want calls %d spent %d",
+					f.gen.calls(), f.counter.spentFor(f.key()), p.RefreshesRemaining, wantCalls, wantSpent)
+			}
+		})
+	}
+}
+
+// A changed daily time redraws for free while the free draw is unused: the
+// first AI draw after a rules plan is free, whatever the setting (R15, R99).
+func TestPlanMyDay_ChangedDailyMinutesAfterARulesPlanDrawsFree(t *testing.T) {
+	tf := newTreeFixture()
+	f := newFixture(tf.items())
+	f.gen.fail(ai.ErrBudgetExhausted)
+	if p, err := f.planMyDay(); err != nil || p.Source != SourceRules {
+		t.Fatalf("plan %+v err %v, want a rules plan", p, err)
+	}
+	saveHours(t, f, ptr(90))
+
+	p := drawn(t, f, genGroup{Label: "Graphs", Entries: []genEntry{existing(tf.bfs, "x", 30)}})
+
+	if p.Source != SourceAI || f.counter.spentFor(f.key()) != 0 || !p.FreeDrawUsed {
+		t.Fatalf("plan %+v spent %d, want a free AI draw", p, f.counter.spentFor(f.key()))
+	}
+}
+
+// The draw reads the caller's daily time and asks for it in the user message
+// only; output over it is stored as drawn (R97, R100).
+func TestPlanMyDay_DailyMinutesReachesTheRequestAndOverBudgetOutputIsKept(t *testing.T) {
+	tf := newTreeFixture()
+	f := newFixture(tf.items())
+	saveHours(t, f, ptr(60))
+
+	p := drawn(t, f,
+		genGroup{Label: "Graphs", Entries: []genEntry{existing(tf.bfs, "Solve 3 BFS problems", 120), newStep(tf.graphs, "Draw a graph by hand", 90)}},
+		genGroup{Label: "DP", Entries: []genEntry{existing(tf.dp, "Dynamic programming", 240)}},
+	)
+
+	req := f.gen.requests[0]
+	if !strings.Contains(req.User, "The user has 60 minutes a day for this plan") || req.System != systemRules {
+		t.Fatalf("request user %q, want the daily time in the user message and the rules unchanged", req.User)
+	}
+	total, n := 0, 0
+	for _, g := range p.Groups {
+		for _, e := range g.Entries {
+			total += *e.Minutes
+			n++
+		}
+	}
+	if n != 3 || total != 450 {
+		t.Fatalf("stored %d entries, %d minutes, want all 3 and 450 minutes as drawn", n, total)
+	}
+}
+
+// The rules draw ignores the setting: the same plan, no minutes (R100).
+func TestPlanMyDay_RulesDrawIgnoresDailyMinutes(t *testing.T) {
+	tf := newTreeFixture()
+	plain, withHours := newFixture(tf.items()), newFixture(tf.items())
+	saveHours(t, withHours, ptr(30))
+	for _, f := range []*fixture{plain, withHours} {
+		f.gen.fail(ai.ErrBudgetExhausted)
+	}
+
+	a, errA := plain.planMyDay()
+	b, errB := withHours.planMyDay()
+
+	if errA != nil || errB != nil {
+		t.Fatal(errA, errB)
+	}
+	if render(a.Groups) != render(b.Groups) || b.Source != SourceRules {
+		t.Fatalf("rules plan with hours %s, want %s", render(b.Groups), render(a.Groups))
+	}
+}
+
+// Ticked entries count against the daily time: a redraw after a tick asks the
+// model to fit the time left (R98).
+func TestPlanMyDay_RedrawAfterATickAsksForTheTimeLeft(t *testing.T) {
+	tf := newTreeFixture()
+	f := newFixture(tf.items())
+	saveHours(t, f, ptr(150))
+	p := drawn(t, f, genGroup{Label: "Graphs", Entries: []genEntry{existing(tf.bfs, "Solve 3 BFS problems", 60)}})
+	if _, err := f.tick(entryFor(t, p, tf.bfs, "").ID, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	drawn(t, f, genGroup{Label: "DP", Entries: []genEntry{existing(tf.dp, "Dynamic programming", 30)}})
+
+	if f.gen.calls() != 2 {
+		t.Fatalf("calls = %d, want a redraw after the tick", f.gen.calls())
+	}
+	user := f.gen.requests[1].User
+	for _, want := range []string{`"text":"Solve 3 BFS problems","minutes":60}`, "already take 60", "the 90 minutes left"} {
+		if !strings.Contains(user, want) {
+			t.Fatalf("redraw request lacks %q:\n%s", want, user)
+		}
+	}
+}
