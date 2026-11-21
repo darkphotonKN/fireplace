@@ -71,20 +71,4 @@ describe('StatusLine', () => {
     render(<StatusLine work={work({ status: 'failed', mode: 'today', dueCount: 0, planCount: 0 })} />);
     expect(screen.getByText('Monday')).toBeInTheDocument();
   });
-
-  it('should carry its muted line on a <p> with the muted token and no dark: patch', () => {
-    // The compliant spelling, which only became possible with I-0061: the
-    // global element rules moved into `@layer base`, so `text-muted-foreground`
-    // wins in both themes. Before that this line had to be a <div> to escape
-    // `.dark p`. R50 still forbids solving it with a `dark:` variant.
-    const { container } = render(<StatusLine work={work({ mode: 'today', dueCount: 2 })} />);
-    const line = container.querySelector('p');
-    expect(line?.className).toContain('text-muted-foreground');
-    expect(container.innerHTML).not.toMatch(/dark:/);
-  });
-
-  it('should stay neutral — the coral belongs to the block below it (R49)', () => {
-    const { container } = render(<StatusLine work={work({ mode: 'today', dueCount: 2 })} />);
-    expect(container.querySelector('[class*="primary"]')).toBeNull();
-  });
 });

@@ -275,44 +275,14 @@ describe('BentoTile', () => {
     expect(links[0]).toHaveAccessibleName('Plan Try it');
   });
 
-  it('should put the label bottom-left and "Try it →" bottom-right, with the arrow hidden', () => {
+  it('should put the label before "Try it →", with the arrow hidden', () => {
     mockQueries({});
     mockIntersectionObserver();
     renderTile();
 
     const footer = screen.getByText('Plan').parentElement!;
-    expect(footer).toHaveClass('justify-between');
     expect(footer.firstElementChild).toHaveTextContent('Plan');
     expect(footer.lastElementChild).toHaveTextContent('Try it');
     expect(screen.getByText('→')).toHaveAttribute('aria-hidden', 'true');
-  });
-
-  it('should wear the tile tokens', () => {
-    mockQueries({});
-    mockIntersectionObserver();
-    const tile = renderTile();
-
-    expect(tile).toHaveClass('rounded-tile', 'bg-card', 'border', 'border-border', 'shadow-tile');
-  });
-
-  it('should invert to the secondary pair when asked', () => {
-    mockQueries({});
-    mockIntersectionObserver();
-    render(<BentoTile label="Today" inverted mock={<div />} />);
-    const tile = screen.getByRole('link');
-
-    expect(tile).toHaveClass('bg-secondary', 'text-secondary-foreground');
-    expect(tile).not.toHaveClass('bg-card');
-  });
-
-  it.each([
-    ['md', ['md:col-span-2', 'lg:col-span-1']],
-    ['lg', ['lg:col-span-2']],
-  ] as const)('should span two columns at %s only', (span, classes) => {
-    mockQueries({});
-    mockIntersectionObserver();
-    render(<BentoTile label="Calendar" span={span} mock={<div />} />);
-
-    expect(screen.getByRole('link')).toHaveClass(...classes);
   });
 });

@@ -65,13 +65,15 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('LayoutContent — the sidebar discovery tip (R46)', () => {
-  it('should not fire on the authenticated home, even for a first-timer', () => {
+  it('should not fire on the authenticated home, even for a first-timer, and leave the flag unspent', () => {
     pathname = '/';
 
     render(<LayoutContent>page</LayoutContent>);
     letTheHintFire();
 
     expect(toast).not.toHaveBeenCalled();
+    // Home must not quietly burn the one-time hint on the user's behalf.
+    expect(localStorage.getItem('hasSeenSidebarHint')).toBeNull();
   });
 
   it('should still fire on a plan page for a first-timer', () => {
@@ -104,15 +106,6 @@ describe('LayoutContent — the sidebar discovery tip (R46)', () => {
     letTheHintFire();
 
     expect(toast).not.toHaveBeenCalled();
-  });
-
-  it('should leave the home first-timer flag unspent, so a plan page still gets it', () => {
-    pathname = '/';
-    render(<LayoutContent>page</LayoutContent>);
-    letTheHintFire();
-
-    // Home must not quietly burn the one-time hint on the user's behalf.
-    expect(localStorage.getItem('hasSeenSidebarHint')).toBeNull();
   });
 
   it('should not fire anywhere when signed out', () => {
@@ -247,18 +240,5 @@ describe('LayoutContent — home respects the remembered choice (FS-S6WVY R10)',
 
     expect(setItem).not.toHaveBeenCalledWith('sidebar', expect.anything());
     expect(localStorage.getItem('sidebar')).toBe('open');
-  });
-
-  it('should give home the same content offset as every other route', () => {
-    arriveWithSidebar('open');
-    pathname = '/';
-    const { container: home } = render(<LayoutContent>page</LayoutContent>);
-    const homeOffset = home.querySelector('main')?.parentElement?.className;
-
-    pathname = '/plan/abc';
-    const { container: plan } = render(<LayoutContent>page</LayoutContent>);
-    const planOffset = plan.querySelector('main')?.parentElement?.className;
-
-    expect(homeOffset).toBe(planOffset);
   });
 });

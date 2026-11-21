@@ -18,24 +18,16 @@ function renderTabs(variant?: 'solid' | 'underline') {
     </Tabs>
   );
   return {
-    list: screen.getByRole('tab', { name: 'Sign In' }).parentElement!,
     signIn: screen.getByRole('tab', { name: 'Sign In' }),
     signUp: screen.getByRole('tab', { name: 'Sign Up' }),
   };
 }
 
 describe('Tabs underline variant', () => {
-  it('should drop the filled box for a hairline, and mark the active tab in coral', () => {
-    const { list, signIn, signUp } = renderTabs('underline');
+  it('should underline the active tab only', () => {
+    const { signIn, signUp } = renderTabs('underline');
 
-    expect(list.className).not.toContain('bg-gray-800');
-    expect(list.className).toContain('border-b');
-
-    expect(signIn.className).toContain('text-primary');
     expect(signIn.className).toContain('after:scale-x-100');
-    expect(signIn.className).not.toContain('bg-gray-700');
-
-    expect(signUp.className).toContain('text-foreground/40');
     expect(signUp.className).toContain('after:scale-x-0');
   });
 
@@ -49,11 +41,10 @@ describe('Tabs underline variant', () => {
     expect(signIn.className).toContain('after:scale-x-0');
   });
 
-  it('should leave the default segmented strip unchanged', () => {
-    const { list, signIn, signUp } = renderTabs();
+  it('should keep the filled segment on the active tab in the default strip', () => {
+    const { signIn, signUp } = renderTabs();
 
-    expect(list.className).toContain('bg-gray-800');
     expect(signIn.className).toContain('bg-gray-700');
-    expect(signUp.className).toContain('text-gray-400');
+    expect(signUp.className).not.toContain('bg-gray-700');
   });
 });

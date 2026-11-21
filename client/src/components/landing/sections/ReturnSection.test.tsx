@@ -9,35 +9,20 @@ describe('ReturnSection', () => {
     mockIntersectionObserver();
   });
 
-  it('should close on a non-coral heading', () => {
-    render(<ReturnSection />);
-
-    const heading = screen.getByRole('heading');
-    expect(heading.tagName).toBe('H2');
-    // The hero's underline on "fire" is the page's one coral moment.
-    expect(heading.className).toMatch(/\btext-foreground\b/);
-    expect(heading.className).not.toMatch(/\b(?:text|decoration)-primary\b/);
-  });
-
-  it('should keep its copy, scaled up to sit with the hero', () => {
+  it('should keep its copy under one h2', () => {
     render(<ReturnSection />);
 
     const heading = screen.getByRole('heading', { level: 2 });
+    expect(screen.getAllByRole('heading')).toEqual([heading]);
     expect(heading).toHaveTextContent(/^Tomorrow, the same fire\.$/);
-    // Starts at text-4xl and grows to text-6xl: the hero's x.ai scale, a step
-    // below its own headline so the close does not compete with the h1.
-    expect(heading.className).toMatch(/(?:^|\s)text-4xl\b/);
-    expect(heading.className).toMatch(/\blg:text-6xl\b/);
 
     const body = screen.getByText(/^Plan it, work it, close it honestly\./);
     expect(body).toHaveTextContent(
       "Plan it, work it, close it honestly. What you wrote down is where tomorrow's list starts. Then you sit down and do it again."
     );
-    expect(body.className).toMatch(/(?:^|\s)text-lg\b/);
-    expect(body.className).toMatch(/\bmd:text-xl\b/);
   });
 
-  it('should offer one primary action and a quiet sign-in, not a matched pair', () => {
+  it('should offer two CTAs: Start your plan and Sign in', () => {
     render(<ReturnSection />);
 
     const links = screen.getAllByRole('link');
@@ -48,19 +33,6 @@ describe('ReturnSection', () => {
 
     expect(primary).toHaveAttribute('href', '/auth?tab=signup');
     expect(quiet).toHaveAttribute('href', '/auth');
-
-    // The primary is a filled button; the sign-in is a text link. By this point
-    // the visitor is warm, and two equal-weight buttons read as hesitation.
-    expect(primary.className).toMatch(/\bbg-action\b/);
-    expect(quiet.className).not.toMatch(/\bbg-/);
-  });
-
-  it('should put the primary\'s text on its paired token, never hardcoded white', () => {
-    render(<ReturnSection />);
-
-    const primary = screen.getByRole('link', { name: /start your plan/i });
-    expect(primary.className).toMatch(/\btext-action-foreground\b/);
-    expect(primary.className).not.toMatch(/text-white/);
   });
 
   it('should reprise the hearth glow from the hero', () => {

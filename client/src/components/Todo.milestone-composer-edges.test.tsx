@@ -1,6 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {
+  addInput as listInput,
+  api,
+  card,
+  composer,
+  composerState,
+  counter,
+  echoCreate,
+  fillingInput,
+  item,
+  namingInput,
+  renderTodo as renderHarness,
+  restingButton,
+  startFilling,
+  topLevel,
+  traced,
+  typeFilter as filterTab,
+  viewButton,
+} from '@/test/todoHarness';
 
 /**
  * The grid composer when the plan moves under it (FS-FSFEC R37–R39, R41):
@@ -8,102 +27,10 @@ import userEvent from '@testing-library/user-event';
  * switch to the list view and back.
  */
 
-const fetchChecklist = vi.fn();
-const createChecklistItem = vi.fn();
-const toast = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: (...a: unknown[]) => createChecklistItem(...a),
-  updateChecklistItem: vi.fn(async () => ({})),
-  deleteChecklistItem: vi.fn(async () => undefined),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (id: string, extra: Partial<Record<string, unknown>> = {}) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type: 'task',
-  parentId: null,
-  planId: 'plan-1',
-  ...extra,
-});
-
-// The server echoes back what it was asked to create, under a fresh id.
-let nextId = 0;
-const echoCreate = async (
-  text: string,
-  _planId: string,
-  _scope: string,
-  opts: { type?: string; parentId?: string } = {}
-) => {
-  nextId += 1;
-  return item(`new${nextId}`, {
-    description: text,
-    type: opts.type ?? 'task',
-    parentId: opts.parentId ?? null,
-  });
-};
-
-const card = (id: string) =>
-  document.querySelector(`[data-checklist-card="${id}"]`) as HTMLElement | null;
-const traced = () =>
-  Array.from(document.querySelectorAll('[data-traced]')).map((el) =>
-    el.getAttribute('data-checklist-card')
-  );
-const composer = () =>
-  document.querySelector('[data-milestone-composer]') as HTMLElement;
-const composerState = () =>
-  composer()?.getAttribute('data-milestone-composer') ?? null;
-// Scoped to the composer: "Add a step to ‹title›" is also a card's own input.
-const restingButton = () => within(composer()).getByRole('button');
-const namingInput = () =>
-  within(composer()).queryByRole('textbox', {
-    name: /^(Name a new milestone|New note)$/,
-  }) as HTMLInputElement | null;
-const fillingInput = (title: string) =>
-  within(composer()).queryByRole('textbox', {
-    name: `Add a step to ${title}`,
-  }) as HTMLInputElement | null;
+const { createChecklistItem } = api;
 const typeIcon = () =>
   within(composer()).queryByRole('button', { name: /^Switch to adding a/ });
-const counter = () => screen.getByTestId('page-counter');
-const viewButton = (label: string) =>
-  within(screen.getByRole('group', { name: 'View' })).getByRole('button', {
-    name: label,
-  });
-// The type filter's tabs, not the view toggle's same-named "Checklist".
-const filterTab = (label: string) =>
-  screen
-    .getAllByRole('button', { name: label })
-    .find((b) => !b.closest('[role="group"]'))!;
-const listInput = () =>
-  screen.getByRole('textbox', { name: /^New (task|note)/ }) as HTMLInputElement;
+// Through userEvent, so a delete's async round trip settles before the asserts.
 const cardAction = async (
   user: ReturnType<typeof userEvent.setup>,
   title: string,
@@ -112,33 +39,10 @@ const cardAction = async (
   await user.click(screen.getByRole('button', { name: `Actions for ${title}` }));
   await user.click(screen.getByRole('menuitem', { name: action }));
 };
-const topLevel = (n: number) =>
-  Array.from({ length: n }, (_, i) => item(`t${i + 1}`));
-
-async function renderTodo(items: unknown[] = [item('P0')]) {
-  fetchChecklist.mockImplementation(async () => items);
-  const Todo = (await import('./Todo')).default;
-  const view = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  await screen.findByText(
-    (items[0] as { description: string } | undefined)?.description ?? 'never'
-  );
-  return view;
-}
-
-async function startFilling(
-  user: ReturnType<typeof userEvent.setup>,
-  title = 'Launch'
-) {
-  await user.click(restingButton());
-  await user.type(namingInput()!, `${title}{Enter}`);
-  await screen.findByRole('textbox', { name: `Add a step to ${title}` });
-}
+const renderTodo = (items: unknown[] = [item('P0')]) => renderHarness(items);
 
 describe('Todo new-milestone composer, when the plan moves under it', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    nextId = 0;
     createChecklistItem.mockImplementation(echoCreate);
   });
 

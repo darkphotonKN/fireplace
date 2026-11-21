@@ -1,69 +1,27 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import {
+  api,
+  item as baseItem,
+  nextPage as next,
+  prevPage as prev,
+  topLevel,
+} from '@/test/todoHarness';
 
 /**
  * FS-0008 R1–R12, R25: the list is paged twenty top-level items at a time, with quiet
  * controls bottom-right. Paging is a view concern — no request gains a page.
  */
 
-const fetchChecklist = vi.fn();
-const archiveChecklistItem = vi.fn();
-const createChecklistItem = vi.fn();
-const updateChecklistItem = vi.fn();
+const { fetchChecklist, archiveChecklistItem, createChecklistItem, updateChecklistItem } = api;
+const item = (id: string, type: 'task' | 'note' = 'task', parentId?: string) =>
+  baseItem(id, { type, parentId: parentId ?? null });
 
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: (...a: unknown[]) => createChecklistItem(...a),
-  updateChecklistItem: (...a: unknown[]) => updateChecklistItem(...a),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: (...a: unknown[]) => archiveChecklistItem(...a),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (
-  id: string,
-  type: 'task' | 'note' = 'task',
-  parentId?: string
-) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type,
-  parentId: parentId ?? null,
-  planId: 'plan-1',
-});
-
-/** n top-level tasks named t1..tn. */
-const topLevel = (n: number, prefix = 't') =>
-  Array.from({ length: n }, (_, i) => item(`${prefix}${i + 1}`));
-
-const prev = () => screen.getByRole('button', { name: 'Previous page' });
-const next = () => screen.getByRole('button', { name: 'Next page' });
+// A query, unlike the harness's: several tests expect no counter at all.
 const counter = () => screen.queryByTestId('page-counter');
 
+// Renders without serving items: each test sets fetchChecklist itself, over the
+// twenty-five the beforeEach serves.
 async function renderList(firstItem = 'item t1') {
   const Todo = (await import('./Todo')).default;
   const view = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
@@ -73,12 +31,10 @@ async function renderList(firstItem = 'item t1') {
 
 describe('Todo paging', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     // Rows are what this file covers, and blocks are the default view,
     // so say which one these expectations are about.
     window.localStorage.setItem('checklistView', 'list');
     fetchChecklist.mockImplementation(async () => topLevel(25));
-    archiveChecklistItem.mockImplementation(async () => ({}));
   });
 
   it('should show the first twenty top-level items with controls reading 1 of 2', async () => {

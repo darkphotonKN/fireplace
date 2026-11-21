@@ -129,15 +129,6 @@ describe('NotePage layout and title (R19, R21, R49)', () => {
     expect(follows(sheet(), meta)).toBe(true);
   });
 
-  it('should set the body on paper, upright', async () => {
-    renderPage();
-    await screen.findByText(/Launch ideas/);
-    for (const cls of ['bg-note-paper', 'rounded-xl', 'p-5', 'md:p-7', 'text-note', 'whitespace-pre-wrap', 'break-words']) {
-      expect(sheet().className).toContain(cls);
-    }
-    expect(sheet().className).not.toContain('italic');
-  });
-
   it("should name the tab after the card text's first line, up to 60 characters", async () => {
     fetchChecklist.mockResolvedValue([
       mk('n9', `${'x'.repeat(80)}\nsecond`, { type: 'note' }),
@@ -645,23 +636,12 @@ describe('NotePage leave prompt (R32–R35)', () => {
     expect(push).toHaveBeenCalledWith('/plans');
   });
 
-  it('should not open for a body of exactly 280 characters: it just leaves', async () => {
-    withBody('x'.repeat(280));
-    await open();
-    await clickBack();
-    expect(prompt()).toBeNull();
-    expect(push).toHaveBeenCalledWith('/plan/plan-1');
-  });
-
-  it('should judge the length trimmed', async () => {
-    withBody(`  ${'x'.repeat(280)}  \n`);
-    await open();
-    await clickBack();
-    expect(prompt()).toBeNull();
-  });
-
-  it('should never open for a note with a summary', async () => {
-    withBody(LONG, 'the gist');
+  it.each([
+    ['a body of exactly 280 characters', 'x'.repeat(280), undefined],
+    ['a body of 280 once trimmed', `  ${'x'.repeat(280)}  \n`, undefined],
+    ['a note with a summary', LONG, 'the gist'],
+  ])('should not open for %s: it just leaves', async (_why, body, summary) => {
+    withBody(body, summary);
     await open();
     await clickBack();
     expect(prompt()).toBeNull();

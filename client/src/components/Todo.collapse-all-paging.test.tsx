@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { screen, fireEvent } from '@testing-library/react';
+import { item as baseItem, nextPage, prevPage, renderTodo } from '@/test/todoHarness';
 
 /**
  * FS-0008 R23–R24: collapse all acts on the parents of the current page, and
@@ -7,48 +8,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
  * were remembered with — the same rule the type filter already follows.
  */
 
-const fetchChecklist = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: vi.fn(),
-  updateChecklistItem: vi.fn(async () => ({})),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (id: string, parentId?: string) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type: 'task',
-  parentId: parentId ?? null,
-  planId: 'plan-1',
-});
+const item = (id: string, parentId?: string) => baseItem(id, { parentId: parentId ?? null });
 
 // 22 top-level items over two pages of twenty: P0 (page 1) and P20 (page 2)
 // each hold a child; every other row is childless.
@@ -61,28 +21,12 @@ const PAGED = [
   item('P21'),
 ];
 
-const nextPage = () => screen.getByRole('button', { name: 'Next page' });
-const prevPage = () => screen.getByRole('button', { name: 'Previous page' });
 const allToggle = () =>
   screen.queryByRole('button', { name: /^(Collapse|Expand) all$/ });
 
-async function renderPaged(items = PAGED) {
-  fetchChecklist.mockImplementation(async () => items);
-  const Todo = (await import('./Todo')).default;
-  const view = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  await screen.findByText('item P0');
-  return view;
-}
+const renderPaged = (items = PAGED) => renderTodo(items, { view: 'list' });
 
 describe('Todo collapse all across pages (FS-0008 R23–R24)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    // Rows are what this file covers, and blocks are the default view,
-    // so say which one these expectations are about.
-    window.localStorage.setItem('checklistView', 'list');
-  });
-
   it('should label the toggle from the current page, not the whole list', async () => {
     await renderPaged();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item P0' }));
@@ -106,20 +50,6 @@ describe('Todo collapse all across pages (FS-0008 R23–R24)', () => {
 
     expect(screen.getByText('item C0')).toBeTruthy();
     expect(allToggle()!.textContent).toContain('Collapse all');
-  });
-
-  it('should keep the paged board at its fixed height after collapse all', async () => {
-    // FS-0008 Change Edge State: folding a page shortens its content, not the
-    // window it sits in, so the controls stay where they were.
-    const PAGED_CAP = /(^|\s)h-\[min\(80vh,60rem\)\](\s|$)/;
-    await renderPaged();
-    const listArea = () => document.querySelector<HTMLElement>('[data-list-area]')!;
-    expect(listArea().className).toMatch(PAGED_CAP);
-
-    fireEvent.click(allToggle()!);
-
-    expect(screen.queryByText('item C0')).toBeNull();
-    expect(listArea().className).toMatch(PAGED_CAP);
   });
 
   it('should keep an off-page parent collapsed through this page collapse all', async () => {

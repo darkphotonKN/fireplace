@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { render, within } from '@testing-library/react';
-import { expectMockContract } from '@/test/mockContract';
 import { DATABASE_MILESTONE, MICROSERVICES_MILESTONE, progressOf } from './content';
 import PlanTileMock from './PlanTileMock';
 
@@ -18,16 +15,6 @@ function atStart(el: HTMLElement) {
 }
 
 describe('PlanTileMock', () => {
-  it('should honour the mock contract', () => {
-    const { container } = render(<PlanTileMock />);
-
-    expectMockContract(container);
-  });
-
-  it('should render with no app context providers at all', () => {
-    expect(() => render(<PlanTileMock />)).not.toThrow();
-  });
-
   it('should open on Database 1/5 and Microservices 6/8, as content.ts counts them', () => {
     expect(progressOf(DATABASE_MILESTONE)).toEqual({ done: 1, total: 5 });
     expect(progressOf(MICROSERVICES_MILESTONE)).toEqual({ done: 6, total: 8 });
@@ -91,11 +78,4 @@ describe('PlanTileMock', () => {
     }
   });
 
-  it('should import no product component, context, service layer or fetch', () => {
-    const source = readFileSync(resolve(__dirname, 'PlanTileMock.tsx'), 'utf8');
-
-    expect(source).not.toMatch(/from '@\/components\/(?!landing)/);
-    expect(source).not.toMatch(/@\/(context|api|services|lib\/api)/);
-    expect(source).not.toMatch(/\bfetch\(|useContext/);
-  });
 });

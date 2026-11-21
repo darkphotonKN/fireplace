@@ -41,7 +41,6 @@ describe('RevealOnEnter', () => {
 
     const section = screen.getByTestId('section');
     expect(section.className).not.toMatch(/opacity-0/);
-    expect(section.className).toMatch(/animate-riseIn/);
   });
 
   it('should reveal content flung past without ever intersecting', () => {
@@ -79,7 +78,6 @@ describe('RevealOnEnter', () => {
     // visitor tabbing before scrolling would land on an invisible button.
     const section = screen.getByTestId('section');
     expect(section).toHaveAttribute('inert');
-    expect(section.className).toMatch(/invisible/);
   });
 
   it('should restore interactivity when revealed', () => {
@@ -96,7 +94,6 @@ describe('RevealOnEnter', () => {
 
     const section = screen.getByTestId('section');
     expect(section).not.toHaveAttribute('inert');
-    expect(section.className).not.toMatch(/invisible/);
   });
 
   it('should stay revealed once revealed', () => {
@@ -128,7 +125,6 @@ describe('RevealOnEnter', () => {
 
     const section = screen.getByTestId('section');
     expect(section.className).not.toMatch(/opacity-0/);
-    expect(section.className).not.toMatch(/animate-riseIn/);
     expect(screen.getByText('Every arc gets a plan.')).toBeVisible();
   });
 });

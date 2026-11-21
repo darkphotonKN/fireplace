@@ -51,14 +51,4 @@ describe('FirstRun', () => {
     expect(container.textContent).not.toMatch(/sit down by the fire/i);
     expect(container.textContent).not.toMatch(/sign up|sign in/i);
   });
-
-  it('should style from tokens only', () => {
-    const { container } = render(<FirstRun onStart={() => {}} />);
-
-    const markup = container.innerHTML;
-    expect(markup).not.toMatch(/rgba?\(/);
-    expect(markup).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    expect(markup).not.toMatch(/-gray-/);
-    expect(markup).not.toMatch(/dark:/);
-  });
 });

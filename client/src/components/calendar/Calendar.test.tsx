@@ -106,7 +106,20 @@ describe('Calendar', () => {
     expect(screen.queryByText('Someday, maybe')).not.toBeInTheDocument();
   });
 
-  it("should show a dated note's first line in its chip and title, not the whole body (FS-PGG2N R11, G20)", async () => {
+  it.each([
+    [
+      'its first line, not the whole body (FS-PGG2N R11, G20)',
+      { description: 'Reading notes\nchapter one\nchapter two' },
+      'Reading notes',
+      [/chapter one/],
+    ],
+    [
+      'its summary before its body, first line only (FS-PGG2N R4, R11)',
+      { description: 'Reading notes\nchapter one', summary: 'Three ideas, ranked\nand why' },
+      'Three ideas, ranked',
+      [/Reading notes/, /and why/],
+    ],
+  ])("should show in a dated note's chip and title %s", async (_why, note, shown, hidden) => {
     getPlanCalendar.mockResolvedValue({
       planId: 'plan-1',
       view: 'month',
@@ -115,7 +128,7 @@ describe('Calendar', () => {
       items: [
         {
           id: 'n1',
-          description: 'Reading notes\nchapter one\nchapter two',
+          ...note,
           type: 'note',
           scope: 'longterm',
           done: false,
@@ -126,37 +139,9 @@ describe('Calendar', () => {
     });
     render(<Calendar planId="plan-1" />);
 
-    const chip = await screen.findByText('Reading notes');
-    expect(chip.textContent).toBe('Reading notes');
-    expect(chip.closest('[title]')!.getAttribute('title')).toBe('Reading notes');
-    expect(screen.queryByText(/chapter one/)).toBeNull();
-  });
-
-  it("should show a dated note's summary before its body, first line only (FS-PGG2N R4, R11)", async () => {
-    getPlanCalendar.mockResolvedValue({
-      planId: 'plan-1',
-      view: 'month',
-      windowStart: '2026-03-01',
-      windowEnd: '2026-03-31',
-      items: [
-        {
-          id: 'n2',
-          description: 'Reading notes\nchapter one',
-          type: 'note',
-          summary: 'Three ideas, ranked\nand why',
-          scope: 'longterm',
-          done: false,
-          startDate: '2026-03-16T00:00:00Z',
-          dueDate: '2026-03-16T00:00:00Z',
-        },
-      ],
-    });
-    render(<Calendar planId="plan-1" />);
-
-    const chip = await screen.findByText('Three ideas, ranked');
-    expect(chip.textContent).toBe('Three ideas, ranked');
-    expect(chip.closest('[title]')!.getAttribute('title')).toBe('Three ideas, ranked');
-    expect(screen.queryByText(/Reading notes/)).toBeNull();
-    expect(screen.queryByText(/and why/)).toBeNull();
+    const chip = await screen.findByText(shown);
+    expect(chip.textContent).toBe(shown);
+    expect(chip.closest('[title]')!.getAttribute('title')).toBe(shown);
+    for (const text of hidden) expect(screen.queryByText(text)).toBeNull();
   });
 });

@@ -1,6 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {
+  api,
+  card,
+  composer,
+  composerState,
+  echoCreate,
+  item,
+  renderTodo,
+  typeFilter as filterTab,
+} from '@/test/todoHarness';
 
 /**
  * An empty plan invites its first milestone (FS-FSFEC R46, R47). A plan with
@@ -10,73 +20,10 @@ import userEvent from '@testing-library/user-event';
  * the composer below it, and the list view's empty state is untouched.
  */
 
-const fetchChecklist = vi.fn();
-const createChecklistItem = vi.fn();
-const toast = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: (...a: unknown[]) => createChecklistItem(...a),
-  updateChecklistItem: vi.fn(async () => ({})),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (id: string, extra: Partial<Record<string, unknown>> = {}) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type: 'task',
-  parentId: null,
-  planId: 'plan-1',
-  ...extra,
-});
-
-let nextId = 0;
-const echoCreate = async (
-  text: string,
-  _planId: string,
-  _scope: string,
-  opts: { type?: string; parentId?: string } = {}
-) => {
-  nextId += 1;
-  return item(`new${nextId}`, {
-    description: text,
-    type: opts.type ?? 'task',
-    parentId: opts.parentId ?? null,
-  });
-};
+const { createChecklistItem } = api;
 
 const invitation = () =>
   screen.queryByRole('button', { name: 'Start your first milestone' });
-const composer = () =>
-  document.querySelector('[data-milestone-composer]') as HTMLElement | null;
-const composerState = () =>
-  composer()?.getAttribute('data-milestone-composer') ?? null;
 // The resting bar, as distinct from the invitation: a button inside the bar.
 const restingBar = () =>
   composerState() === 'resting'
@@ -87,32 +34,18 @@ const namingInput = () =>
   (within(composer()!).queryByRole('textbox', {
     name: /^(Name a new milestone|New note)$/,
   }) as HTMLInputElement | null);
-const card = (id: string) =>
-  document.querySelector(`[data-checklist-card="${id}"]`) as HTMLElement | null;
-const filterTab = (label: string) =>
-  screen
-    .getAllByRole('button', { name: label })
-    .find((b) => !b.closest('[role="group"]'))!;
-
-async function renderTodo(items: unknown[] = []) {
-  fetchChecklist.mockImplementation(async () => items);
-  const Todo = (await import('./Todo')).default;
-  const view = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  // Settled once the filter tabs are drawn, whatever the list holds.
-  await screen.findByRole('button', { name: 'Notes' });
-  return view;
-}
+// Settled once the filter tabs are drawn, whatever the list holds.
+const renderPlan = (items: unknown[] = []) => renderTodo(items, { ready: 'Notes' });
 
 describe('Todo first-milestone invitation', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    nextId = 0;
-    createChecklistItem.mockImplementation(echoCreate);
+    createChecklistItem.mockImplementation((...a) =>
+      echoCreate(...(a as Parameters<typeof echoCreate>))
+    );
   });
 
   it('should invite the first milestone in an empty grid, with no resting bar', async () => {
-    await renderTodo();
+    await renderPlan();
 
     expect(invitation()).toBeTruthy();
     expect(screen.queryByText('No items yet. Add one below!')).toBeNull();
@@ -121,14 +54,14 @@ describe('Todo first-milestone invitation', () => {
   });
 
   it('should take no focus on load', async () => {
-    await renderTodo();
+    await renderPlan();
     expect(document.activeElement).not.toBe(invitation());
     expect(document.activeElement?.tagName).not.toBe('INPUT');
   });
 
   it('should open naming with focus on click, Enter or Space', async () => {
     const user = userEvent.setup();
-    await renderTodo();
+    await renderPlan();
 
     await user.click(invitation()!);
     expect(composerState()).toBe('naming');
@@ -149,7 +82,7 @@ describe('Todo first-milestone invitation', () => {
 
   it('should stand while naming, and take focus back to the input when activated again', async () => {
     const user = userEvent.setup();
-    await renderTodo();
+    await renderPlan();
 
     await user.click(invitation()!);
     await user.type(namingInput()!, 'Lau');
@@ -163,7 +96,7 @@ describe('Todo first-milestone invitation', () => {
 
   it('should give way to the grid once the first milestone is named, the composer filling', async () => {
     const user = userEvent.setup();
-    await renderTodo();
+    await renderPlan();
 
     await user.click(invitation()!);
     await user.type(namingInput()!, 'Launch{Enter}');
@@ -186,7 +119,7 @@ describe('Todo first-milestone invitation', () => {
 
   it('should invite under the Checklist filter too', async () => {
     const user = userEvent.setup();
-    await renderTodo();
+    await renderPlan();
     await user.click(filterTab('Checklist'));
 
     expect(invitation()).toBeTruthy();
@@ -196,7 +129,7 @@ describe('Todo first-milestone invitation', () => {
 
   it('should keep "No notes yet." with the note composer below on an empty plan under Notes', async () => {
     const user = userEvent.setup();
-    await renderTodo();
+    await renderPlan();
     await user.click(filterTab('Notes'));
 
     expect(invitation()).toBeNull();
@@ -207,7 +140,7 @@ describe('Todo first-milestone invitation', () => {
   describe('items the filter hides (R47)', () => {
     it('should keep "No notes yet." with the composer below when only tasks exist', async () => {
       const user = userEvent.setup();
-      await renderTodo([item('P0')]);
+      await renderPlan([item('P0')]);
       await user.click(filterTab('Notes'));
 
       expect(invitation()).toBeNull();
@@ -217,7 +150,7 @@ describe('Todo first-milestone invitation', () => {
 
     it('should keep "No tasks yet." with the composer below when only notes exist', async () => {
       const user = userEvent.setup();
-      await renderTodo([item('N0', { type: 'note' })]);
+      await renderPlan([item('N0', { type: 'note' })]);
       await user.click(filterTab('Checklist'));
 
       expect(invitation()).toBeNull();
@@ -228,7 +161,7 @@ describe('Todo first-milestone invitation', () => {
 
   it('should leave the list view its empty text and add bar', async () => {
     window.localStorage.setItem('checklistView', 'list');
-    await renderTodo();
+    await renderPlan();
 
     expect(invitation()).toBeNull();
     expect(composer()).toBeNull();
@@ -239,7 +172,7 @@ describe('Todo first-milestone invitation', () => {
   it('should invite again when the view switches back to an empty grid', async () => {
     const user = userEvent.setup();
     window.localStorage.setItem('checklistView', 'list');
-    await renderTodo();
+    await renderPlan();
 
     await user.click(
       within(screen.getByRole('group', { name: 'View' })).getByRole('button', {

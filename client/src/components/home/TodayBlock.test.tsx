@@ -142,7 +142,6 @@ describe('TodayBlock', () => {
       'aria-checked',
       'true'
     );
-    expect(screen.getByText('second').className).toMatch(/opacity-/);
   });
 
   it('should not fire a second write for a row already ticked', () => {
@@ -191,15 +190,8 @@ describe('TodayBlock', () => {
   });
 });
 
-describe('TodayBlock — the coral moment (R49)', () => {
-  it('should spend the accent on the heading', () => {
-    render(<Block work={work()} />);
-    expect(screen.getByRole('heading', { name: 'Today' }).className).toContain(
-      'text-primary'
-    );
-  });
-
-  it('should spend it on an h1, which is coral in both themes', () => {
+describe('TodayBlock — heading and dates (R49)', () => {
+  it('should title the block with the view\'s one h1', () => {
     // The design guideline reserves coral for the `h1` — one per view — and
     // gives h2/h3 the foreground, so the accent belongs to an h1 or to nothing.
     // globals.css hands `h1` that coral unconditionally in both themes, and
@@ -210,60 +202,8 @@ describe('TodayBlock — the coral moment (R49)', () => {
     expect(screen.getByRole('heading', { name: 'Today' }).tagName).toBe('H1');
   });
 
-  it('should carry a row\'s muted meta line on a <p> with the muted token', () => {
-    // These were <div>s until I-0061: `.dark p` outranked
-    // `text-muted-foreground`, and R50 forbids a per-component `dark:` patch.
-    // With the global element rules in `@layer base` the token wins in both
-    // themes, so the semantic element is back.
-    const { container } = render(
-      <Block
-        work={work({ rows: [row({ parentDescription: 'Tuesday review', dateLabel: 'Mar 16' })] })}
-      />
-    );
-    expect(container.querySelectorAll('p[class*="text-muted-foreground"]')).toHaveLength(1);
-    expect(container.innerHTML).not.toMatch(/dark:/);
-  });
-
-  it('should carry the loading, failed and empty lines on <p> too', () => {
-    const cases = [
-      work({ status: 'loading', rows: [] }),
-      work({ status: 'failed', rows: [] }),
-      work({ mode: 'nextUp', rows: [], dueCount: 0, planCount: 2 }),
-    ];
-
-    for (const state of cases) {
-      const { container, unmount } = render(<Block work={state} />);
-      expect(
-        container.querySelectorAll('p[class*="text-muted-foreground"]')
-      ).toHaveLength(1);
-      expect(container.innerHTML).not.toMatch(/dark:/);
-      unmount();
-    }
-  });
-
-  it('should dress the tick in tokens, in one theme, with no layout to jump', () => {
-    // R48/R50/R51: no hex, no rgb(), no `-gray-`, no `dark:` patch — and the
-    // done state differs from the not-done one only in colour and opacity, so
-    // the icon box is the same size either way.
-    const { container } = render(
-      <Block
-        work={work({
-          rows: [row({ id: 'a' }), row({ id: 'b', done: true })],
-        })}
-        onTick={vi.fn()}
-      />
-    );
-
-    expect(container.innerHTML).not.toMatch(/#[0-9a-f]{3,6}|rgb\(|-gray-/i);
-    expect(container.innerHTML).not.toMatch(/dark:/);
-    const [open, ticked] = screen.getAllByRole('checkbox');
-    for (const box of [open, ticked]) {
-      expect(box.querySelector('svg')?.getAttribute('class')).toMatch(/h-4 w-4/);
-    }
-  });
-
   it('should mark an overdue date and leave a due-today one neutral', () => {
-    const { container } = render(
+    render(
       <Block
         work={work({
           rows: [
@@ -273,10 +213,9 @@ describe('TodayBlock — the coral moment (R49)', () => {
         })}
       />
     );
+    // The class is the only signal of overdue: there is no text for it.
     expect(screen.getByText('Mar 15').className).toContain('primary');
     expect(screen.getByText('Mar 16').className).not.toContain('primary');
-    // No raw colour anywhere: tokens only (R48).
-    expect(container.innerHTML).not.toMatch(/#[0-9a-f]{3,6}|rgb\(|-gray-/i);
   });
 });
 

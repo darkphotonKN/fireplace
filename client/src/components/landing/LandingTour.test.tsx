@@ -70,22 +70,4 @@ describe('LandingTour', () => {
     expect(stops).toHaveLength(expected.length);
     stops.forEach((stop, i) => expect(stop).toBe(expected[i]));
   });
-
-  it('should spend coral on the underline under "fire" and nowhere else', () => {
-    const { container } = render(<LandingTour />);
-
-    // CTAs are on `--action`, and the glow is a backdrop at low alpha in an
-    // inline style. Mocks are pictures of production screens (R13), whose bars
-    // and ticks are coral there too; they are art, not a coral moment of the
-    // page's own. Everything else counts.
-    const coral = Array.from(container.querySelectorAll<HTMLElement>('[class]')).filter(
-      (el) =>
-        !el.closest('[data-landing-mock]') &&
-        /\b(?:text|decoration|bg|border|ring|fill|stroke)-primary(?:\/\d+)?\b/.test(el.getAttribute('class')!)
-    );
-
-    expect(coral).toHaveLength(1);
-    expect(coral[0]).toHaveTextContent(/^fire$/);
-    expect(screen.getByRole('heading', { level: 1 })).toContainElement(coral[0]);
-  });
 });

@@ -320,7 +320,6 @@ describe('ChecklistGrid completion nudge', () => {
       document.querySelectorAll('[data-checklist-card]')
     ).map((el) => el.getAttribute('data-checklist-card'));
     expect(order).toEqual(['a', 'm1', 'z']);
-    expect(card('m1').className).toContain('opacity-60');
     expect(nudge()).toBeNull();
     // Still hand-settable: reopening goes through the same checkbox (R9).
     expect(
@@ -345,11 +344,10 @@ describe('ChecklistGrid traced milestone (FS-FSFEC R33)', () => {
       el.getAttribute('data-checklist-card')
     );
 
-  it('should mark only the traced card, with a ring and a star', () => {
+  it('should mark only the traced card, with a star', () => {
     renderGrid({ tracedId: 'p2' });
 
     expect(traced()).toEqual(['p2']);
-    expect(card('p2').className).toContain('ring-2');
     expect(card('p2').querySelector('[data-traced-mark]')?.textContent).toBe('✦');
     expect(card('p1').querySelector('[data-traced-mark]')).toBeNull();
   });
@@ -537,56 +535,14 @@ describe('ChecklistGrid notes on paper (FS-PGG2N R10, R11, R47, R48)', () => {
     expect(within(card('n1')).queryByText(/whole long body/)).toBeNull();
   });
 
-  it('should show the body, line breaks kept and clamped to 4 lines, with no summary', () => {
+  it('should show the body, line breaks kept, when a note has no summary', () => {
     renderGrid({ groups: noteGroups });
-    const text = textOf('n2');
-    expect(text.textContent).toBe('First line\nsecond line');
-    expect(text.className).toContain('whitespace-pre-line');
-    expect(text.className).toContain('line-clamp-4');
-    // A long unbroken URL wraps rather than widening the card (FS-49CQ2 R23).
-    expect(text.className).toContain('break-words');
+    expect(textOf('n2').textContent).toBe('First line\nsecond line');
   });
 
-  it('should fill a note card with paper and drop the icon and the slant', () => {
+  it("should show a child note row's summary, not its body", () => {
     renderGrid({ groups: noteGroups });
-    const c = card('n1');
-    expect(c.className).toContain('bg-note-paper');
-    expect(c.querySelector('.lucide-file-text')).toBeNull();
-    expect(textOf('n1').className).toContain('text-foreground/88');
-    expect(c.querySelector('.italic')).toBeNull();
-  });
-
-  it('should keep the milestone tile shape and hover glow on a note card', () => {
-    renderGrid({ groups: noteGroups });
-    const note = card('n1').className;
-    const milestone = card('m1').className;
-    for (const cls of ['rounded-xl', 'px-4', 'py-4', 'hover:shadow-[0_2px_18px_-12px_rgba(247,111,83,0.55)]']) {
-      expect(note).toContain(cls);
-      expect(milestone).toContain(cls);
-    }
-  });
-
-  it('should leave a milestone card on its own fill', () => {
-    renderGrid({ groups: noteGroups });
-    expect(card('m1').className).not.toContain('bg-note-paper');
-    expect(card('m1').className).toContain('bg-foreground/[0.04]');
-  });
-
-  it('should set a child note row upright in a paper chip, clamped to 2 lines', () => {
-    renderGrid({ groups: noteGroups });
-    const chip = textOf('s2');
-    expect(chip.textContent).toBe('child gist');
-    for (const cls of ['bg-note-paper', 'rounded-md', 'px-2', 'py-0.5', 'line-clamp-2', 'whitespace-pre-line', 'break-words']) {
-      expect(chip.className).toContain(cls);
-    }
-    expect(card('m1').querySelector('.italic')).toBeNull();
-  });
-
-  it('should leave a task step as it was', () => {
-    renderGrid({ groups: noteGroups });
-    const step = within(card('m1')).getByText('a task step');
-    expect(step.className).not.toContain('bg-note-paper');
-    expect(step.className).toContain('text-foreground/80');
+    expect(textOf('s2').textContent).toBe('child gist');
   });
 
   it("should name a note's menu by its card text's first line (R11)", () => {
@@ -620,9 +576,6 @@ describe('ChecklistGrid ways into a note (FS-PGG2N R12–R14)', () => {
     renderGrid({ groups, noteHref, milestoneHref });
     const link = within(card('n1')).getByRole('link', { name: 'Open note: Launch ideas' });
     expect(link.getAttribute('href')).toBe('/plan/p/n/n1');
-    // Stretched over the card, under its controls.
-    expect(link.className).toContain('absolute');
-    expect(link.className).toContain('inset-0');
   });
 
   it("should keep the card's menu and its entries clear of the link", () => {

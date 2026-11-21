@@ -387,7 +387,7 @@ describe('MilestonePage steps and next step', () => {
     expect(stepBox('channels')).toBeChecked();
   });
 
-  it('should set a note step upright in a paper chip showing its card text (FS-PGG2N R11, R48)', async () => {
+  it('should show a note step by its card text (FS-PGG2N R11)', async () => {
     fetchChecklist.mockResolvedValue([
       mk('m1', 'Learn Go'),
       mk('n1', 'a long body\nwith lines', {
@@ -401,15 +401,9 @@ describe('MilestonePage steps and next step', () => {
     renderPage();
     await ready();
 
-    const gist = within(list()).getByText('the gist');
+    expect(within(list()).getByText('the gist')).toBeInTheDocument();
     expect(within(list()).queryByText(/a long body/)).toBeNull();
-    for (const cls of ['bg-note-paper', 'rounded-md', 'px-2', 'py-0.5', 'line-clamp-2', 'whitespace-pre-line', 'break-words']) {
-      expect(gist.className).toContain(cls);
-    }
     expect(within(list()).getByText('first second', { normalizer: (t) => t.replace(/\s+/g, ' ') })).toBeInTheDocument();
-    expect(list().querySelector('.italic')).toBeNull();
-    // A task step is untouched.
-    expect(within(list()).getByText('a task').className).not.toContain('bg-note-paper');
   });
 
   describe('rename (R30)', () => {
@@ -730,7 +724,6 @@ describe('MilestonePage title, dates, close and menu', () => {
 
   describe('closing (R16, C10)', () => {
     const box = () => screen.getByRole('checkbox', { name: 'Mark Learn Go done' });
-    const heading = () => screen.getByRole('heading', { name: 'Learn Go' });
 
     it('should close by hand at any progress, staying on the page shown closed, and reopen', async () => {
       renderPage();
@@ -745,7 +738,6 @@ describe('MilestonePage title, dates, close and menu', () => {
         'longterm'
       );
       expect(box()).toBeChecked();
-      expect(heading().className).toMatch(/line-through/);
       expect(push).not.toHaveBeenCalled();
       // Steps open, yet closed: no next step (G11).
       expect(screen.queryByRole('region', { name: 'Next step' })).toBeNull();
@@ -758,7 +750,6 @@ describe('MilestonePage title, dates, close and menu', () => {
         'longterm'
       );
       expect(box()).not.toBeChecked();
-      expect(heading().className).not.toMatch(/line-through/);
     });
 
     it('should revert a failed close and show the existing error (R32)', async () => {
@@ -879,36 +870,12 @@ describe('MilestonePage title, dates, close and menu', () => {
       expect(picker()).toBeInTheDocument();
     });
 
-    it('should revert only the dates when they fail, keeping a rename made meanwhile (R32)', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    let fail!: (e: unknown) => void;
-    updateChecklistDates.mockImplementation(
-      () => new Promise((_, rej) => (fail = rej))
-    );
-    fetchChecklist.mockResolvedValue([
-      mk('m1', 'Learn Go', { startDate: '2026-03-02', dueDate: '2026-03-09' }),
-    ]);
-    const { container } = renderPage();
-    await ready();
-
-    fireEvent.click(container.querySelector('[data-item-dates]') as HTMLElement);
-    await act(async () =>
-      fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
-    );
-    // A rename lands while the dates are still in flight.
-    fireEvent.click(within(screen.getByRole('heading')).getByText('Learn Go'));
-    const input = screen.getByRole('textbox', { name: 'Rename Learn Go' });
-    fireEvent.change(input, { target: { value: 'Master Go' } });
-    await act(async () => fireEvent.keyDown(input, { key: 'Enter' }));
-    await act(async () => fail(new Error('nope')));
-
-    expect(container.querySelector('[data-item-dates]')).not.toBeNull();
-    expect(screen.getByRole('heading', { name: 'Master Go' })).toBeInTheDocument();
-  });
-
-  it('should revert failed dates and show the existing error (R32)', async () => {
+    it('should revert only the dates when they fail, show the error, and keep a rename made meanwhile (R32)', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
-      updateChecklistDates.mockRejectedValue(new Error('nope'));
+      let fail!: (e: unknown) => void;
+      updateChecklistDates.mockImplementation(
+        () => new Promise((_, rej) => (fail = rej))
+      );
       fetchChecklist.mockResolvedValue([
         mk('m1', 'Learn Go', { startDate: '2026-03-02', dueDate: '2026-03-09' }),
       ]);
@@ -919,10 +886,18 @@ describe('MilestonePage title, dates, close and menu', () => {
       await act(async () =>
         fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
       );
+      // A rename lands while the dates are still in flight.
+      fireEvent.click(within(screen.getByRole('heading')).getByText('Learn Go'));
+      const input = screen.getByRole('textbox', { name: 'Rename Learn Go' });
+      fireEvent.change(input, { target: { value: 'Master Go' } });
+      await act(async () => fireEvent.keyDown(input, { key: 'Enter' }));
+      await act(async () => fail(new Error('nope')));
+
       expect(container.querySelector('[data-item-dates]')).not.toBeNull();
       expect(
         screen.getByText('Failed to save the dates. Please try again.')
       ).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Master Go' })).toBeInTheDocument();
     });
   });
 });

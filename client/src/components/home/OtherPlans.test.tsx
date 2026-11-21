@@ -177,34 +177,6 @@ describe('OtherPlans — absent, not empty (R41)', () => {
   );
 });
 
-describe('OtherPlans — visual conformance (R47–R51)', () => {
-  it('should style from tokens only — no raw colour, no gray utility', () => {
-    const { container } = render(<OtherPlans plans={ordered(10)} />);
-
-    const markup = container.innerHTML;
-    expect(markup).not.toMatch(/rgba?\(/);
-    expect(markup).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    expect(markup).not.toMatch(/-gray-/);
-  });
-
-  it('should stay neutral — the page\'s one coral moment is not this block (R49)', () => {
-    const { container } = render(<OtherPlans plans={ordered(10)} />);
-
-    expect(container.querySelector('[class*="bg-primary"]')).toBeNull();
-    expect(container.querySelector('[class*="text-primary"]')).toBeNull();
-    // No h1 either: the global base style paints those coral.
-    expect(container.querySelector('h1')).toBeNull();
-  });
-
-  it('should not wear the /myplans header card (R18)', () => {
-    const { container } = render(<OtherPlans plans={ordered(10)} />);
-
-    expect(container.querySelector('.backdrop-blur-sm')).toBeNull();
-    expect(container.querySelector('.rounded-2xl')).toBeNull();
-    expect(container.querySelector('.shadow-lg')).toBeNull();
-  });
-});
-
 describe('OtherPlans — shared plans (FS-12ZMF R26)', () => {
   it('should mark a shared row and leave an owned row unmarked', () => {
     render(

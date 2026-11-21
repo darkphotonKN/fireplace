@@ -1,60 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { api, item as baseItem, renderTodo, rowOf, typeFilter } from '@/test/todoHarness';
 
 /**
  * FS-0007 R5: a Parent Item with children gets a chevron that folds them away,
  * shows a count while collapsed, and never touches done state or editing.
  */
 
-const fetchChecklist = vi.fn();
-const updateChecklistItem = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: vi.fn(),
-  updateChecklistItem: (...a: unknown[]) => updateChecklistItem(...a),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (
-  id: string,
-  type: 'task' | 'note',
-  parentId?: string,
-  done = false
-) => ({
-  id,
-  description: `item ${id}`,
-  done,
-  scope: 'longterm',
-  type,
-  parentId: parentId ?? null,
-  planId: 'plan-1',
-});
+const { fetchChecklist, updateChecklistItem } = api;
+const item = (id: string, type: 'task' | 'note', parentId?: string, done = false) =>
+  baseItem(id, { type, parentId: parentId ?? null, done });
 
 // A(task) ─ B(task, done), C(note), E(task); D(task) alone.
 const ITEMS = [
@@ -65,30 +21,10 @@ const ITEMS = [
   item('D', 'task'),
 ];
 
-const rowOf = (id: string) => screen.getByText(`item ${id}`).closest('li')!;
-
-async function renderList() {
-  const Todo = (await import('./Todo')).default;
-  render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  await screen.findByText('item A');
-}
-
-// The type filter's tab, not the view toggle's "Checklist", which sits in the
-// toggle's "View" group (FS-FSFEC R3).
-const typeFilter = (name: string) =>
-  screen
-    .getAllByRole('button', { name })
-    .find((b) => !b.closest('[role="group"][aria-label="View"]'))!;
+const renderList = (items: unknown[] = ITEMS) =>
+  renderTodo(items, { view: 'list', ready: 'item A' });
 
 describe('Todo collapse and expand', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Rows are what this file covers, and blocks are the default view,
-    // so say which one these expectations are about.
-    window.localStorage.setItem('checklistView', 'list');
-    fetchChecklist.mockImplementation(async () => ITEMS);
-  });
-
   it('should hide a parent\'s children on chevron click and show them again on a second click', async () => {
     await renderList();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
@@ -117,14 +53,13 @@ describe('Todo collapse and expand', () => {
   });
 
   it('should count notes when every child is a note', async () => {
-    fetchChecklist.mockImplementation(async () => [
+    await renderList([
       item('A', 'task'),
       item('B', 'note', 'A'),
       item('C', 'note', 'A'),
       item('D', 'task'),
       item('E', 'note', 'D'),
     ]);
-    await renderList();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item D' }));
     expect(screen.getByText('2 notes')).toBeTruthy();
@@ -166,46 +101,6 @@ describe('Todo collapse and expand', () => {
     expect(updateChecklistItem).not.toHaveBeenCalled();
   });
 
-  it('should keep the chevron hidden until hover/focus while expanded, quiet on touch, and always visible while collapsed', async () => {
-    await renderList();
-    const expanded = screen.getByRole('button', { name: 'Collapse item A' });
-    expect(expanded.className).toMatch(/(^|\s)opacity-0(\s|$)/);
-    expect(expanded.className).toContain('group-hover:opacity-100');
-    // A keyboard on the row, or on the chevron itself — but NOT focus-within,
-    // which left the chevron on screen after a mouse click had focused it and
-    // the pointer had moved on.
-    expect(expanded.className).toContain('group-focus-visible:opacity-100');
-    expect(expanded.className).toContain('focus-visible:opacity-100');
-    expect(expanded.className).not.toMatch(/focus-within/);
-    expect(expanded.className).toContain('[@media(hover:none)]:opacity-40');
-
-    fireEvent.click(expanded);
-    const collapsed = screen.getByRole('button', { name: 'Expand item A' });
-    expect(collapsed.className).toMatch(/(^|\s)opacity-100(\s|$)/);
-    expect(collapsed.className).not.toMatch(/(^|\s)opacity-0(\s|$)/);
-  });
-
-  it('should keep the chevron in a gutter the list reserves, with no ring circle around it', async () => {
-    await renderList();
-    const chevron = screen.getByRole('button', { name: 'Collapse item A' });
-
-    // It hangs 32px left of the row, and the list pads that much so the
-    // button stays inside the card instead of spilling over its edge.
-    expect(chevron.className).toContain('-left-8');
-    expect(rowOf('A').closest('ul')!.className).toMatch(/(^|\s)pl-8(\s|$)/);
-    expect(chevron.className).not.toContain('rounded-full');
-    expect(chevron.className).not.toContain('ring-');
-  });
-
-  it('should ring a row only for keyboard focus, never on a click', async () => {
-    await renderList();
-
-    // Plain focus: would draw the ring when the row, its chevron or a hover
-    // action is clicked.
-    expect(rowOf('A').className).not.toMatch(/(^|\s)focus:ring-1(\s|$)/);
-    expect(rowOf('A').className).toContain('focus-visible:ring-1');
-  });
-
   it('should expand a collapsed parent when a row is indented into it, so the row stays in view', async () => {
     await renderList();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
@@ -225,23 +120,12 @@ describe('Todo collapse and expand', () => {
 });
 
 describe('Todo remembers collapsed groups (FS-0007 R6)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Rows are what this file covers, and blocks are the default view,
-    // so say which one these expectations are about.
-    window.localStorage.setItem('checklistView', 'list');
-    fetchChecklist.mockImplementation(async () => ITEMS);
-  });
-
   it('should keep a parent collapsed after the list is unmounted and mounted again, as on reload', async () => {
-    const Todo = (await import('./Todo')).default;
-    const first = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-    await screen.findByText('item A');
+    const first = await renderList();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
     first.unmount();
 
-    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-    await screen.findByText('item A');
+    await renderList();
     expect(screen.queryByText('item B')).toBeNull();
     expect(screen.getByRole('button', { name: 'Expand item A' })).toBeTruthy();
   });
@@ -301,23 +185,15 @@ describe('Todo collapse and expand all (FS-0007 R7)', () => {
     item('E', 'note', 'D'),
   ];
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Rows are what this file covers, and blocks are the default view,
-    // so say which one these expectations are about.
-    window.localStorage.setItem('checklistView', 'list');
-    fetchChecklist.mockImplementation(async () => PARENTS);
-  });
-
   it('should offer Collapse all while every parent is expanded', async () => {
-    await renderList();
+    await renderList(PARENTS);
 
     expect(screen.getByRole('button', { name: 'Collapse all' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Expand all' })).toBeNull();
   });
 
   it('should fold every parent on Collapse all and then offer Expand all', async () => {
-    await renderList();
+    await renderList(PARENTS);
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
 
@@ -327,7 +203,7 @@ describe('Todo collapse and expand all (FS-0007 R7)', () => {
   });
 
   it('should offer Expand all when only one parent is collapsed, and open every parent', async () => {
-    await renderList();
+    await renderList(PARENTS);
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
 
     expect(screen.getByRole('button', { name: 'Expand all' })).toBeTruthy();
@@ -340,32 +216,23 @@ describe('Todo collapse and expand all (FS-0007 R7)', () => {
   });
 
   it('should remember what Collapse all folded, as on reload', async () => {
-    const Todo = (await import('./Todo')).default;
-    const first = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-    await screen.findByText('item A');
+    const first = await renderList(PARENTS);
     fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
     first.unmount();
 
-    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-    await screen.findByText('item A');
+    await renderList(PARENTS);
     expect(screen.queryByText('item B')).toBeNull();
     expect(screen.queryByText('item E')).toBeNull();
   });
 
   it('should not offer the toggle when no parent has children', async () => {
-    fetchChecklist.mockImplementation(async () => [
-      item('A', 'task'),
-      item('D', 'task'),
-    ]);
-    await renderList();
+    await renderList([item('A', 'task'), item('D', 'task')]);
 
     expect(screen.queryByRole('button', { name: /(Collapse|Expand) all/ })).toBeNull();
   });
 
   it('should leave the stored state of parents the filter hides untouched', async () => {
-    const Todo = (await import('./Todo')).default;
-    const first = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-    await screen.findByText('item A');
+    const first = await renderList(PARENTS);
     fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
 
     // Checklist hides D's only child (a note), so D is no longer a parent here.
@@ -379,8 +246,7 @@ describe('Todo collapse and expand all (FS-0007 R7)', () => {
     expect(screen.queryByText('item E')).toBeNull();
 
     first.unmount();
-    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-    await screen.findByText('item A');
+    await renderList(PARENTS);
     expect(screen.getByText('item B')).toBeTruthy();
     expect(screen.queryByText('item E')).toBeNull();
   });

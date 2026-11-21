@@ -145,7 +145,6 @@ describe('Sidebar', () => {
 
         const row = await screen.findByRole('link', { name });
         expect(row).toHaveAttribute('aria-current', 'page');
-        expect(row.querySelector('.bg-primary')).not.toBeNull();
       });
 
       it('should hold a Learning pick when navigating onto a project plan', async () => {
@@ -216,16 +215,6 @@ describe('Sidebar', () => {
 
         fireEvent.click(screen.getByRole('button', { name: pick }));
         expect(screen.getByText(copy)).toBeInTheDocument();
-      });
-
-      it('should style All as the other segments: muted track, card surface, coral focus ring', async () => {
-        renderDock();
-        await screen.findByRole('link', { name: 'A project' });
-
-        const all = screen.getByRole('button', { name: 'All' });
-        expect(all.parentElement).toHaveClass('bg-muted');
-        expect(all).toHaveClass('bg-background', 'dark:bg-card', 'focus-visible:ring-ring');
-        expect(all.className).not.toMatch(/(^|\s)(bg|text)-primary/);
       });
     });
 

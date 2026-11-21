@@ -1,5 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { screen, fireEvent, waitFor, act } from '@testing-library/react';
+import {
+  api,
+  item as baseItem,
+  chooseAction,
+  counter,
+  nextPage as next,
+  renderTodo,
+  topLevel,
+} from '@/test/todoHarness';
 
 /**
  * FS-F6AEE R14–R18: Duplicate from a list row. The view waits for the server,
@@ -7,61 +16,12 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
  * its page, and reports a failure on the error line it already has.
  */
 
-const fetchChecklist = vi.fn();
-const duplicateChecklistItem = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: vi.fn(),
-  updateChecklistItem: vi.fn(async () => ({})),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/checklists', () => ({
-  duplicateChecklistItem: (...a: unknown[]) => duplicateChecklistItem(...a),
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (id: string, parentId?: string, extra: object = {}) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type: 'task',
-  parentId: parentId ?? null,
-  planId: 'plan-1',
-  ...extra,
-});
+const { fetchChecklist, duplicateChecklistItem } = api;
+const item = (id: string, parentId?: string, extra: object = {}) =>
+  baseItem(id, { parentId: parentId ?? null, ...extra });
 
 /** A family in the middle of the list: t1 with steps c1, c2, then t2. */
 const family = () => [item('t1'), item('c1', 't1'), item('c2', 't1'), item('t2')];
-
-/** n top-level tasks named t1..tn — 45 of them is three pages. */
-const topLevel = (n: number) =>
-  Array.from({ length: n }, (_, i) => item(`t${i + 1}`));
 
 /** The rows on screen, top to bottom, by item id. */
 const renderedIds = () =>
@@ -69,31 +29,15 @@ const renderedIds = () =>
     .getAllByText(/^item \w+$/)
     .map((el) => el.textContent!.replace('item ', ''));
 
-const counter = () => screen.getByTestId('page-counter');
-const next = () => screen.getByRole('button', { name: 'Next page' });
-
 const openMenu = (id: string) =>
   fireEvent.click(screen.getByRole('button', { name: `Actions for item ${id}` }));
 
-const duplicate = (id: string) => {
-  openMenu(id);
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Duplicate' }));
-};
+const duplicate = (id: string) => chooseAction(`item ${id}`, 'Duplicate');
 
-async function renderList(items: unknown[] = family()) {
-  fetchChecklist.mockImplementation(async () => items);
-  const Todo = (await import('./Todo')).default;
-  render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  await screen.findByText('item t1');
-}
+const renderList = (items: unknown[] = family()) => renderTodo(items, { view: 'list' });
+const renderGrid = (items: unknown[] = family()) => renderTodo(items, { view: 'grid' });
 
 describe('Todo duplicate from a list row (FS-F6AEE R14–R18)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    window.localStorage.setItem('checklistView', 'list');
-  });
-
   it('should put a duplicated item and its steps right after the source family, without a refetch', async () => {
     duplicateChecklistItem.mockResolvedValue([
       item('D'),
@@ -176,12 +120,6 @@ describe('Todo duplicate from a list row (FS-F6AEE R14–R18)', () => {
 });
 
 describe('Todo duplicate from the grid (FS-F6AEE R14, R16, R17)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    window.localStorage.setItem('checklistView', 'grid');
-  });
-
   /** The cards on screen, left to right, by item id. */
   const cardIds = () =>
     Array.from(document.querySelectorAll('[data-checklist-card]')).map((el) =>
@@ -202,7 +140,7 @@ describe('Todo duplicate from the grid (FS-F6AEE R14, R16, R17)', () => {
       item('Dc1', 'D'),
       item('Dc2', 'D'),
     ]);
-    await renderList([
+    await renderGrid([
       item('t1'),
       item('c1', 't1', { done: true }),
       item('c2', 't1'),
@@ -226,7 +164,7 @@ describe('Todo duplicate from the grid (FS-F6AEE R14, R16, R17)', () => {
 
   it('should put a duplicated step directly after it, in the same card', async () => {
     duplicateChecklistItem.mockResolvedValue([item('Dc', 't1')]);
-    await renderList();
+    await renderGrid();
 
     duplicate('c1');
 
@@ -237,7 +175,7 @@ describe('Todo duplicate from the grid (FS-F6AEE R14, R16, R17)', () => {
 
   it("should insert nothing and show Todo's item-action error when it fails", async () => {
     duplicateChecklistItem.mockRejectedValue(new Error('boom'));
-    await renderList();
+    await renderGrid();
 
     duplicate('t1');
 
