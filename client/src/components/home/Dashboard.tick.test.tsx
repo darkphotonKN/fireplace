@@ -284,7 +284,7 @@ describe('Dashboard — a tick that fails (R34, §Edge States)', () => {
     // its own share of the count.
     const first = deferred<unknown>();
     const third = deferred<unknown>();
-    api.PATCH.mockImplementation((_path: string, opts: any) =>
+    api.PATCH.mockImplementation((_path: string, opts: { params: { path: { checklist_id: string } } }) =>
       opts.params.path.checklist_id === 'first' ? first.promise : third.promise,
     );
     const user = await openHome();

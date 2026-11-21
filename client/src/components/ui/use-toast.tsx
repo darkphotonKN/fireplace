@@ -120,7 +120,7 @@ function dispatch(action: Action) {
   });
 }
 
-interface Toast extends Omit<ToastProps, 'id'> {}
+type Toast = Omit<ToastProps, 'id'>;
 
 function toast({ ...props }: Toast) {
   const id = genId();
