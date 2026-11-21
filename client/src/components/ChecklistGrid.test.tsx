@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { ChecklistItem } from '@/services/api';
 
@@ -65,45 +65,60 @@ const handlers = () => ({
   canDrag: vi.fn(() => true),
 });
 
-const card = (id: string) =>
-  document.querySelector(`[data-checklist-card="${id}"]`) as HTMLElement;
+type GridProps = Partial<React.ComponentProps<typeof ChecklistGrid>>;
 
-function renderGrid(
-  props: Partial<React.ComponentProps<typeof ChecklistGrid>> = {}
-) {
+/**
+ * Renders the grid over GROUPS with fresh handlers, returned alongside the
+ * view. `redraw` re-renders with the same handlers and props, `next` on top.
+ */
+function renderGrid(props: GridProps = {}) {
   const h = handlers();
-  const view = render(
-    <ChecklistGrid
-      groups={GROUPS}
-      collapsedIds={new Set()}
-      {...h}
-      {...props}
-    />
+  const ui = (p: GridProps) => (
+    <ChecklistGrid groups={GROUPS} collapsedIds={new Set()} {...h} {...p} />
   );
-  return { ...view, ...h };
+  const view = render(ui(props));
+  const redraw = (next: GridProps) => view.rerender(ui({ ...props, ...next }));
+  return { ...view, ...h, redraw };
 }
 
-describe('ChecklistGrid', () => {
-  beforeEach(() => vi.clearAllMocks());
+const card = (id: string) =>
+  document.querySelector(`[data-checklist-card="${id}"]`) as HTMLElement;
+const meter = (id: string) => card(id).querySelector('[data-progress-fill]');
 
+/** Opens the actions menu named for `description`. */
+const openMenu = (description: string) =>
+  fireEvent.click(screen.getByRole('button', { name: `Actions for ${description}` }));
+/** Opens the actions menu named for `description` and picks `label` from it. */
+const chooseAction = (description: string, label: string) => {
+  openMenu(description);
+  fireEvent.click(screen.getByRole('menuitem', { name: label }));
+};
+
+/** Clicks an item's text to rename it inline, types `to` and presses `key`. */
+const renameInline = (text: string, to: string, key = 'Enter') => {
+  fireEvent.click(screen.getByText(text));
+  const input = screen.getByRole('textbox', { name: `Rename ${text}` });
+  fireEvent.change(input, { target: { value: to } });
+  fireEvent.keyDown(input, { key });
+};
+
+describe('ChecklistGrid', () => {
   it('should meter the task children only, leaving notes out of the count', () => {
     renderGrid();
     // One of two tasks done; the note child is not progress.
     expect(within(card('p1')).getByText('1/2')).toBeTruthy();
-    expect(
-      card('p1').querySelector('[data-progress-fill]')!.getAttribute('style')
-    ).toContain('50%');
+    expect(meter('p1')!.getAttribute('style')).toContain('50%');
   });
 
   it('should say what a notes-only block holds, having no progress to show', () => {
     renderGrid();
     expect(within(card('p3')).getByText('2 notes')).toBeTruthy();
-    expect(card('p3').querySelector('[data-progress-fill]')).toBeNull();
+    expect(meter('p3')).toBeNull();
   });
 
   it('should give a block with no steps no meter and nothing to fold', () => {
     renderGrid();
-    expect(card('p2').querySelector('[data-progress-fill]')).toBeNull();
+    expect(meter('p2')).toBeNull();
     expect(
       within(card('p2')).queryByRole('button', { name: /^(Collapse|Expand)/ })
     ).toBeNull();
@@ -145,22 +160,13 @@ describe('ChecklistGrid', () => {
     ).toBeNull();
   });
 
-  it('should rename an item in place on Enter', () => {
+  it.each([
+    ['rename an item in place on Enter', 'Enter', [['c2', 'channels, buffered']]],
+    ['drop a rename on Escape', 'Escape', []],
+  ])('should %s', (_what, key, calls) => {
     const { onRename } = renderGrid();
-    fireEvent.click(screen.getByText('channels'));
-    const input = screen.getByRole('textbox', { name: 'Rename channels' });
-    fireEvent.change(input, { target: { value: 'channels, buffered' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    expect(onRename).toHaveBeenCalledWith('c2', 'channels, buffered');
-  });
-
-  it('should drop a rename on Escape', () => {
-    const { onRename } = renderGrid();
-    fireEvent.click(screen.getByText('channels'));
-    const input = screen.getByRole('textbox', { name: 'Rename channels' });
-    fireEvent.change(input, { target: { value: 'nope' } });
-    fireEvent.keyDown(input, { key: 'Escape' });
-    expect(onRename).not.toHaveBeenCalled();
+    renameInline('channels', 'channels, buffered', key);
+    expect(onRename.mock.calls).toEqual(calls);
   });
 
   it('should check a step off through the same handler the list uses', () => {
@@ -176,8 +182,6 @@ describe('ChecklistGrid', () => {
  * milestone's `done` is set by a person, through the checkbox's own handler.
  */
 describe('ChecklistGrid completion nudge', () => {
-  beforeEach(() => vi.clearAllMocks());
-
   const milestone = (
     done: boolean[],
     extra: Partial<ChecklistItem> = {},
@@ -196,6 +200,9 @@ describe('ChecklistGrid completion nudge', () => {
 
   const nudge = () =>
     card('m1').querySelector('[data-completion-nudge]') as HTMLElement | null;
+  const complete = () => card('m1').hasAttribute('data-complete');
+  const notNow = () =>
+    fireEvent.click(within(nudge()!).getByRole('button', { name: 'Not now, Ship v1' }));
 
   it('should offer to close a milestone whose task steps are all done', () => {
     const { onToggleDone } = renderGrid({
@@ -204,10 +211,8 @@ describe('ChecklistGrid completion nudge', () => {
 
     // Full meter, a glow, and the offer.
     expect(within(card('m1')).getByText('2/2')).toBeTruthy();
-    expect(
-      card('m1').querySelector('[data-progress-fill]')!.getAttribute('style')
-    ).toContain('100%');
-    expect(card('m1').hasAttribute('data-complete')).toBe(true);
+    expect(meter('m1')!.getAttribute('style')).toContain('100%');
+    expect(complete()).toBe(true);
     expect(nudge()).not.toBeNull();
 
     fireEvent.click(
@@ -219,25 +224,15 @@ describe('ChecklistGrid completion nudge', () => {
   });
 
   it('should hold a dismissal until the milestone\'s progress changes', () => {
-    const { rerender, onToggleDone, ...h } = renderGrid({
+    const { redraw, onToggleDone } = renderGrid({
       groups: [milestone([true, true])],
     });
-    const draw = (groups: ReturnType<typeof milestone>[]) =>
-      rerender(
-        <ChecklistGrid
-          groups={groups}
-          collapsedIds={new Set()}
-          {...h}
-          onToggleDone={onToggleDone}
-        />
-      );
+    const draw = (groups: ReturnType<typeof milestone>[]) => redraw({ groups });
 
-    fireEvent.click(
-      within(nudge()!).getByRole('button', { name: 'Not now, Ship v1' })
-    );
+    notNow();
     expect(nudge()).toBeNull();
     // Still complete, just not nagging.
-    expect(card('m1').hasAttribute('data-complete')).toBe(true);
+    expect(complete()).toBe(true);
 
     // Closed and reopened at the same progress: still dismissed.
     draw([milestone([true, true], { done: true })]);
@@ -254,9 +249,7 @@ describe('ChecklistGrid completion nudge', () => {
 
   it('should show a dismissed nudge again after a remount: dismissal is memory only', () => {
     const first = renderGrid({ groups: [milestone([true, true])] });
-    fireEvent.click(
-      within(nudge()!).getByRole('button', { name: 'Not now, Ship v1' })
-    );
+    notNow();
     expect(nudge()).toBeNull();
     first.unmount();
 
@@ -264,15 +257,15 @@ describe('ChecklistGrid completion nudge', () => {
     expect(nudge()).not.toBeNull();
   });
 
-  it('should never nudge a milestone with no task steps, which keeps its manual tick', () => {
-    // No children at all, then only note children (R7).
-    for (const groups of [[milestone([])], [milestone([], {}, 2)]]) {
-      const view = renderGrid({ groups });
-      expect(nudge()).toBeNull();
-      expect(card('m1').hasAttribute('data-complete')).toBe(false);
-      expect(screen.getByLabelText('Mark Ship v1 done')).toBeTruthy();
-      view.unmount();
-    }
+  // No task steps: no children at all, or only note children (R7).
+  it.each([
+    ['no children', 0],
+    ['only note children', 2],
+  ])('should never nudge a milestone with %s, which keeps its manual tick', (_what, notes) => {
+    renderGrid({ groups: [milestone([], {}, notes)] });
+    expect(nudge()).toBeNull();
+    expect(complete()).toBe(false);
+    expect(screen.getByLabelText('Mark Ship v1 done')).toBeTruthy();
   });
 
   it('should never nudge a note card, nor give it a checkbox', () => {
@@ -289,21 +282,14 @@ describe('ChecklistGrid completion nudge', () => {
   });
 
   it('should end the complete state when a step is added, and never close on its own', () => {
-    const { rerender, onToggleDone, ...h } = renderGrid({
+    const { redraw, onToggleDone } = renderGrid({
       groups: [milestone([true, true])],
     });
     expect(nudge()).not.toBeNull();
 
-    rerender(
-      <ChecklistGrid
-        groups={[milestone([true, true, false])]}
-        collapsedIds={new Set()}
-        {...h}
-        onToggleDone={onToggleDone}
-      />
-    );
+    redraw({ groups: [milestone([true, true, false])] });
     expect(nudge()).toBeNull();
-    expect(card('m1').hasAttribute('data-complete')).toBe(false);
+    expect(complete()).toBe(false);
     expect(within(card('m1')).getByText('2/3')).toBeTruthy();
     expect(onToggleDone).not.toHaveBeenCalled();
   });
@@ -361,8 +347,6 @@ describe('ChecklistGrid traced milestone (FS-FSFEC R33)', () => {
 });
 
 describe('ChecklistGrid the way into a milestone (FS-043WP R5–R7)', () => {
-  beforeEach(() => vi.clearAllMocks());
-
   const href = (id: string) => `/plan/plan-1/m/${id}`;
 
   it('should give every milestone card a real link to its page, named for it', () => {
@@ -395,27 +379,23 @@ describe('ChecklistGrid the way into a milestone (FS-043WP R5–R7)', () => {
   it("should offer Open in a milestone card menu, handing the milestone to the caller's navigation", () => {
     const onOpenMilestone = vi.fn();
     renderGrid({ milestoneHref: href, onOpenMilestone });
-    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Open' }));
+    chooseAction('Learn Go', 'Open');
     expect(onOpenMilestone).toHaveBeenCalledWith('p1');
   });
 
   it.each([
-    ['a step', 'Actions for goroutines'],
-    ['a note card', 'Actions for Reading list'],
-  ])('should not offer Open in %s menu', (_why, trigger) => {
+    ['a step', 'goroutines'],
+    ['a note card', 'Reading list'],
+  ])('should not offer Open in %s menu', (_why, description) => {
     renderGrid({ milestoneHref: href });
-    fireEvent.click(screen.getByRole('button', { name: trigger }));
+    openMenu(description);
     expect(screen.queryByRole('menuitem', { name: 'Open' })).toBeNull();
   });
 
   it("should still rename when a card's title is clicked", () => {
     const onOpenMilestone = vi.fn();
     const { onRename } = renderGrid({ milestoneHref: href, onOpenMilestone });
-    fireEvent.click(screen.getByText('Learn Go'));
-    const input = screen.getByRole('textbox', { name: 'Rename Learn Go' });
-    fireEvent.change(input, { target: { value: 'Learn Go well' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
+    renameInline('Learn Go', 'Learn Go well');
     expect(onRename).toHaveBeenCalledWith('p1', 'Learn Go well');
     expect(onOpenMilestone).not.toHaveBeenCalled();
   });
@@ -436,28 +416,21 @@ describe('ChecklistGrid the way into a milestone (FS-043WP R5–R7)', () => {
 });
 
 describe('ChecklistGrid duplicate (FS-F6AEE R14, R16)', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  const choose = (trigger: string) => {
-    fireEvent.click(screen.getByRole('button', { name: trigger }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Duplicate' }));
-  };
-
   it.each([
-    ['a milestone card', 'Actions for Learn Go', 'p1'],
-    ['a note card', 'Actions for Reading list', 'p3'],
-    ['a step in a milestone card', 'Actions for channels', 'c2'],
-    ['a step in a note card', 'Actions for DDIA', 'c4'],
-  ])('should hand %s to the caller to duplicate', (_why, trigger, id) => {
+    ['a milestone card', 'Learn Go', 'p1'],
+    ['a note card', 'Reading list', 'p3'],
+    ['a step in a milestone card', 'channels', 'c2'],
+    ['a step in a note card', 'DDIA', 'c4'],
+  ])('should hand %s to the caller to duplicate', (_why, description, id) => {
     const onDuplicate = vi.fn();
     renderGrid({ onDuplicate });
-    choose(trigger);
+    chooseAction(description, 'Duplicate');
     expect(onDuplicate).toHaveBeenCalledWith(id);
   });
 
   it('should offer no Duplicate when the caller hands none over', () => {
     renderGrid();
-    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
+    openMenu('Learn Go');
     expect(screen.queryByRole('menuitem', { name: 'Duplicate' })).toBeNull();
   });
 
@@ -471,36 +444,26 @@ describe('ChecklistGrid duplicate (FS-F6AEE R14, R16)', () => {
         },
       ],
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Actions for Learn Go' }));
+    openMenu('Learn Go');
     expect(screen.queryByRole('menuitem', { name: 'Duplicate' })).toBeNull();
     fireEvent.keyDown(document, { key: 'Escape' });
-    fireEvent.click(screen.getByRole('button', { name: 'Actions for goroutines' }));
+    openMenu('goroutines');
     expect(screen.queryByRole('menuitem', { name: 'Duplicate' })).toBeNull();
   });
 
   it('should leave a copy card untraced: tracing follows only the composer', () => {
-    const { rerender } = renderGrid({ tracedId: 'p1', onDuplicate: vi.fn() });
+    const { redraw } = renderGrid({ tracedId: 'p1', onDuplicate: vi.fn() });
     const copy = {
       item: mk('d1', 'Learn Go'),
       children: [mk('dc1', 'goroutines', { parentId: 'd1' })],
     };
-    rerender(
-      <ChecklistGrid
-        {...handlers()}
-        groups={[GROUPS[0], copy, ...GROUPS.slice(1)]}
-        collapsedIds={new Set()}
-        tracedId="p1"
-        onDuplicate={vi.fn()}
-      />
-    );
+    redraw({ groups: [GROUPS[0], copy, ...GROUPS.slice(1)] });
     expect(card('p1').hasAttribute('data-traced')).toBe(true);
     expect(card('d1').hasAttribute('data-traced')).toBe(false);
   });
 });
 
 describe('ChecklistGrid notes on paper (FS-PGG2N R10, R11, R47, R48)', () => {
-  beforeEach(() => vi.clearAllMocks());
-
   const noteGroups = [
     {
       item: mk('n1', 'The whole long body\nwith a second line', {
@@ -557,8 +520,6 @@ describe('ChecklistGrid notes on paper (FS-PGG2N R10, R11, R47, R48)', () => {
 });
 
 describe('ChecklistGrid ways into a note (FS-PGG2N R12–R14)', () => {
-  beforeEach(() => vi.clearAllMocks());
-
   const noteHref = (id: string) => `/plan/p/n/${id}`;
   const milestoneHref = (id: string) => `/plan/p/m/${id}`;
   const groups = [
@@ -596,8 +557,7 @@ describe('ChecklistGrid ways into a note (FS-PGG2N R12–R14)', () => {
   it("should open the note page in writing mode from a note's menu Rename (R14)", () => {
     const onEditNote = vi.fn();
     const { onRename } = renderGrid({ groups, noteHref, onEditNote });
-    fireEvent.click(screen.getByRole('button', { name: 'Actions for Launch ideas' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    chooseAction('Launch ideas', 'Rename');
     expect(onEditNote).toHaveBeenCalledWith('n1');
     expect(screen.queryByRole('textbox', { name: /^Rename/ })).toBeNull();
     expect(onRename).not.toHaveBeenCalled();
@@ -617,10 +577,7 @@ describe('ChecklistGrid ways into a note (FS-PGG2N R12–R14)', () => {
 
   it('should still rename task steps and milestone titles inline', () => {
     const { onRename } = renderGrid({ groups, noteHref, milestoneHref });
-    fireEvent.click(screen.getByText('a task step'));
-    const step = screen.getByRole('textbox', { name: 'Rename a task step' });
-    fireEvent.change(step, { target: { value: 'a better step' } });
-    fireEvent.keyDown(step, { key: 'Enter' });
+    renameInline('a task step', 'a better step');
     expect(onRename).toHaveBeenCalledWith('s1', 'a better step');
 
     fireEvent.click(screen.getByText('Learn Go'));
@@ -630,8 +587,7 @@ describe('ChecklistGrid ways into a note (FS-PGG2N R12–R14)', () => {
   it("should keep a task's menu Rename inline", () => {
     const onEditNote = vi.fn();
     renderGrid({ groups, noteHref, onEditNote, milestoneHref });
-    fireEvent.click(screen.getByRole('button', { name: 'Actions for a task step' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    chooseAction('a task step', 'Rename');
     expect(onEditNote).not.toHaveBeenCalled();
     expect(screen.getByRole('textbox', { name: 'Rename a task step' })).toBeInTheDocument();
   });

@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { wasTouchedToday } from '@/lib/touchedToday';
+import { item, notPlanned, plan, renderHome } from '@/test/dashboardFixtures';
+import { deferred, settle } from '@/test/async';
 
 /**
  * FS-KSJFR slice 5 (I-KSJFR-5): ticking a row off from home (R33–R35, D9,
@@ -37,45 +39,13 @@ vi.mock('@/components/ui/use-toast', () => ({
   useToast: () => ({ toast }),
 }));
 
-import Dashboard from './Dashboard';
-
-/**
- * `onStartPlan` belongs to the first-run invitation (I-KSJFR-7) — it puts the
- * focus prompt back on screen. Nothing in these files exercises that path, so
- * they take a noop and the prop stays required on the real component.
- */
-const Home = () => <Dashboard onStartPlan={() => {}} />;
-
 const TODAY = new Date(2026, 2, 16, 9, 0); // Monday 16 March 2026, local
 const DUE = '2026-03-16T00:00:00Z';
 
-const plan = {
-  id: 'p1',
-  name: 'Ship it',
-  focus: '',
-  description: '',
-  planType: 'project',
-  dailyReset: false,
-  userId: 'u1',
-  createdAt: '2026-01-01T00:00:00Z',
-  updatedAt: '2026-03-01T00:00:00Z',
-};
+const p1 = plan('p1', '2026-03-01T00:00:00Z', { name: 'Ship it', focus: '' });
 
-const item = (id: string) => ({
-  id,
-  planId: 'p1',
-  description: id,
-  done: false,
-  archived: false,
-  scope: 'longterm',
-  type: 'task',
-  sequence: '1',
-  dueDate: DUE,
-  createdAt: '2026-01-01T00:00:00Z',
-  updatedAt: '2026-01-01T00:00:00Z',
-});
-
-const ITEMS = ['first', 'second', 'third'].map(item);
+/** Three long-term tasks of p1's, all due today. */
+const ITEMS = ['first', 'second', 'third'].map((id) => item(id, { planId: 'p1', dueDate: DUE }));
 
 const ok = (data: unknown) => ({
   data,
@@ -85,28 +55,13 @@ const ok = (data: unknown) => ({
 
 /** The day plan roll-up's read (FS-02JBZ R85): a day nobody has planned. */
 const DAY_PLAN_PATH = '/api/insights/day-plan';
-const notPlanned = ok({ status: 'not_planned', groups: [], refreshesRemaining: 3 });
-
-/** A promise the test settles by hand, so "in flight" is observable. */
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
-    resolve = res;
-  });
-  return { promise, resolve };
-}
+const NOT_PLANNED = ok(notPlanned('p1'));
 
 const rejected = {
   data: undefined,
   error: { code: 'INTERNAL' },
   response: { status: 500 },
 };
-
-/** Let everything already scheduled run, so an over-fetch gets its chance. */
-const settle = () =>
-  act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
 
 /** The Today block only: a Continue card is a list item too. */
 const block = () => screen.getByRole('region', { name: 'Today' });
@@ -127,7 +82,7 @@ beforeEach(() => {
   api.PATCH.mockReset();
   api.GET.mockImplementation((path: string) =>
     Promise.resolve(
-      path === '/api/plans' ? ok([plan]) : path === DAY_PLAN_PATH ? notPlanned : ok(ITEMS),
+      path === '/api/plans' ? ok([p1]) : path === DAY_PLAN_PATH ? NOT_PLANNED : ok(ITEMS),
     ),
   );
   api.PATCH.mockResolvedValue(ok({ ...ITEMS[0], done: true }));
@@ -137,7 +92,7 @@ afterEach(() => vi.useRealTimers());
 /** Renders home and waits for the three due rows to land. */
 async function openHome() {
   const user = userEvent.setup();
-  render(<Home />);
+  await renderHome();
   await screen.findByRole('heading', { name: 'Today' });
   await waitFor(() => expect(ticked()).toHaveLength(3));
   return user;
@@ -165,7 +120,7 @@ describe('Dashboard — ticking a row off home (R33)', () => {
     const user = await openHome();
 
     await user.click(tickBox('second'));
-    await settle();
+    await settle(0);
 
     expect(api.PATCH).toHaveBeenCalledTimes(1);
     expect(api.PATCH).toHaveBeenCalledWith(
@@ -191,7 +146,7 @@ describe('Dashboard — ticking a row off home (R33)', () => {
     const user = await openHome();
 
     await user.click(tickBox('second'));
-    await settle();
+    await settle(0);
 
     expect(rowOrder()).toEqual([
       expect.stringContaining('first'),
@@ -205,7 +160,7 @@ describe('Dashboard — ticking a row off home (R33)', () => {
     const reads = api.GET.mock.calls.length;
 
     await user.click(tickBox('second'));
-    await settle();
+    await settle(0);
 
     expect(api.GET.mock.calls.length).toBe(reads);
   });
@@ -217,11 +172,11 @@ describe('Dashboard — ticking a row off home (R33)', () => {
     expect(screen.getByText(/3 due across 1 plan/)).toBeInTheDocument();
 
     await user.click(tickBox('first'));
-    await settle();
+    await settle(0);
     expect(screen.getByText(/2 due across 1 plan/)).toBeInTheDocument();
 
     await user.click(tickBox('third'));
-    await settle();
+    await settle(0);
     expect(screen.getByText(/1 due across 1 plan/)).toBeInTheDocument();
   });
 });
@@ -274,7 +229,7 @@ describe('Dashboard — a tick that fails (R34, §Edge States)', () => {
     await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
 
     await user.click(tickBox('second'));
-    await settle();
+    await settle(0);
     expect(ticked()).toEqual(['false', 'true', 'false']);
     expect(screen.getByText(/2 due across 1 plan/)).toBeInTheDocument();
   });
@@ -314,13 +269,13 @@ describe('Dashboard — every row ticked (R35)', () => {
    * would have nothing to show and the test would pass for the wrong reason.
    * `waiting` is the row a re-selection would reach for.
    */
-  const second = { ...plan, id: 'p2', name: 'Later', updatedAt: '2026-02-01T00:00:00Z' };
-  const waiting = { ...item('a-replacement-row'), planId: 'p2', dueDate: undefined };
+  const second = plan('p2', '2026-02-01T00:00:00Z', { name: 'Later', focus: '' });
+  const waiting = item('a-replacement-row', { planId: 'p2' });
 
   beforeEach(() => {
     api.GET.mockImplementation((path: string, opts?: { params?: { path?: { id?: string } } }) => {
-      if (path === '/api/plans') return Promise.resolve(ok([plan, second]));
-      if (path === DAY_PLAN_PATH) return Promise.resolve(notPlanned);
+      if (path === '/api/plans') return Promise.resolve(ok([p1, second]));
+      if (path === DAY_PLAN_PATH) return Promise.resolve(NOT_PLANNED);
       return Promise.resolve(ok(opts?.params?.path?.id === 'p2' ? [waiting] : ITEMS));
     });
   });
@@ -331,7 +286,7 @@ describe('Dashboard — every row ticked (R35)', () => {
     for (const name of ['first', 'second', 'third']) {
       await user.click(tickBox(name));
     }
-    await settle();
+    await settle(0);
 
     expect(screen.getByRole('heading', { name: 'Today' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Next up' })).toBeNull();

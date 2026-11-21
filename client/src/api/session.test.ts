@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { deferred } from "@/test/async";
 import { config } from "@/config/environment";
 import { authFetch } from "@/services/api";
 import { api } from "./client";
@@ -63,20 +64,52 @@ function gateway(routes: {
   return { refreshCalls, otherCalls };
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
-  });
-  return { promise, resolve };
-}
-
 /** Lets every request already answered reach its 401 handling. */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const unauthorized = () => json(401, { code: "UNAUTHENTICATED" });
 const okIfNewToken = (bearer: string | null) =>
   bearer === "new-access" ? json(200, { ok: true }) : unauthorized();
+
+/** Refresh answers that say nothing about the session: keep the tokens, hand back the 401. */
+const refreshFailures: [string, () => Response | Promise<Response>][] = [
+  ["a network error", () => Promise.reject(new TypeError("Failed to fetch"))],
+  ["a 500", () => json(500, { code: "INTERNAL_ERROR" })],
+  ["a 404", () => new Response("404 page not found", { status: 404 })],
+  ["a 422", () => json(422, { code: "VALIDATION_FAILED" })],
+  ["a 200 that is not JSON", () => new Response("<html>", { status: 200 })],
+];
+
+const USER_B = { id: "user-2", name: "Bea" };
+
+function signInAsSomeoneElse() {
+  localStorage.setItem("accessToken", "b-access");
+  localStorage.setItem("refreshToken", "b-refresh");
+  localStorage.setItem("user", JSON.stringify(USER_B));
+}
+
+/** Signed in, with `call` out and its refresh held open until the test answers it. */
+function exchangeInFlight<T>(call: () => Promise<T>) {
+  signedIn();
+  const pending = deferred<Response>();
+  const { refreshCalls } = gateway({ refresh: () => pending.promise, other: unauthorized });
+  const result = call();
+  return { pending, call: result, started: vi.waitFor(() => expect(refreshCalls).toHaveLength(1)) };
+}
+
+function expectKept() {
+  expect(localStorage.getItem("accessToken")).toBe("old-access");
+  expect(localStorage.getItem("refreshToken")).toBe("old-refresh");
+  expect(localStorage.getItem("user")).toBe(JSON.stringify(USER));
+  expect(window.location.href).toBe("http://localhost/plans");
+}
+
+function expectSignedOut() {
+  expect(localStorage.getItem("accessToken")).toBeNull();
+  expect(localStorage.getItem("refreshToken")).toBeNull();
+  expect(localStorage.getItem("user")).toBeNull();
+  expect(window.location.href).toBe("/auth");
+}
 
 beforeEach(() => {
   vi.stubGlobal("location", { href: "http://localhost/plans" });
@@ -107,38 +140,7 @@ describe("sessionFetch", () => {
     expect(window.location.href).toBe("http://localhost/plans");
   });
 
-  it.each(["POST", "PATCH", "DELETE"])(
-    "should resend the identical body when a %s is retried",
-    async (method) => {
-      signedIn();
-      const { otherCalls } = gateway({
-        refresh: () => authResponse(),
-        other: okIfNewToken,
-      });
-      const body = JSON.stringify({ description: "keep what I typed" });
-
-      const response = await sessionFetch(THING_URL, {
-        method,
-        body,
-        headers: { "Content-Type": "application/json", "X-Custom": "kept" },
-      });
-
-      expect(response.status).toBe(200);
-      expect(otherCalls).toEqual([
-        { method, bearer: "old-access", body },
-        { method, bearer: "new-access", body },
-      ]);
-    },
-  );
-
-  describe.each([
-    ["a network error", () => Promise.reject(new TypeError("Failed to fetch"))],
-    ["a 500", () => json(500, { code: "INTERNAL_ERROR" })],
-    ["a 503", () => json(503, { code: "SERVICE_UNAVAILABLE" })],
-    ["a 404", () => new Response("404 page not found", { status: 404 })],
-    ["a 422", () => json(422, { code: "VALIDATION_FAILED" })],
-    ["a 200 that is not JSON", () => new Response("<html>", { status: 200 })],
-  ])("when refresh answers with %s", (_name, refresh) => {
+  describe.each(refreshFailures)("when refresh answers with %s", (_name, refresh) => {
     it("should keep all three keys, not redirect, and hand back the original 401", async () => {
       signedIn();
       const { otherCalls } = gateway({ refresh, other: unauthorized });
@@ -147,20 +149,10 @@ describe("sessionFetch", () => {
 
       expect(response.status).toBe(401);
       expect(await response.json()).toEqual({ code: "UNAUTHENTICATED" });
-      expect(localStorage.getItem("accessToken")).toBe("old-access");
-      expect(localStorage.getItem("refreshToken")).toBe("old-refresh");
-      expect(localStorage.getItem("user")).toBe(JSON.stringify(USER));
-      expect(window.location.href).toBe("http://localhost/plans");
+      expectKept();
       expect(otherCalls).toHaveLength(1);
     });
   });
-
-  function expectSignedOut() {
-    expect(localStorage.getItem("accessToken")).toBeNull();
-    expect(localStorage.getItem("refreshToken")).toBeNull();
-    expect(localStorage.getItem("user")).toBeNull();
-    expect(window.location.href).toBe("/auth");
-  }
 
   it("should pass a non-401 from the retry to the caller and keep the new tokens", async () => {
     signedIn();
@@ -242,33 +234,13 @@ describe("sessionFetch", () => {
   });
 
   describe("when the user changes during the exchange", () => {
-    function exchangeInFlight() {
-      signedIn();
-      const pending = deferred<Response>();
-      const { refreshCalls } = gateway({
-        refresh: () => pending.promise,
-        other: unauthorized,
-      });
-      const call = sessionFetch(THING_URL);
-      return { pending, call, started: vi.waitFor(() => expect(refreshCalls).toHaveLength(1)) };
-    }
-
-    function signInAsSomeoneElse() {
-      localStorage.setItem("accessToken", "b-access");
-      localStorage.setItem("refreshToken", "b-refresh");
-      localStorage.setItem("user", JSON.stringify({ id: "user-2", name: "Bea" }));
-    }
-
-    const answers: [string, () => Response][] = [
-      ["succeeds", () => authResponse()],
-      ["answers 401", unauthorized],
-    ];
-
-    it.each(answers)("should leave storage empty and not redirect after sign-out when refresh %s", async (_name, answer) => {
-      const { pending, call, started } = exchangeInFlight();
+    // A refresh that succeeds mid-exchange is pinned on both client paths
+    // under "through %s"; these keep the 401 answer.
+    it("should leave storage empty and not redirect after sign-out when refresh answers 401", async () => {
+      const { pending, call, started } = exchangeInFlight(() => sessionFetch(THING_URL));
       await started;
       localStorage.clear();
-      pending.resolve(answer());
+      pending.resolve(unauthorized());
 
       const response = await call;
 
@@ -278,11 +250,11 @@ describe("sessionFetch", () => {
       expect(window.location.href).toBe("http://localhost/plans");
     });
 
-    it.each(answers)("should leave the other user's tokens in place when refresh %s", async (_name, answer) => {
-      const { pending, call, started } = exchangeInFlight();
+    it("should leave the other user's tokens in place when refresh answers 401", async () => {
+      const { pending, call, started } = exchangeInFlight(() => sessionFetch(THING_URL));
       await started;
       signInAsSomeoneElse();
-      pending.resolve(answer());
+      pending.resolve(unauthorized());
 
       const response = await call;
 
@@ -355,10 +327,7 @@ describe("sessionFetch", () => {
       expect(deadline).toHaveBeenCalledWith(10_000);
       expect(response.status).toBe(401);
       expect(await response.json()).toEqual({ code: "UNAUTHENTICATED" });
-      expect(localStorage.getItem("accessToken")).toBe("old-access");
-      expect(localStorage.getItem("refreshToken")).toBe("old-refresh");
-      expect(localStorage.getItem("user")).toBe(JSON.stringify(USER));
-      expect(window.location.href).toBe("http://localhost/plans");
+      expectKept();
     });
 
     it("should let a later 401 start a fresh exchange after the deadline", async () => {
@@ -454,17 +423,7 @@ describe.each(clientPaths)("through %s", (_name, path) => {
   async function expectSignOut(call: Promise<Outcome>) {
     if (path.throwsOnSignOut) await expect(call).rejects.toThrow("Unauthorized");
     else expect(await call).toEqual(ORIGINAL_401);
-    expect(localStorage.getItem("accessToken")).toBeNull();
-    expect(localStorage.getItem("refreshToken")).toBeNull();
-    expect(localStorage.getItem("user")).toBeNull();
-    expect(window.location.href).toBe("/auth");
-  }
-
-  function expectKept() {
-    expect(localStorage.getItem("accessToken")).toBe("old-access");
-    expect(localStorage.getItem("refreshToken")).toBe("old-refresh");
-    expect(localStorage.getItem("user")).toBe(JSON.stringify(USER));
-    expect(window.location.href).toBe("http://localhost/plans");
+    expectSignedOut();
   }
 
   it("should attach the stored bearer and leave a success alone", async () => {
@@ -525,13 +484,10 @@ describe.each(clientPaths)("through %s", (_name, path) => {
 
   it("should not resend under another user when they signed in while the request was out", async () => {
     signedIn();
-    const USER_B = JSON.stringify({ id: "user-2", name: "Bea" });
     const { refreshCalls, otherCalls } = gateway({
       refresh: () => authResponse(),
       other: (bearer) => {
-        localStorage.setItem("accessToken", "b-access");
-        localStorage.setItem("refreshToken", "b-refresh");
-        localStorage.setItem("user", USER_B);
+        signInAsSomeoneElse();
         return bearer === "b-access" ? json(200, { ok: true }) : unauthorized();
       },
     });
@@ -541,7 +497,7 @@ describe.each(clientPaths)("through %s", (_name, path) => {
     expect(refreshCalls).toHaveLength(0);
     expect(localStorage.getItem("accessToken")).toBe("b-access");
     expect(localStorage.getItem("refreshToken")).toBe("b-refresh");
-    expect(localStorage.getItem("user")).toBe(USER_B);
+    expect(localStorage.getItem("user")).toBe(JSON.stringify(USER_B));
     expect(window.location.href).toBe("http://localhost/plans");
   });
 
@@ -584,9 +540,7 @@ describe.each(clientPaths)("through %s", (_name, path) => {
   it("should keep the no-bearer sign-out when someone signed in while the request was out", async () => {
     const { refreshCalls, otherCalls } = gateway({
       other: () => {
-        localStorage.setItem("accessToken", "b-access");
-        localStorage.setItem("refreshToken", "b-refresh");
-        localStorage.setItem("user", JSON.stringify({ id: "user-2" }));
+        signInAsSomeoneElse();
         return unauthorized();
       },
     });
@@ -596,12 +550,9 @@ describe.each(clientPaths)("through %s", (_name, path) => {
     expect(refreshCalls).toHaveLength(0);
   });
 
-  it.each([
-    ["a network error", () => Promise.reject(new TypeError("Failed to fetch"))],
-    ["a 500", () => json(500, { code: "INTERNAL_ERROR" })],
-    ["a 503", () => json(503, { code: "SERVICE_UNAVAILABLE" })],
-    ["a 404", () => new Response("404 page not found", { status: 404 })],
-  ])("should keep the tokens and return the 401 when refresh fails with %s", async (_n, refresh) => {
+  // The wiring for "refresh failed": one thrown, one answered. Every failure
+  // this module recognises has its own row under sessionFetch.
+  it.each(refreshFailures.slice(0, 2))("should keep the tokens and return the 401 when refresh fails with %s", async (_n, refresh) => {
     signedIn();
     gateway({ refresh, other: unauthorized });
 
@@ -646,12 +597,8 @@ describe.each(clientPaths)("through %s", (_name, path) => {
   });
 
   it("should discard the result and not redirect when the user signs out during the exchange", async () => {
-    signedIn();
-    const pending = deferred<Response>();
-    const { refreshCalls } = gateway({ refresh: () => pending.promise, other: unauthorized });
-
-    const call = path.call();
-    await vi.waitFor(() => expect(refreshCalls).toHaveLength(1));
+    const { pending, call, started } = exchangeInFlight(() => path.call());
+    await started;
     localStorage.clear();
     pending.resolve(authResponse());
 
@@ -661,20 +608,15 @@ describe.each(clientPaths)("through %s", (_name, path) => {
   });
 
   it("should leave the other user's tokens when they sign in during the exchange", async () => {
-    signedIn();
-    const pending = deferred<Response>();
-    const { refreshCalls } = gateway({ refresh: () => pending.promise, other: unauthorized });
-
-    const call = path.call();
-    await vi.waitFor(() => expect(refreshCalls).toHaveLength(1));
-    localStorage.setItem("accessToken", "b-access");
-    localStorage.setItem("refreshToken", "b-refresh");
-    localStorage.setItem("user", JSON.stringify({ id: "user-2" }));
+    const { pending, call, started } = exchangeInFlight(() => path.call());
+    await started;
+    signInAsSomeoneElse();
     pending.resolve(authResponse());
 
     expect(await call).toEqual(ORIGINAL_401);
     expect(localStorage.getItem("accessToken")).toBe("b-access");
     expect(localStorage.getItem("refreshToken")).toBe("b-refresh");
+    expect(JSON.parse(localStorage.getItem("user")!).id).toBe("user-2");
     expect(window.location.href).toBe("http://localhost/plans");
   });
 

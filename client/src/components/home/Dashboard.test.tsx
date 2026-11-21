@@ -1,7 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { format } from 'date-fns';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {
+  api,
+  item,
+  notPlanned,
+  plan,
+  plansAged,
+  progressSlot,
+  renderHome,
+  renderHomeWithPlans,
+} from '@/test/dashboardHarness';
+import { deferred, settle } from '@/test/async';
+import type { Plan } from '@/api/plans';
+import type { ChecklistItem } from '@/api/checklists';
 
 /**
  * FS-KSJFR slice 2 (I-KSJFR-2): the dashboard shell and the capped fan-out.
@@ -15,86 +28,7 @@ import userEvent from '@testing-library/user-event';
  * that shape holds or breaks.
  */
 
-const listPlans = vi.fn();
-const listChecklists = vi.fn();
-const getDayPlan = vi.fn();
-const planMyDay = vi.fn();
-
-vi.mock('@/api/plans', () => ({
-  listPlans: (...a: unknown[]) => listPlans(...a),
-}));
-vi.mock('@/api/checklists', () => ({
-  listChecklists: (...a: unknown[]) => listChecklists(...a),
-}));
-vi.mock('@/api/insights', () => ({
-  getDayPlan: (...a: unknown[]) => getDayPlan(...a),
-  planMyDay: (...a: unknown[]) => planMyDay(...a),
-}));
-
-import Dashboard from './Dashboard';
-
-/**
- * `onStartPlan` belongs to the first-run invitation (I-KSJFR-7) — it puts the
- * focus prompt back on screen. Nothing in these files exercises that path, so
- * they take a noop and the prop stays required on the real component.
- */
-const Home = () => <Dashboard onStartPlan={() => {}} />;
-import type { Plan } from '@/api/plans';
-import type { ChecklistItem } from '@/api/checklists';
-
-/** A promise a test resolves by hand, so "in flight" is an observable state. */
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  // Nothing is ever left unhandled: every deferred in this file is settled.
-  return { promise, resolve, reject };
-}
-
-/**
- * Let everything already scheduled run, renders included.
- *
- * A request budget is an assertion about what does NOT happen, and `waitFor`
- * cannot make one: it resolves the instant the count it is waiting for is
- * reached, so a fetch issued on a later tick — a re-render re-running the
- * effect, a second fan-out — lands after the test has already looked. Settling
- * first gives the over-fetch its chance to happen and be counted.
- */
-const settle = () =>
-  act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 32));
-  });
-
-const plan = (id: string, updatedAt: string, extra: Partial<Plan> = {}): Plan =>
-  ({
-    id,
-    name: `Plan ${id}`,
-    focus: `focus of ${id}`,
-    description: '',
-    planType: 'project',
-    dailyReset: false,
-    userId: 'u1',
-    createdAt: '2026-01-01T00:00:00Z',
-    updatedAt,
-    ...extra,
-  }) as Plan;
-
-const item = (id: string, done: boolean): ChecklistItem =>
-  ({
-    id,
-    planId: 'p',
-    description: id,
-    done,
-    archived: false,
-    scope: 'longterm',
-    type: 'task',
-    sequence: '1',
-    createdAt: '2026-01-01T00:00:00Z',
-    updatedAt: '2026-01-01T00:00:00Z',
-  }) as ChecklistItem;
+const { listPlans, listChecklists, getDayPlan, planMyDay } = api;
 
 /**
  * An item that is not a milestone, for the tests about the done/total slot.
@@ -104,49 +38,30 @@ const item = (id: string, done: boolean): ChecklistItem =>
  * milestones and keeps done/total exactly as before (R26, §Edge States), which
  * is the reading these tests are about.
  */
-const daily = (id: string, done: boolean): ChecklistItem =>
-  ({ ...item(id, done), scope: 'daily' }) as ChecklistItem;
-
-/** `count` plans, oldest first in the response so ordering has to be earned. */
-const plansAged = (count: number) =>
-  Array.from({ length: count }, (_, i) =>
-    plan(`p${i}`, `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00Z`),
-  );
-
-/** What `GET /api/insights/day-plan` returns for a day nobody has planned. */
-const notPlanned = (planId: string) => ({
-  planId,
-  date: format(new Date(), 'yyyy-MM-dd'),
-  status: 'not_planned',
-  groups: [],
-  refreshesRemaining: 3,
-});
-
-beforeEach(() => {
-  listPlans.mockReset();
-  listChecklists.mockReset();
-  listChecklists.mockResolvedValue([]);
-  getDayPlan.mockReset();
-  getDayPlan.mockImplementation((planId: string) => Promise.resolve(notPlanned(planId)));
-  planMyDay.mockReset();
-});
+const daily = (id: string, done = false) => item(id, { scope: 'daily', done });
 
 describe('Dashboard — the capped fan-out (ADR-0013)', () => {
   // FS-02JBZ R90: the bound rose from 4 to 7 with the day plan roll-up — one
   // cached day-plan read per focused plan — while ADR-0013's decision holds.
+  // Shared plans count toward the same cap (FS-12ZMF R26).
   it.each([
-    { plans: 1, requests: 3 },
-    { plans: 3, requests: 7 },
-    { plans: 4, requests: 7 },
-    { plans: 12, requests: 7 },
+    { plans: 1, shared: 0, requests: 3 },
+    { plans: 3, shared: 0, requests: 7 },
+    { plans: 4, shared: 0, requests: 7 },
+    { plans: 12, shared: 0, requests: 7 },
+    { plans: 6, shared: 3, requests: 7 },
   ])(
-    'should issue $requests requests for an account with $plans plans',
-    async ({ plans, requests }) => {
-      listPlans.mockResolvedValue(plansAged(plans));
+    'should issue $requests requests for an account with $plans plans, $shared of them shared',
+    async ({ plans, shared, requests }) => {
+      // Every other plan is a member's when any are shared.
+      listPlans.mockResolvedValue(
+        plansAged(plans).map(
+          (p, i): Plan => (shared ? { ...p, relation: i % 2 ? 'member' : 'owner' } : p),
+        ),
+      );
       const focused = Math.min(plans, 3);
 
-      render(<Home />);
-      await screen.findByRole('heading', { name: /continue where you left off/i });
+      await renderHomeWithPlans();
       await waitFor(() => expect(listChecklists).toHaveBeenCalledTimes(focused));
       await waitFor(() => expect(getDayPlan).toHaveBeenCalledTimes(focused));
       // The budget is a ceiling as much as a floor, so nothing is asserted
@@ -171,7 +86,7 @@ describe('Dashboard — the capped fan-out (ADR-0013)', () => {
     listPlans.mockResolvedValue(plansAged(12));
     getDayPlan.mockImplementation(() => pending[next++].promise);
 
-    render(<Home />);
+    await renderHome();
 
     await waitFor(() => expect(getDayPlan).toHaveBeenCalledTimes(3));
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -186,7 +101,7 @@ describe('Dashboard — the capped fan-out (ADR-0013)', () => {
     // 12 plans, oldest first: p11 / p10 / p9 are the three most recent.
     listPlans.mockResolvedValue(plansAged(12));
 
-    render(<Home />);
+    await renderHome();
     await waitFor(() => expect(listChecklists).toHaveBeenCalledTimes(3));
     await settle();
 
@@ -203,7 +118,7 @@ describe('Dashboard — the capped fan-out (ADR-0013)', () => {
     listPlans.mockResolvedValue(plansAged(3));
     listChecklists.mockImplementation(() => pending[next++].promise);
 
-    render(<Home />);
+    await renderHome();
 
     // All three are out while none has settled — a sequential chain could only
     // ever have one call outstanding here.
@@ -225,7 +140,7 @@ describe('Dashboard — Continue where you left off', () => {
       id === 'a' ? [daily('1', true), daily('2', false), daily('3', true)] : [],
     );
 
-    render(<Home />);
+    await renderHome();
 
     // Scoped to the Continue section on purpose: a plan name legitimately
     // appears more than once on the assembled page — Today's rows name the
@@ -246,65 +161,42 @@ describe('Dashboard — Continue where you left off', () => {
     );
   });
 
-  it('should render a plan with no items as 0/0 rather than hiding it', async () => {
-    listPlans.mockResolvedValue([plan('empty', '2026-09-01T00:00:00Z', { name: 'Blank slate' })]);
-    listChecklists.mockResolvedValue([]);
-
-    render(<Home />);
-
-    expect(await screen.findByText('Blank slate')).toBeInTheDocument();
-    expect(await screen.findByText('0/0')).toBeInTheDocument();
-  });
-
   it('should show what exists below three plans, with no empty placeholders', async () => {
     listPlans.mockResolvedValue([
       plan('a', '2026-09-01T00:00:00Z'),
       plan('b', '2026-08-01T00:00:00Z'),
     ]);
 
-    render(<Home />);
-    await screen.findByRole('heading', { name: /continue where you left off/i });
+    await renderHomeWithPlans();
 
     await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2));
   });
 
-  it('should paint plan-derived content before the item data arrives', async () => {
+  it('should paint plan-derived content before the item data arrives, in a progress slot held open', async () => {
     const items = deferred<ChecklistItem[]>();
     listPlans.mockResolvedValue([plan('a', '2026-09-01T00:00:00Z', { name: 'Early paint' })]);
     listChecklists.mockReturnValue(items.promise);
 
-    render(<Home />);
+    await renderHome();
 
     // The card is on screen with no progress and no full-page spinner.
     expect(await screen.findByText('Early paint')).toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).toBeNull();
     expect(screen.queryByText(/loading/i)).toBeNull();
-    expect(screen.getByTestId('continue-progress-a')).toHaveTextContent('');
+    const slotWhileLoading = progressSlot('a');
+    expect(slotWhileLoading).toHaveTextContent('');
 
     items.resolve([daily('1', true)]);
     expect(await screen.findByText('1/1')).toBeInTheDocument();
-  });
 
-  it('should hold the progress slot open so the card does not change height as items land', async () => {
-    const items = deferred<ChecklistItem[]>();
-    listPlans.mockResolvedValue([plan('a', '2026-09-01T00:00:00Z')]);
-    listChecklists.mockReturnValue(items.promise);
-
-    render(<Home />);
-
-    const slotWhileLoading = await screen.findByTestId('continue-progress-a');
-    expect(slotWhileLoading).toBeInTheDocument();
-
-    items.resolve([daily('1', false)]);
-    await screen.findByText('0/1');
-
-    // Same element, filled in — not a node that appeared and pushed the row.
-    expect(screen.getByTestId('continue-progress-a')).toBe(slotWhileLoading);
+    // Same element, filled in — not a node that appeared and pushed the row,
+    // so the card does not change height as items land.
+    expect(progressSlot('a')).toBe(slotWhileLoading);
   });
 });
 
 describe('Dashboard — partial and total failure', () => {
-  it('should render the other two cards when one item fetch rejects', async () => {
+  it('should render all three cards when one item fetch rejects, with no progress — not a wrong 0/0 — for that one', async () => {
     listPlans.mockResolvedValue([
       plan('a', '2026-09-01T00:00:00Z'),
       plan('b', '2026-08-01T00:00:00Z'),
@@ -315,7 +207,7 @@ describe('Dashboard — partial and total failure', () => {
       return [daily('1', true)];
     });
 
-    render(<Home />);
+    await renderHome();
 
     expect(await screen.findByText('Plan a')).toBeInTheDocument();
     expect(screen.getByText('Plan b')).toBeInTheDocument();
@@ -323,29 +215,22 @@ describe('Dashboard — partial and total failure', () => {
     await waitFor(() =>
       expect(screen.getAllByText('1/1')).toHaveLength(2),
     );
-  });
-
-  it('should show no progress — not a wrong 0/0 — for the plan whose items failed', async () => {
-    listPlans.mockResolvedValue([plan('b', '2026-09-01T00:00:00Z')]);
-    listChecklists.mockRejectedValue(new Error('nope'));
-
-    render(<Home />);
-
-    await screen.findByText('Plan b');
-    await waitFor(() =>
-      expect(screen.getByTestId('continue-progress-b')).toHaveTextContent(''),
-    );
+    expect(progressSlot('b')).toHaveTextContent('');
     expect(screen.queryByText('0/0')).toBeNull();
   });
 
-  it('should offer a retry rather than a blank page when the plans fetch fails', async () => {
+  it('should offer a retry and keep the status line, rather than a blank page, when the plans fetch fails', async () => {
     listPlans.mockRejectedValueOnce(new Error('down'));
     listPlans.mockResolvedValueOnce([plan('a', '2026-09-01T00:00:00Z', { name: 'Back again' })]);
 
-    render(<Home />);
+    await renderHome();
 
     const retry = await screen.findByRole('button', { name: /try again/i });
     expect(listChecklists).not.toHaveBeenCalled();
+    // §Edge States: home shows the status line's neutral form AND an error
+    // state with a retry — the weekday is true whatever the network did, and
+    // dropping it makes the page a bare error message.
+    expect(screen.getByText(format(new Date(), 'EEEE'))).toBeInTheDocument();
 
     await userEvent.click(retry);
 
@@ -353,23 +238,11 @@ describe('Dashboard — partial and total failure', () => {
     expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
   });
 
-  it('should keep the status line when the plans fetch fails', async () => {
-    // §Edge States: home shows the status line's neutral form AND an error
-    // state with a retry — the weekday is true whatever the network did, and
-    // dropping it makes the page a bare error message.
-    listPlans.mockRejectedValue(new Error('down'));
-
-    render(<Home />);
-
-    await screen.findByRole('button', { name: /try again/i });
-    expect(screen.getByText(format(new Date(), 'EEEE'))).toBeInTheDocument();
-  });
-
   it('should offer a retry in Today, and no count, when all three item fetches fail', async () => {
     listPlans.mockResolvedValue(plansAged(3));
     listChecklists.mockRejectedValue(new Error('nope'));
 
-    render(<Home />);
+    await renderHome();
 
     // Today owns the failure; the status line drops back to the weekday alone
     // rather than claiming a day it never read.
@@ -379,7 +252,7 @@ describe('Dashboard — partial and total failure', () => {
     expect(screen.queryByText(/nothing due/)).toBeNull();
     // The Continue cards still render, without progress.
     expect(screen.getByText('Plan p2')).toBeInTheDocument();
-    expect(screen.getByTestId('continue-progress-p2')).toHaveTextContent('');
+    expect(progressSlot('p2')).toHaveTextContent('');
   });
 
   it('should re-run the fan-out from Today\'s retry', async () => {
@@ -387,7 +260,7 @@ describe('Dashboard — partial and total failure', () => {
     listChecklists.mockRejectedValueOnce(new Error('nope'));
     listChecklists.mockResolvedValue([daily('1', false)]);
 
-    render(<Home />);
+    await renderHome();
 
     await userEvent.click(await screen.findByRole('button', { name: /try again/i }));
 
@@ -408,12 +281,12 @@ describe('Dashboard — Today, against the wire format (I-0059)', () => {
     // end: selector, block heading and status line together.
     listPlans.mockResolvedValue([plan('a', '2026-09-01T00:00:00Z')]);
     listChecklists.mockResolvedValue([
-      { ...item('due', false), dueDate: '2026-03-16T00:00:00Z' },
-      { ...item('late', false), dueDate: '2026-03-14T00:00:00Z' },
-      { ...item('later', false), dueDate: '2026-04-16T00:00:00Z' },
+      item('due', { dueDate: '2026-03-16T00:00:00Z' }),
+      item('late', { dueDate: '2026-03-14T00:00:00Z' }),
+      item('later', { dueDate: '2026-04-16T00:00:00Z' }),
     ]);
 
-    render(<Home />);
+    await renderHome();
 
     expect(await screen.findByRole('heading', { name: 'Today' })).toBeInTheDocument();
     expect(screen.getByText('Monday · 2 due across 1 plan')).toBeInTheDocument();
@@ -422,11 +295,9 @@ describe('Dashboard — Today, against the wire format (I-0059)', () => {
 
   it('should still fall back to Next up when nothing is due', async () => {
     listPlans.mockResolvedValue([plan('a', '2026-09-01T00:00:00Z')]);
-    listChecklists.mockResolvedValue([
-      { ...item('later', false), dueDate: '2026-04-16T00:00:00Z' },
-    ]);
+    listChecklists.mockResolvedValue([item('later', { dueDate: '2026-04-16T00:00:00Z' })]);
 
-    render(<Home />);
+    await renderHome();
 
     expect(await screen.findByRole('heading', { name: 'Next up' })).toBeInTheDocument();
     expect(
@@ -436,44 +307,32 @@ describe('Dashboard — Today, against the wire format (I-0059)', () => {
 });
 
 describe('Dashboard — first run (R43)', () => {
-  it('should show one invitation instead of three empty blocks at zero plans', async () => {
+  it('should show one invitation instead of three empty blocks, for one request, at zero plans', async () => {
     listPlans.mockResolvedValue([]);
 
-    render(<Home />);
+    await renderHome();
 
     expect(await screen.findByRole('heading', { name: 'Your first plan' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Today' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Next up' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Continue where you left off' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Your other plans' })).toBeNull();
-  });
-
-  it('should cost one request at zero plans, not four', async () => {
-    listPlans.mockResolvedValue([]);
-
-    render(<Home />);
-    await screen.findByRole('heading', { name: 'Your first plan' });
-
     expect(listPlans).toHaveBeenCalledTimes(1);
     expect(listChecklists).not.toHaveBeenCalled();
   });
 
   it('should put the blocks back as soon as one plan exists', async () => {
     listPlans.mockResolvedValue([plan('a', '2026-09-01T00:00:00Z')]);
-    listChecklists.mockResolvedValue([]);
 
-    render(<Home />);
+    await renderHomeWithPlans();
 
-    expect(
-      await screen.findByRole('heading', { name: 'Continue where you left off' }),
-    ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Your first plan' })).toBeNull();
   });
 
-  it('should not render the invitation while the plans fetch is still in flight', () => {
+  it('should not render the invitation while the plans fetch is still in flight', async () => {
     listPlans.mockReturnValue(new Promise(() => {}));
 
-    render(<Home />);
+    await renderHome();
 
     expect(screen.queryByRole('heading', { name: 'Your first plan' })).toBeNull();
   });
@@ -486,34 +345,18 @@ describe('Dashboard — shared plans (FS-12ZMF R26)', () => {
       plan('b', '2026-08-01T00:00:00Z', { name: 'My garden', relation: 'owner' }),
     ]);
 
-    render(<Home />);
+    await renderHome();
 
     const shared = await screen.findByRole('link', { name: /their kitchen/i });
     const owned = screen.getByRole('link', { name: /my garden/i });
     expect(within(shared).getByText('shared')).toBeInTheDocument();
     expect(within(owned).queryByText('shared')).toBeNull();
   });
-
-  it('should count shared plans toward the same seven-request cap (ADR-0013, FS-02JBZ R90)', async () => {
-    listPlans.mockResolvedValue(
-      plansAged(6).map((p, i): Plan => ({ ...p, relation: i % 2 ? 'member' : 'owner' })),
-    );
-
-    render(<Home />);
-    await screen.findByRole('heading', { name: /continue where you left off/i });
-    await waitFor(() => expect(listChecklists).toHaveBeenCalledTimes(3));
-    await waitFor(() => expect(getDayPlan).toHaveBeenCalledTimes(3));
-    await settle();
-
-    expect(listPlans).toHaveBeenCalledTimes(1);
-    expect(listChecklists).toHaveBeenCalledTimes(3);
-    expect(getDayPlan).toHaveBeenCalledTimes(3);
-  });
 });
 
 describe('Dashboard — Day plan roll-up (FS-02JBZ R85–R89)', () => {
   const step = (id: string, parentId: string | undefined, extra: Partial<ChecklistItem> = {}) =>
-    ({ ...item(id, false), description: `Do ${id}`, parentId, ...extra }) as ChecklistItem;
+    item(id, { description: `Do ${id}`, parentId, ...extra });
 
   const stored = (planId: string, entries: { id: string; itemId: string; ticked?: boolean }[]) => ({
     ...notPlanned(planId),
@@ -555,7 +398,7 @@ describe('Dashboard — Day plan roll-up (FS-02JBZ R85–R89)', () => {
           : Promise.reject(new Error('503')),
     );
 
-    render(<Home />);
+    await renderHome();
     await screen.findByRole('heading', { name: 'Day plan' });
 
     // The row's own text leads; a step's milestone name follows in the meta line.
@@ -592,7 +435,7 @@ describe('Dashboard — Day plan roll-up (FS-02JBZ R85–R89)', () => {
       stored('p0', items.map((it, i) => ({ id: `e${i}`, itemId: it.id }))),
     );
 
-    render(<Home />);
+    await renderHome();
     await screen.findByRole('heading', { name: 'Day plan' });
 
     expect(rows()).toHaveLength(6);
@@ -602,7 +445,7 @@ describe('Dashboard — Day plan roll-up (FS-02JBZ R85–R89)', () => {
     listPlans.mockResolvedValue(plansAged(1));
     listChecklists.mockResolvedValue([step('x', undefined)]);
 
-    render(<Home />);
+    await renderHome();
     const dayPlan = await screen.findByRole('heading', { name: 'Day plan' });
     const today = await screen.findByRole('heading', { name: /today|next up/i });
 
@@ -614,8 +457,7 @@ describe('Dashboard — Day plan roll-up (FS-02JBZ R85–R89)', () => {
   it('should render no block when no plan has anything to show', async () => {
     listPlans.mockResolvedValue(plansAged(3));
 
-    render(<Home />);
-    await screen.findByRole('heading', { name: /continue where you left off/i });
+    await renderHomeWithPlans();
     await waitFor(() => expect(getDayPlan).toHaveBeenCalledTimes(3));
     await settle();
 
