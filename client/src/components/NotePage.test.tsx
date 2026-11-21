@@ -3,20 +3,13 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import Link from 'next/link';
 import { ApiError } from '@/api/client';
 import type { ChecklistItem } from '@/api/checklists';
+import { api, item as mk, quietErrors, router } from '@/test/pageHarness';
+import { deferred, settle } from '@/test/async';
 
 /**
  * The note page (FS-PGG2N R16–R27, R36, R37, R49): one note read out of the
  * plan's long-term list, its body on paper, saved as it is typed.
  */
-
-const fetchChecklist = vi.fn();
-const updateChecklistItem = vi.fn();
-const deleteChecklistItem = vi.fn();
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  updateChecklistItem: (...a: unknown[]) => updateChecklistItem(...a),
-  deleteChecklistItem: (...a: unknown[]) => deleteChecklistItem(...a),
-}));
 
 const summarizeNote = vi.fn();
 vi.mock('@/api/insights', () => ({
@@ -29,25 +22,10 @@ vi.mock('@/api/noteComments', () => ({
   createNoteComment: vi.fn(),
 }));
 
-const push = vi.fn();
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
-}));
-
 import NotePage from './NotePage';
 
-const mk = (id: string, description: string, extra: Partial<ChecklistItem> = {}) =>
-  ({
-    id,
-    description,
-    done: false,
-    scope: 'longterm',
-    type: 'task',
-    planId: 'plan-1',
-    archived: false,
-    updatedAt: new Date().toISOString(),
-    ...extra,
-  }) as ChecklistItem;
+const { fetchChecklist, updateChecklistItem, deleteChecklistItem } = api;
+const { push } = router;
 
 const ITEMS = [
   mk('m1', 'Learn Go'),
@@ -61,47 +39,89 @@ const ITEMS = [
   mk('o1', 'someone else', { type: 'note', planId: 'plan-2' }),
 ];
 
+/** The update answers with the stored item, the sent fields applied. */
+const echoUpdate = async (id: string, fields: Partial<ChecklistItem>) => ({
+  ...ITEMS.find((i) => i.id === id)!,
+  ...fields,
+});
+
+beforeEach(() => {
+  fetchChecklist.mockResolvedValue(ITEMS);
+  updateChecklistItem.mockImplementation(echoUpdate);
+  deleteChecklistItem.mockResolvedValue(undefined);
+  summarizeNote.mockReset().mockResolvedValue('An AI gist');
+  listNoteComments.mockReset().mockResolvedValue([]);
+});
+
 const renderPage = (noteId = 'n2', planId = 'plan-1') =>
   render(<NotePage planId={planId} noteId={noteId} />);
+
+/** The milestone's child note, by the start of its body. */
+const N1 = /Read the memory model/;
+
+/** Renders the page and waits for the note's body, n2's by default. */
+const openNote = async (noteId = 'n2', ready: RegExp = /Launch ideas/) => {
+  const view = renderPage(noteId);
+  await screen.findByText(ready);
+  return view;
+};
+
+/** Opens the note and clicks its body into writing mode. */
+const startWriting = async (noteId = 'n2', ready: RegExp = /Launch ideas/) => {
+  await openNote(noteId, ready);
+  fireEvent.click(screen.getByText(ready));
+  return editor() as HTMLTextAreaElement;
+};
+
+/** Serves n2 alone, with `summary` on its card. */
+const withSummary = (summary?: string) =>
+  fetchChecklist.mockResolvedValue([
+    mk('n2', 'Launch ideas\nA waitlist', { type: 'note', summary }),
+  ]);
 
 /**
  * Clicks, then lets every promise the click started run out: a leave decides
  * over several awaits (flush, retry, the prompt), more than \`act\` waits for.
  */
-const clickSettled = (el: Element) =>
-  act(async () => {
-    fireEvent.click(el);
-    await new Promise((r) => setTimeout(r, 0));
-  });
+const clickSettled = async (el: Element) => {
+  fireEvent.click(el);
+  await settle(0);
+};
 
 const sheet = () => document.querySelector('[data-note-sheet]') as HTMLElement;
 const editor = () => screen.getByRole('textbox', { name: 'Note' });
+const meta = () => document.querySelector('[data-note-meta]')!;
+const follows = (a: Element, b: Element) =>
+  Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  fetchChecklist.mockReset().mockResolvedValue(ITEMS);
-  updateChecklistItem.mockReset().mockImplementation(
-    async (id: string, fields: Partial<ChecklistItem>) => ({
-      ...ITEMS.find((i) => i.id === id)!,
-      ...fields,
-    })
+/** Opens the summary editor on the card block and saves `text` with Enter. */
+const writeSummary = async (text: string, noteId = 'n2', ready: RegExp = /Launch ideas/) => {
+  await openNote(noteId, ready);
+  fireEvent.click(screen.getByRole('button', { name: /Write a summary|Edit summary/ }));
+  const box = screen.getByRole('textbox', { name: 'Summary' });
+  fireEvent.change(box, { target: { value: text } });
+  await act(async () => fireEvent.keyDown(box, { key: 'Enter' }));
+};
+
+/** With the menu open: Delete, then the confirmation's Delete. */
+const deleteFromMenu = async () => {
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Delete' })));
+};
+
+const pressSummarize = () =>
+  act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Summarize with AI' }))
   );
-  deleteChecklistItem.mockReset().mockResolvedValue(undefined);
-  summarizeNote.mockReset().mockResolvedValue('An AI gist');
-  listNoteComments.mockReset().mockResolvedValue([]);
-});
 
 describe('NotePage Back (R17)', () => {
-  it("should go back to the milestone's page, named for it, for a milestone's child note", async () => {
-    renderPage('n1');
-    const back = await screen.findByRole('link', { name: 'Back to Learn Go' });
-    expect(back.getAttribute('href')).toBe('/plan/plan-1/m/m1');
-  });
-
-  it('should go back to the plan for a top-level note', async () => {
-    renderPage('n2');
-    const back = await screen.findByRole('link', { name: 'Back to plan' });
-    expect(back.getAttribute('href')).toBe('/plan/plan-1');
+  it.each([
+    ["a milestone's child note, to the milestone's page, named for it", 'n1', 'Back to Learn Go', '/plan/plan-1/m/m1'],
+    ['a top-level note, to the plan', 'n2', 'Back to plan', '/plan/plan-1'],
+  ])('should go back for %s', async (_why, id, name, href) => {
+    renderPage(id);
+    const back = await screen.findByRole('link', { name });
+    expect(back.getAttribute('href')).toBe(href);
   });
 });
 
@@ -112,29 +132,21 @@ describe('NotePage layout and title (R19, R21, R49)', () => {
     expect(screen.getByText('Loading note…')).toBeInTheDocument();
   });
 
-  it('should read from the plan’s long-term list (R18)', async () => {
-    renderPage();
-    await screen.findByRole('link', { name: 'Back to plan' });
+  it('should read the plan’s long-term list, and lay out header, body sheet, meta line, then "On the card", in that order (R18, R28)', async () => {
+    await openNote();
     expect(fetchChecklist).toHaveBeenCalledWith('plan-1', 'longterm');
-  });
-
-  it('should lay out header, body sheet, then meta line, in that order', async () => {
-    renderPage();
-    await screen.findByText(/Launch ideas/);
     const header = document.querySelector('header')!;
-    const meta = document.querySelector('[data-note-meta]')!;
-    const follows = (a: Element, b: Element) =>
-      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const card = screen.getByRole('region', { name: 'On the card' });
     expect(follows(header, sheet())).toBe(true);
-    expect(follows(sheet(), meta)).toBe(true);
+    expect(follows(sheet(), meta())).toBe(true);
+    expect(follows(meta(), card)).toBe(true);
   });
 
   it("should name the tab after the card text's first line, up to 60 characters", async () => {
     fetchChecklist.mockResolvedValue([
       mk('n9', `${'x'.repeat(80)}\nsecond`, { type: 'note' }),
     ]);
-    renderPage('n9');
-    await screen.findByText(/xxx/);
+    await openNote('n9', /xxx/);
     // The title follows the paint by an effect: wait for it, not the text.
     await waitFor(() => expect(document.title).toHaveLength(60));
     expect(document.title.startsWith('xxx')).toBe(true);
@@ -143,10 +155,11 @@ describe('NotePage layout and title (R19, R21, R49)', () => {
 
 describe('NotePage menu (R20)', () => {
   const openMenu = async () => {
-    renderPage('n1');
-    await screen.findByText(/Read the memory model/);
+    await openNote('n1', N1);
     fireEvent.click(screen.getByRole('button', { name: 'Actions for Read the memory model' }));
   };
+  const makeTask = () =>
+    act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Make a task' })));
 
   it('should offer exactly Make a task and Delete', async () => {
     await openMenu();
@@ -158,30 +171,30 @@ describe('NotePage menu (R20)', () => {
 
   it('should make it a task, then go to the Back destination', async () => {
     await openMenu();
-    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Make a task' })));
+    await makeTask();
     expect(updateChecklistItem).toHaveBeenCalledWith('n1', { type: 'task' }, 'plan-1', 'longterm');
     expect(push).toHaveBeenCalledWith('/plan/plan-1/m/m1');
   });
 
   it('should say the note has comments when Make a task is refused for them (FS-65B3N R31)', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    quietErrors();
     updateChecklistItem.mockRejectedValue(
       new ApiError({ code: 'NOTE_HAS_COMMENTS', status: 400, detail: 'anything' } as never, 400)
     );
     await openMenu();
-    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Make a task' })));
+    await makeTask();
     expect(
       screen.getByText('This note has comments. Delete them to make it a task.')
     ).toBeInTheDocument();
     expect(screen.queryByText('Failed to change item type. Please try again.')).toBeNull();
     expect(push).not.toHaveBeenCalled();
-    expect(screen.getByText(/Read the memory model/)).toBeInTheDocument();
+    expect(screen.getByText(N1)).toBeInTheDocument();
   });
 
   it('should stay with the error when Make a task is refused', async () => {
     updateChecklistItem.mockRejectedValue(new ApiError(undefined, 400));
     await openMenu();
-    await act(async () => fireEvent.click(screen.getByRole('menuitem', { name: 'Make a task' })));
+    await makeTask();
     expect(screen.getByText('Failed to change item type. Please try again.')).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
   });
@@ -198,8 +211,7 @@ describe('NotePage menu (R20)', () => {
   it('should stay with the error when the delete fails', async () => {
     deleteChecklistItem.mockRejectedValue(new Error('nope'));
     await openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Delete' })));
+    await deleteFromMenu();
     expect(screen.getByText('Failed to delete task')).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
   });
@@ -230,12 +242,6 @@ describe('NotePage reading mode (R23, G4)', () => {
 describe('NotePage writing mode and autosave (R23–R27)', () => {
   afterEach(() => vi.useRealTimers());
 
-  const startWriting = async (noteId = 'n2') => {
-    renderPage(noteId);
-    fireEvent.click(await screen.findByText(/Launch ideas/));
-    return editor() as HTMLTextAreaElement;
-  };
-
   it('should enter writing on a click, with the caret at the end, and leave it on blur', async () => {
     const box = await startWriting();
     expect(box.value).toBe('Launch ideas\nA waitlist');
@@ -247,8 +253,7 @@ describe('NotePage writing mode and autosave (R23–R27)', () => {
   });
 
   it('should enter writing on Enter on the focused sheet', async () => {
-    renderPage();
-    await screen.findByText(/Launch ideas/);
+    await openNote();
     sheet().focus();
     fireEvent.keyDown(sheet(), { key: 'Enter' });
     expect(editor()).toBeInTheDocument();
@@ -280,20 +285,13 @@ describe('NotePage writing mode and autosave (R23–R27)', () => {
     expect(updateChecklistItem.mock.calls[0][1]).toEqual({ description: 'Launch ideas, revised' });
   });
 
-  it('should send nothing for unchanged text', async () => {
+  it.each([
+    ['unchanged text', ['Launch ideas\nA waitlist!', 'Launch ideas\nA waitlist']],
+    ['an empty or whitespace body', ['   \n  ']],
+  ])('should never send %s, and show the stored body again', async (_why, edits) => {
     const box = await startWriting();
     vi.useFakeTimers();
-    fireEvent.change(box, { target: { value: 'Launch ideas\nA waitlist!' } });
-    fireEvent.change(box, { target: { value: 'Launch ideas\nA waitlist' } });
-    await act(async () => vi.advanceTimersByTime(1000));
-    await act(async () => fireEvent.blur(box));
-    expect(updateChecklistItem).not.toHaveBeenCalled();
-  });
-
-  it('should never send an empty or whitespace body, and show the stored one again', async () => {
-    const box = await startWriting();
-    vi.useFakeTimers();
-    fireEvent.change(box, { target: { value: '   \n  ' } });
+    for (const value of edits) fireEvent.change(box, { target: { value } });
     await act(async () => vi.advanceTimersByTime(1000));
     await act(async () => fireEvent.blur(box));
     expect(updateChecklistItem).not.toHaveBeenCalled();
@@ -301,8 +299,8 @@ describe('NotePage writing mode and autosave (R23–R27)', () => {
   });
 
   it('should save a pending edit when the page goes away (best effort)', async () => {
-    const view = renderPage();
-    fireEvent.click(await screen.findByText(/Launch ideas/));
+    const view = await openNote();
+    fireEvent.click(screen.getByText(/Launch ideas/));
     vi.useFakeTimers();
     fireEvent.change(editor(), { target: { value: 'Launch ideas, last words' } });
     view.unmount();
@@ -314,16 +312,15 @@ describe('NotePage writing mode and autosave (R23–R27)', () => {
   });
 
   it('should show the word count and the edited time, then Saving…', async () => {
-    let finish!: (v: unknown) => void;
-    updateChecklistItem.mockReturnValue(new Promise((res) => (finish = res)));
+    const call = deferred<unknown>();
+    updateChecklistItem.mockReturnValue(call.promise);
     const box = await startWriting();
-    const meta = () => document.querySelector('[data-note-meta]')!.textContent;
-    expect(meta()).toMatch(/^4 words · edited/);
+    expect(meta().textContent).toMatch(/^4 words · edited/);
     fireEvent.change(box, { target: { value: 'Launch ideas now' } });
     await act(async () => fireEvent.blur(box));
-    expect(meta()).toBe('3 words · Saving…');
-    await act(async () => finish({ ...ITEMS[2], description: 'Launch ideas now' }));
-    expect(meta()).toMatch(/^3 words · edited/);
+    expect(meta().textContent).toBe('3 words · Saving…');
+    await act(async () => call.resolve({ ...ITEMS[2], description: 'Launch ideas now' }));
+    expect(meta().textContent).toMatch(/^3 words · edited/);
   });
 
   it("should keep the text and offer Try again when a save fails", async () => {
@@ -331,21 +328,43 @@ describe('NotePage writing mode and autosave (R23–R27)', () => {
     const box = await startWriting();
     fireEvent.change(box, { target: { value: 'Launch ideas, kept' } });
     await act(async () => fireEvent.blur(box));
-    expect(document.querySelector('[data-note-meta]')!.textContent).toContain("Couldn't save");
+    expect(meta().textContent).toContain("Couldn't save");
     expect(sheet().textContent).toBe('Launch ideas, kept');
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Try again' })));
     expect(updateChecklistItem).toHaveBeenCalledTimes(2);
     expect(updateChecklistItem.mock.calls[1][1]).toEqual({ description: 'Launch ideas, kept' });
-    expect(document.querySelector('[data-note-meta]')!.textContent).toMatch(/edited/);
+    expect(meta().textContent).toMatch(/edited/);
   });
+});
 
-  it('should replace the page with "This note was deleted" and Back when a save answers 404 (R37)', async () => {
-    updateChecklistItem.mockRejectedValue(new ApiError(undefined, 404));
-    renderPage('n1');
-    fireEvent.click(await screen.findByText(/Read the memory model/));
-    fireEvent.change(editor(), { target: { value: 'into nothing' } });
-    await act(async () => fireEvent.blur(editor()));
+describe('NotePage deleted while open (R37)', () => {
+  it.each([
+    [
+      'a body save',
+      async () => {
+        updateChecklistItem.mockRejectedValue(new ApiError(undefined, 404));
+        fireEvent.change(await startWriting('n1', N1), { target: { value: 'into nothing' } });
+        await act(async () => fireEvent.blur(editor()));
+      },
+    ],
+    [
+      'a summary save',
+      async () => {
+        updateChecklistItem.mockRejectedValue(new ApiError(undefined, 404));
+        await writeSummary('into nothing', 'n1', N1);
+      },
+    ],
+    [
+      'Summarize with AI',
+      async () => {
+        summarizeNote.mockRejectedValue(new ApiError({ code: 'NOT_FOUND', status: 404 } as never, 404));
+        await openNote('n1', N1);
+        await pressSummarize();
+      },
+    ],
+  ])('should replace the page with "This note was deleted" and Back when %s answers 404', async (_how, run) => {
+    await run();
     expect(screen.getByText('This note was deleted')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to Learn Go' }).getAttribute('href')).toBe(
       '/plan/plan-1/m/m1'
@@ -379,7 +398,7 @@ describe('NotePage not here and load failure (R36)', () => {
     ['a network error', new TypeError('Failed to fetch')],
     ['a 5xx', new ApiError(undefined, 503)],
   ])('should offer Try again on %s, and load again on it', async (_why, err) => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    quietErrors();
     fetchChecklist.mockRejectedValueOnce(err);
     renderPage();
     expect(await screen.findByText("Couldn't load this note")).toBeInTheDocument();
@@ -389,24 +408,7 @@ describe('NotePage not here and load failure (R36)', () => {
   });
 });
 
-describe('NotePage "On the card" block (R28, R29, R37)', () => {
-  const writeSummary = async (text: string, noteId = 'n2') => {
-    renderPage(noteId);
-    await screen.findByText(/Launch ideas/);
-    fireEvent.click(screen.getByRole('button', { name: /Write a summary|Edit summary/ }));
-    const box = screen.getByRole('textbox', { name: 'Summary' });
-    fireEvent.change(box, { target: { value: text } });
-    await act(async () => fireEvent.keyDown(box, { key: 'Enter' }));
-  };
-
-  it('should sit below the meta line', async () => {
-    renderPage();
-    await screen.findByText(/Launch ideas/);
-    const meta = document.querySelector('[data-note-meta]')!;
-    const block = screen.getByRole('region', { name: 'On the card' });
-    expect(meta.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
+describe('NotePage "On the card" block (R28, R29)', () => {
   it('should save the summary through the item update and show it at once', async () => {
     await writeSummary('  the gist ');
     expect(updateChecklistItem).toHaveBeenCalledWith('n2', { summary: 'the gist' }, 'plan-1', 'longterm');
@@ -417,27 +419,20 @@ describe('NotePage "On the card" block (R28, R29, R37)', () => {
   });
 
   it('should clear the summary when saved empty, and say there is none again', async () => {
-    fetchChecklist.mockResolvedValue([mk('n2', 'Launch ideas\nA waitlist', { type: 'note', summary: 'old gist' })]);
+    withSummary('old gist');
     await writeSummary('');
     expect(updateChecklistItem).toHaveBeenCalledWith('n2', { summary: '' }, 'plan-1', 'longterm');
     expect(screen.getByText('No summary yet. The card shows the start of the note.')).toBeInTheDocument();
   });
 
   it('should put the old summary back with the existing error when the save fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    fetchChecklist.mockResolvedValue([mk('n2', 'Launch ideas\nA waitlist', { type: 'note', summary: 'old gist' })]);
+    quietErrors();
+    withSummary('old gist');
     updateChecklistItem.mockRejectedValue(new ApiError(undefined, 400));
     await writeSummary('new gist');
     expect(screen.getByText('old gist')).toBeInTheDocument();
     expect(screen.queryByText('new gist')).toBeNull();
     expect(screen.getByText('Failed to update task. Please try again.')).toBeInTheDocument();
-  });
-
-  it('should show "This note was deleted" when the summary save answers 404', async () => {
-    updateChecklistItem.mockRejectedValue(new ApiError(undefined, 404));
-    await writeSummary('into nothing');
-    expect(screen.getByText('This note was deleted')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Back to plan' })).toBeInTheDocument();
   });
 });
 
@@ -452,35 +447,19 @@ describe('NotePage opened from Rename (R14, G8)', () => {
     await waitFor(() => expect(document.activeElement).toBe(box));
     await waitFor(() => expect(window.location.search).toBe(''));
     expect(window.location.pathname).toBe('/plan/plan-1/n/n2');
-    expect(window.location.search).toBe('');
   });
 
   it('should open reading otherwise', async () => {
     window.history.replaceState(null, '', '/plan/plan-1/n/n2');
-    renderPage();
-    await screen.findByText(/Launch ideas/);
+    await openNote();
     expect(screen.queryByRole('textbox', { name: 'Note' })).toBeNull();
   });
 });
 
-describe('NotePage Summarize with AI (R30, R31, R37, R44)', () => {
-  const withSummary = (summary?: string) =>
-    fetchChecklist.mockResolvedValue([
-      mk('n2', 'Launch ideas\nA waitlist', { type: 'note', summary }),
-    ]);
-  const press = async () => {
-    await act(async () =>
-      fireEvent.click(screen.getByRole('button', { name: 'Summarize with AI' }))
-    );
-  };
-  const open = async () => {
-    renderPage();
-    await screen.findByText(/Launch ideas/);
-  };
-
+describe('NotePage Summarize with AI (R30, R31, R44)', () => {
   it('should save the returned text at once when there is no summary, and show it', async () => {
-    await open();
-    await press();
+    await openNote();
+    await pressSummarize();
     expect(summarizeNote).toHaveBeenCalledTimes(1);
     expect(summarizeNote).toHaveBeenCalledWith('plan-1', 'n2');
     expect(updateChecklistItem).toHaveBeenCalledTimes(1);
@@ -491,8 +470,8 @@ describe('NotePage Summarize with AI (R30, R31, R37, R44)', () => {
 
   it('should offer the result as a proposal when a summary exists, which Save keeps', async () => {
     withSummary('old gist');
-    await open();
-    await press();
+    await openNote();
+    await pressSummarize();
     expect(updateChecklistItem).not.toHaveBeenCalled();
     const box = screen.getByRole('textbox', { name: 'Summary' }) as HTMLTextAreaElement;
     expect(box.value).toBe('An AI gist');
@@ -510,8 +489,8 @@ describe('NotePage Summarize with AI (R30, R31, R37, R44)', () => {
     ['Esc', () => fireEvent.keyDown(screen.getByRole('textbox', { name: 'Summary' }), { key: 'Escape' })],
   ])('should keep the old summary on %s', async (_how, cancel) => {
     withSummary('old gist');
-    await open();
-    await press();
+    await openNote();
+    await pressSummarize();
     act(() => cancel());
     expect(updateChecklistItem).not.toHaveBeenCalled();
     expect(screen.getByText('old gist')).toBeInTheDocument();
@@ -519,66 +498,52 @@ describe('NotePage Summarize with AI (R30, R31, R37, R44)', () => {
   });
 
   it('should read "Summarizing…", disabled, while it runs, so a second press makes no second call', async () => {
-    let finish!: (v: string) => void;
-    summarizeNote.mockReturnValue(new Promise((res) => (finish = res)));
-    await open();
+    const call = deferred<string>();
+    summarizeNote.mockReturnValue(call.promise);
+    await openNote();
     fireEvent.click(screen.getByRole('button', { name: 'Summarize with AI' }));
     const busy = screen.getByRole('button', { name: 'Summarizing…' });
     expect(busy).toBeDisabled();
     fireEvent.click(busy);
     expect(summarizeNote).toHaveBeenCalledTimes(1);
-    await act(async () => finish('An AI gist'));
+    await act(async () => call.resolve('An AI gist'));
     expect(screen.getByRole('button', { name: 'Summarize with AI' })).not.toBeDisabled();
   });
 
   it.each([
-    ['NOTE_SUMMARY_FAILED', 503],
-    ['SERVICE_UNAVAILABLE', 503],
-    ['ITEM_NOT_A_NOTE', 400],
-  ])('should say "Couldn\'t summarize" on %s, keep the summary, and keep the other options', async (code, status) => {
-    withSummary('old gist');
-    summarizeNote.mockRejectedValue(new ApiError({ code, status } as never, status));
-    await open();
-    await press();
-    expect(screen.getByText("Couldn't summarize")).toBeInTheDocument();
-    expect(screen.queryByText('AI summaries are paused until tomorrow')).toBeNull();
-    expect(screen.getByText('old gist')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Edit summary' })).toBeInTheDocument();
-    expect(updateChecklistItem).not.toHaveBeenCalled();
-  });
-
-  it('should add the paused line when the AI budget is spent, on the code alone', async () => {
-    summarizeNote.mockRejectedValue(
-      new ApiError({ code: 'LLM_BUDGET_EXHAUSTED', status: 429, detail: 'whatever' } as never, 429)
-    );
-    await open();
-    await press();
-    expect(screen.getByText("Couldn't summarize")).toBeInTheDocument();
-    expect(screen.getByText('AI summaries are paused until tomorrow')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Write a summary' })).toBeInTheDocument();
-  });
-
-  it('should show "This note was deleted" when the call answers NOT_FOUND', async () => {
-    summarizeNote.mockRejectedValue(new ApiError({ code: 'NOT_FOUND', status: 404 } as never, 404));
-    await open();
-    await press();
-    expect(screen.getByText('This note was deleted')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Back to plan' })).toBeInTheDocument();
-  });
+    ['NOTE_SUMMARY_FAILED', 503, false],
+    ['SERVICE_UNAVAILABLE', 503, false],
+    ['ITEM_NOT_A_NOTE', 400, false],
+    ['LLM_BUDGET_EXHAUSTED', 429, true],
+  ])(
+    'should say "Couldn\'t summarize" on %s, keep the summary and the other options, adding the paused line on the budget code alone',
+    async (code, status, paused) => {
+      withSummary('old gist');
+      summarizeNote.mockRejectedValue(
+        new ApiError({ code, status, detail: 'whatever' } as never, status)
+      );
+      await openNote();
+      await pressSummarize();
+      expect(screen.getByText("Couldn't summarize")).toBeInTheDocument();
+      expect(Boolean(screen.queryByText('AI summaries are paused until tomorrow'))).toBe(paused);
+      expect(screen.getByText('old gist')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Edit summary' })).toBeInTheDocument();
+      expect(updateChecklistItem).not.toHaveBeenCalled();
+    }
+  );
 
   it('should revert with the existing error when saving the returned text fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    quietErrors();
     updateChecklistItem.mockRejectedValue(new ApiError(undefined, 400));
-    await open();
-    await press();
+    await openNote();
+    await pressSummarize();
     expect(screen.getByText('No summary yet. The card shows the start of the note.')).toBeInTheDocument();
     expect(screen.queryByText('An AI gist')).toBeNull();
     expect(screen.getByText('Failed to update task. Please try again.')).toBeInTheDocument();
   });
 
   it('should make no model call without a press: not on load, autosave or a summary edit', async () => {
-    await open();
-    fireEvent.click(screen.getByText(/Launch ideas/));
+    await startWriting();
     fireEvent.change(editor(), { target: { value: 'Launch ideas, more' } });
     await act(async () => fireEvent.blur(editor()));
     fireEvent.click(screen.getByRole('button', { name: 'Write a summary' }));
@@ -607,33 +572,42 @@ describe('NotePage leave prompt (R32–R35)', () => {
     );
     await screen.findByRole('region', { name: 'On the card' });
   };
-  const clickBack = async () =>
-    clickSettled(screen.getByRole('link', { name: 'Back to plan' }));
+  const clickLink = (name: string) => clickSettled(screen.getByRole('link', { name }));
+  const clickBack = () => clickLink('Back to plan');
+  /** A long body with no summary, opened, then a click on `link`: the prompt's way in. */
+  const leaveLong = async (link = 'Back to plan') => {
+    withBody(LONG);
+    await open();
+    await clickLink(link);
+  };
   const PROMPT = { name: 'Add a summary for the card?' };
   const prompt = () => screen.queryByRole('dialog', PROMPT);
   /** The prompt, once it has opened: waits on the page, not on a tick. */
   const opened = () => screen.findByRole('dialog', PROMPT);
   const choose = async (name: string) =>
     clickSettled(within(await opened()).getByRole('button', { name }));
+  const choices = (dialog: HTMLElement) =>
+    Array.from(dialog.querySelectorAll('button')).map((b) => b.textContent);
 
-  it('should open on Back for a body over 280 characters with no summary, holding the navigation', async () => {
-    withBody(LONG);
-    await open();
-    await clickBack();
-    expect(await opened()).toBeInTheDocument();
+  it('should open on Back for a body over 280 characters with no summary, as a labelled modal that takes focus, holding the navigation', async () => {
+    await leaveLong();
+    const dialog = await opened();
     expect(push).not.toHaveBeenCalled();
-    expect(
-      Array.from(prompt()!.querySelectorAll('button')).map((b) => b.textContent)
-    ).toEqual(['Summarize with AI', 'Write a summary', 'Leave anyway']);
+    expect(choices(dialog)).toEqual(['Summarize with AI', 'Write a summary', 'Leave anyway']);
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.contains(document.activeElement)).toBe(true);
   });
 
-  it('should open on any other in-app link too, such as the sidebar', async () => {
-    withBody(LONG);
-    await open();
-    await clickSettled(screen.getByRole('link', { name: 'Plans' }));
+  it.each([
+    ['Back', 'Back to plan', '/plan/plan-1'],
+    ['any other in-app link, such as the sidebar', 'Plans', '/plans'],
+  ])('should open on %s and leave for it on Leave anyway', async (_how, link, href) => {
+    await leaveLong(link);
     expect(await opened()).toBeInTheDocument();
     await choose('Leave anyway');
-    expect(push).toHaveBeenCalledWith('/plans');
+    expect(prompt()).toBeNull();
+    expect(push).toHaveBeenCalledWith(href);
+    expect(summarizeNote).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -649,9 +623,7 @@ describe('NotePage leave prompt (R32–R35)', () => {
   });
 
   it('should open at most once per visit, whatever was chosen', async () => {
-    withBody(LONG);
-    await open();
-    await clickBack();
+    await leaveLong();
     await act(async () => fireEvent.keyDown(await opened(), { key: 'Escape' }));
     expect(prompt()).toBeNull();
     await clickBack();
@@ -659,23 +631,11 @@ describe('NotePage leave prompt (R32–R35)', () => {
     expect(push).toHaveBeenCalledWith('/plan/plan-1');
   });
 
-  it('should leave on Leave anyway', async () => {
-    withBody(LONG);
-    await open();
-    await clickBack();
-    await choose('Leave anyway');
-    expect(prompt()).toBeNull();
-    expect(push).toHaveBeenCalledWith('/plan/plan-1');
-    expect(summarizeNote).not.toHaveBeenCalled();
-  });
-
   it.each([
     ['Esc', () => fireEvent.keyDown(prompt()!, { key: 'Escape' })],
     ['a click outside', () => fireEvent.click(document.querySelector('[data-leave-scrim]')!)],
   ])('should stay on %s, dropping the navigation', async (_how, dismiss) => {
-    withBody(LONG);
-    await open();
-    await clickBack();
+    await leaveLong();
     await opened();
     act(() => dismiss());
     expect(prompt()).toBeNull();
@@ -683,9 +643,7 @@ describe('NotePage leave prompt (R32–R35)', () => {
   });
 
   it('should stay on Write a summary, with the summary editor open and focused', async () => {
-    withBody(LONG);
-    await open();
-    await clickBack();
+    await leaveLong();
     await choose('Write a summary');
     expect(prompt()).toBeNull();
     expect(push).not.toHaveBeenCalled();
@@ -694,9 +652,7 @@ describe('NotePage leave prompt (R32–R35)', () => {
   });
 
   it('should summarize, save, then go where the person was going (G12)', async () => {
-    withBody(LONG);
-    await open();
-    await clickSettled(screen.getByRole('link', { name: 'Plans' }));
+    await leaveLong('Plans');
     await choose('Summarize with AI');
     expect(summarizeNote).toHaveBeenCalledTimes(1);
     expect(updateChecklistItem).toHaveBeenCalledWith('n2', { summary: 'An AI gist' }, 'plan-1', 'longterm');
@@ -705,77 +661,53 @@ describe('NotePage leave prompt (R32–R35)', () => {
   });
 
   it('should read "Summarizing…" while it runs, and take no second press', async () => {
-    let finish!: (v: string) => void;
-    summarizeNote.mockReturnValue(new Promise((res) => (finish = res)));
-    withBody(LONG);
-    await open();
-    await clickBack();
+    const call = deferred<string>();
+    summarizeNote.mockReturnValue(call.promise);
+    await leaveLong();
     fireEvent.click(within(await opened()).getByRole('button', { name: 'Summarize with AI' }));
     const busy = within(prompt()!).getByRole('button', { name: 'Summarizing…' });
     expect(busy).toBeDisabled();
     fireEvent.click(busy);
     expect(summarizeNote).toHaveBeenCalledTimes(1);
-    await act(async () => finish('An AI gist'));
+    await act(async () => call.resolve('An AI gist'));
     expect(push).toHaveBeenCalledWith('/plan/plan-1');
   });
 
-  it('should stay open with "Couldn\'t summarize" and only the other two choices when the AI fails', async () => {
-    summarizeNote.mockRejectedValue(new ApiError({ code: 'NOTE_SUMMARY_FAILED', status: 503 } as never, 503));
-    withBody(LONG);
-    await open();
-    await clickBack();
-    await choose('Summarize with AI');
-    const dialog = await opened();
-    expect(await within(dialog).findByText("Couldn't summarize")).toBeInTheDocument();
-    expect(within(dialog).queryByText('AI summaries are paused until tomorrow')).toBeNull();
-    expect(Array.from(dialog.querySelectorAll('button')).map((b) => b.textContent)).toEqual([
-      'Write a summary',
-      'Leave anyway',
-    ]);
-    expect(push).not.toHaveBeenCalled();
-  });
-
-  it('should add the paused line when the budget is spent', async () => {
-    summarizeNote.mockRejectedValue(new ApiError({ code: 'LLM_BUDGET_EXHAUSTED', status: 429 } as never, 429));
-    withBody(LONG);
-    await open();
-    await clickBack();
-    await choose('Summarize with AI');
-    expect(
-      await within(await opened()).findByText('AI summaries are paused until tomorrow')
-    ).toBeInTheDocument();
-  });
+  it.each([
+    ['the AI fails', 'NOTE_SUMMARY_FAILED', 503, false],
+    ['the budget is spent, adding the paused line', 'LLM_BUDGET_EXHAUSTED', 429, true],
+  ])(
+    'should stay open with "Couldn\'t summarize" and only the other two choices when %s',
+    async (_why, code, status, paused) => {
+      summarizeNote.mockRejectedValue(new ApiError({ code, status } as never, status));
+      await leaveLong();
+      await choose('Summarize with AI');
+      const dialog = await opened();
+      expect(await within(dialog).findByText("Couldn't summarize")).toBeInTheDocument();
+      expect(
+        Boolean(within(dialog).queryByText('AI summaries are paused until tomorrow'))
+      ).toBe(paused);
+      expect(choices(dialog)).toEqual(['Write a summary', 'Leave anyway']);
+      expect(push).not.toHaveBeenCalled();
+    }
+  );
 
   it('should say "Couldn\'t save the summary" when saving it fails, with the same two choices', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    quietErrors();
     updateChecklistItem.mockRejectedValue(new ApiError(undefined, 400));
-    withBody(LONG);
-    await open();
-    await clickBack();
+    await leaveLong();
     await choose('Summarize with AI');
     const dialog = await opened();
     expect(await within(dialog).findByText("Couldn't save the summary")).toBeInTheDocument();
-    expect(Array.from(dialog.querySelectorAll('button')).map((b) => b.textContent)).toEqual([
-      'Write a summary',
-      'Leave anyway',
-    ]);
+    expect(choices(dialog)).toEqual(['Write a summary', 'Leave anyway']);
     await choose('Leave anyway');
     expect(push).toHaveBeenCalledWith('/plan/plan-1');
-  });
-
-  it('should be a labelled modal dialog that takes focus', async () => {
-    withBody(LONG);
-    await open();
-    await clickBack();
-    expect((await opened()).getAttribute('aria-modal')).toBe('true');
-    expect(prompt()!.contains(document.activeElement)).toBe(true);
   });
 });
 
 describe('NotePage flush before leaving (R24, R27)', () => {
   const typeThenBack = async (text: string) => {
-    renderPage();
-    fireEvent.click(await screen.findByText(/Launch ideas/));
+    await startWriting();
     vi.useFakeTimers();
     fireEvent.change(editor(), { target: { value: text } });
     vi.useRealTimers();
@@ -797,7 +729,7 @@ describe('NotePage flush before leaving (R24, R27)', () => {
   });
 
   it('should try once more when the flush fails, and leave when that one lands', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    quietErrors();
     updateChecklistItem.mockRejectedValueOnce(new Error('network'));
     await typeThenBack('Launch ideas, second time lucky');
     expect(updateChecklistItem).toHaveBeenCalledTimes(2);
@@ -805,7 +737,7 @@ describe('NotePage flush before leaving (R24, R27)', () => {
   });
 
   it('should stop with "Couldn\'t save your changes" and Leave anyway when both fail', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    quietErrors();
     updateChecklistItem.mockRejectedValue(new Error('network'));
     await typeThenBack('Launch ideas, unsaved');
     expect(updateChecklistItem).toHaveBeenCalledTimes(2);
@@ -817,8 +749,7 @@ describe('NotePage flush before leaving (R24, R27)', () => {
   });
 
   it('should leave at once when there is nothing to save', async () => {
-    renderPage();
-    await screen.findByText(/Launch ideas/);
+    await openNote();
     await clickSettled(screen.getByRole('link', { name: 'Back to plan' }));
     expect(updateChecklistItem).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith('/plan/plan-1');
@@ -826,9 +757,6 @@ describe('NotePage flush before leaving (R24, R27)', () => {
 });
 
 describe('NotePage comments slot (FS-PGG2N R19, FS-65B3N R24, R30, R33)', () => {
-  const follows = (a: Element, b: Element) =>
-    Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-
   it.each([
     ['a top-level note', 'n2'],
     ["a milestone's child note", 'n1'],
@@ -841,8 +769,7 @@ describe('NotePage comments slot (FS-PGG2N R19, FS-65B3N R24, R30, R33)', () => 
 
   it('should keep the body editable while the comments are still loading or failed', async () => {
     listNoteComments.mockReturnValue(new Promise(() => {}));
-    renderPage();
-    fireEvent.click(await screen.findByText(/Launch ideas/));
+    await startWriting();
     expect(editor()).toBeInTheDocument();
     expect(screen.getByText('Loading comments…')).toBeInTheDocument();
   });
@@ -862,8 +789,8 @@ describe('NotePage menu with an edit still waiting to save (R20, R27)', () => {
 
   /** Types into the body and opens the menu before the autosave timer runs out. */
   const typeThenOpenMenu = async (text: string) => {
-    const view = renderPage();
-    fireEvent.click(await screen.findByText(/Launch ideas/));
+    const view = await openNote();
+    fireEvent.click(screen.getByText(/Launch ideas/));
     vi.useFakeTimers();
     fireEvent.change(editor(), { target: { value: text } });
     fireEvent.click(screen.getByRole('button', { name: 'Actions for Launch ideas' }));
@@ -874,8 +801,7 @@ describe('NotePage menu with an edit still waiting to save (R20, R27)', () => {
 
   it('should drop the waiting save on Delete, so no write follows the delete', async () => {
     const view = await typeThenOpenMenu('Launch ideas, then deleted');
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Delete' })));
+    await deleteFromMenu();
     expect(deleteChecklistItem).toHaveBeenCalledWith('n2', 'plan-1');
     expect(push).toHaveBeenCalledWith('/plan/plan-1');
     const deletedAt = deleteChecklistItem.mock.invocationCallOrder[0];
@@ -889,11 +815,10 @@ describe('NotePage menu with an edit still waiting to save (R20, R27)', () => {
   });
 
   it('should still save the waiting edit when the delete fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    quietErrors();
     deleteChecklistItem.mockRejectedValue(new Error('nope'));
     await typeThenOpenMenu('Launch ideas, kept');
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Delete' })));
+    await deleteFromMenu();
     await act(async () => vi.advanceTimersByTime(2000));
     expect(screen.getByText('Failed to delete task')).toBeInTheDocument();
     expect(bodySaves()).toEqual([
@@ -916,10 +841,10 @@ describe('NotePage menu with an edit still waiting to save (R20, R27)', () => {
   });
 
   it('should stop with "Couldn\'t save your changes" when Make a task lands but the body will not save', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    quietErrors();
     updateChecklistItem.mockImplementation(async (id: string, fields: Partial<ChecklistItem>) => {
       if ('description' in fields) throw new Error('network');
-      return { ...ITEMS.find((i) => i.id === id)!, ...fields };
+      return echoUpdate(id, fields);
     });
     await typeThenOpenMenu('Launch ideas, unsaved task');
     vi.useRealTimers();

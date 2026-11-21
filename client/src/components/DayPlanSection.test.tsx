@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import DayPlanSection from './DayPlanSection';
 import { toDateOnly } from '@/lib/itemDates';
 import { ApiError } from '@/api/client';
+import { deferred, settle } from '@/test/async';
 
 /**
  * The Day plan section on the plan page (FS-02JBZ R62–R74). It reads the day
@@ -36,6 +37,10 @@ vi.mock('@/api/insights', () => ({
   setItemRevisions: (...a: unknown[]) => setItemRevisions(...a),
   setDayPlanSettings: (...a: unknown[]) => setDayPlanSettings(...a),
 }));
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
 
 const item = (id: string, extra: Partial<Record<string, unknown>> = {}) => ({
   id,
@@ -117,19 +122,56 @@ const PLAN = planned([
   { label: 'Bugs', entries: [DONE] },
 ]);
 
+/** PLAN, sized to `dailyMinutes` a day, or to a typical day when omitted. */
+const withMinutes = (dailyMinutes?: number) =>
+  planned(PLAN.groups, {
+    settings: dailyMinutes ? { asked: true, dailyMinutes } : { asked: true },
+  });
+
+/** A failure the section must read by its code; `detail` is prose it ignores. */
+const apiError = (code: string, status: number, detail?: string) =>
+  new ApiError({ code, status, ...(detail ? { detail } : {}) } as never, status);
+const unavailable = (detail?: string) => apiError('SERVICE_UNAVAILABLE', 503, detail);
+const notFound = (detail?: string) => apiError('NOT_FOUND', 404, detail);
 const limitReached = () =>
-  new ApiError(
-    {
-      code: 'BRIEF_REFRESH_LIMIT_REACHED',
-      status: 429,
-      detail: 'prose that may change',
-    } as never,
-    429
+  apiError('BRIEF_REFRESH_LIMIT_REACHED', 429, 'prose that may change');
+
+/** Add on the demo-slot new step creates S9 under M1. */
+const createsDemoSlot = () =>
+  createChecklistItem.mockResolvedValue(
+    item('S9', { parentId: 'M1', description: 'Book a demo slot' })
   );
 
+// ---------------------------------------------------------------------------
+// Rendering and queries
+// ---------------------------------------------------------------------------
+
 const mount = () => render(<DayPlanSection planId="plan-1" />);
+
+/** Mounts the section and waits until the day plan shows `ready`. */
+const renderSection = async (ready = 'Write the release notes') => {
+  const view = mount();
+  await screen.findByText(ready);
+  return view;
+};
+
 const section = () => screen.getByRole('region', { name: 'Day plan' });
 const planAgain = () => screen.getByRole('button', { name: /^(Plan again|Planning)/ });
+const tip = () => screen.getByRole('tooltip');
+const cog = () => screen.queryByRole('button', { name: 'Day plan settings' });
+const QUESTION = 'How much time do you have for this plan each day?';
+
+/** The tab regains focus, which is when the section re-reads. */
+const refocus = () =>
+  act(async () => {
+    window.dispatchEvent(new Event('focus'));
+  });
+
+/** Fakes only the date, so the clock reads `now` while timers stay real. */
+const freezeDate = (now: Date) => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(now);
+};
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -156,8 +198,7 @@ afterEach(() => {
 
 describe('DayPlanSection', () => {
   it('should read the day plan for the browser-local date and the long-term items, never planning on mount', async () => {
-    mount();
-    await screen.findByText('Write the release notes');
+    await renderSection();
     expect(getDayPlan).toHaveBeenCalledWith('plan-1', today());
     expect(fetchChecklist).toHaveBeenCalledWith('plan-1', 'longterm');
     expect(planMyDay).not.toHaveBeenCalled();
@@ -168,11 +209,10 @@ describe('DayPlanSection', () => {
     expect(
       screen.getByRole('button', { name: 'Information about the day plan' })
     ).toBeTruthy();
-    const tip = screen.getByRole('tooltip');
-    expect(tip).toHaveTextContent(/daily progression/i);
-    expect(tip).toHaveTextContent(/plan your day/i);
-    expect(tip).toHaveTextContent(/tick what you did today/i);
-    expect(tip).toHaveTextContent(/revision/i);
+    expect(tip()).toHaveTextContent(/daily progression/i);
+    expect(tip()).toHaveTextContent(/plan your day/i);
+    expect(tip()).toHaveTextContent(/tick what you did today/i);
+    expect(tip()).toHaveTextContent(/revision/i);
     await screen.findByText('Write the release notes');
   });
 
@@ -197,8 +237,8 @@ describe('DayPlanSection', () => {
     });
 
     it('should show a loading state inside the section while planning', async () => {
-      let resolve!: (v: unknown) => void;
-      planMyDay.mockReturnValue(new Promise((r) => (resolve = r)));
+      const draw = deferred<unknown>();
+      planMyDay.mockReturnValue(draw.promise);
       mount();
       await userEvent.click(await screen.findByRole('button', { name: 'Plan my day' }));
 
@@ -206,16 +246,12 @@ describe('DayPlanSection', () => {
         within(section()).getByRole('list', { name: 'Planning your day' })
       ).toBeTruthy();
 
-      await act(async () => resolve(PLAN));
+      await act(async () => draw.resolve(PLAN));
       expect(await screen.findByText('Write the release notes')).toBeTruthy();
     });
 
     it('should keep the button and offer a quiet retry when planning fails', async () => {
-      planMyDay
-        .mockRejectedValueOnce(
-          new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 } as never, 503)
-        )
-        .mockResolvedValueOnce(PLAN);
+      planMyDay.mockRejectedValueOnce(unavailable()).mockResolvedValueOnce(PLAN);
       mount();
       await userEvent.click(await screen.findByRole('button', { name: 'Plan my day' }));
 
@@ -227,10 +263,17 @@ describe('DayPlanSection', () => {
   });
 
   describe('the first ask, hours a day (R108–R112)', () => {
-    const QUESTION = 'How much time do you have for this plan each day?';
     const neverAsked = (extra: Record<string, unknown> = {}) =>
       notPlanned({ settings: { asked: false }, ...extra });
     const chips = () => within(screen.getByRole('group', { name: QUESTION }));
+
+    /** Mounts on the first ask and answers it with the chip named `label`. */
+    const answer = async (label: string) => {
+      const view = mount();
+      await screen.findByRole('group', { name: QUESTION });
+      await userEvent.click(chips().getByRole('button', { name: label }));
+      return view;
+    };
 
     beforeEach(() => {
       getDayPlan.mockResolvedValue(neverAsked());
@@ -259,13 +302,8 @@ describe('DayPlanSection', () => {
 
     it('should save the chip then plan, once each and in that order, in one click', async () => {
       setDayPlanSettings.mockResolvedValue({ asked: true, dailyMinutes: 60 });
-      planMyDay.mockResolvedValue(
-        planned(PLAN.groups, { settings: { asked: true, dailyMinutes: 60 } })
-      );
-      mount();
-      await screen.findByRole('group', { name: QUESTION });
-
-      await userEvent.click(chips().getByRole('button', { name: '1 hour' }));
+      planMyDay.mockResolvedValue(withMinutes(60));
+      await answer('1 hour');
 
       expect(setDayPlanSettings).toHaveBeenCalledTimes(1);
       expect(setDayPlanSettings).toHaveBeenCalledWith('plan-1', 60);
@@ -279,26 +317,24 @@ describe('DayPlanSection', () => {
     });
 
     it('should show the planning skeleton from the save through the draw', async () => {
-      let saved!: (v: unknown) => void;
-      setDayPlanSettings.mockReturnValue(new Promise((r) => (saved = r)));
-      let drawn!: (v: unknown) => void;
-      planMyDay.mockReturnValue(new Promise((r) => (drawn = r)));
-      mount();
-      await screen.findByRole('group', { name: QUESTION });
+      const save = deferred<unknown>();
+      setDayPlanSettings.mockReturnValue(save.promise);
+      const draw = deferred<unknown>();
+      planMyDay.mockReturnValue(draw.promise);
+      await answer('2 hours');
 
-      await userEvent.click(chips().getByRole('button', { name: '2 hours' }));
       expect(setDayPlanSettings).toHaveBeenCalledWith('plan-1', 120);
       expect(
         within(section()).getByRole('list', { name: 'Planning your day' })
       ).toBeTruthy();
 
-      await act(async () => saved({ asked: true, dailyMinutes: 120 }));
+      await act(async () => save.resolve({ asked: true, dailyMinutes: 120 }));
       expect(
         within(section()).getByRole('list', { name: 'Planning your day' })
       ).toBeTruthy();
       expect(planMyDay).toHaveBeenCalledTimes(1);
 
-      await act(async () => drawn(PLAN));
+      await act(async () => draw.resolve(PLAN));
       expect(await screen.findByText('Write the release notes')).toBeTruthy();
     });
 
@@ -320,13 +356,10 @@ describe('DayPlanSection', () => {
     });
 
     it('should not ask once asked, so a later not-planned read shows the plain card', async () => {
-      vi.useFakeTimers({ toFake: ['Date'] });
-      vi.setSystemTime(new Date(2026, 9, 25, 23, 0));
+      freezeDate(new Date(2026, 9, 25, 23, 0));
       setDayPlanSettings.mockResolvedValue({ asked: true, dailyMinutes: 120 });
       planMyDay.mockResolvedValue(PLAN);
-      mount();
-      await screen.findByRole('group', { name: QUESTION });
-      await userEvent.click(chips().getByRole('button', { name: '2 hours' }));
+      await answer('2 hours');
       await screen.findByText('Write the release notes');
 
       // The next day's read: the server recorded the answer (R94).
@@ -337,9 +370,7 @@ describe('DayPlanSection', () => {
         })
       );
       vi.setSystemTime(new Date(2026, 9, 26, 8, 0));
-      await act(async () => {
-        window.dispatchEvent(new Event('focus'));
-      });
+      await refocus();
 
       expect(await screen.findByRole('button', { name: 'Plan my day' })).toBeTruthy();
       expect(screen.queryByText(QUESTION)).toBeNull();
@@ -355,20 +386,9 @@ describe('DayPlanSection', () => {
     });
 
     it('should still plan when the save fails, say so quietly, and match the code not the detail (R110)', async () => {
-      setDayPlanSettings.mockRejectedValue(
-        new ApiError(
-          {
-            code: 'SERVICE_UNAVAILABLE',
-            status: 503,
-            detail: 'not found, prose that may change',
-          } as never,
-          503
-        )
-      );
+      setDayPlanSettings.mockRejectedValue(unavailable('not found, prose that may change'));
       planMyDay.mockResolvedValue(PLAN);
-      mount();
-      await screen.findByRole('group', { name: QUESTION });
-      await userEvent.click(chips().getByRole('button', { name: '3 hours' }));
+      await answer('3 hours');
 
       expect(planMyDay).toHaveBeenCalledTimes(1);
       expect(await screen.findByText('Write the release notes')).toBeTruthy();
@@ -381,15 +401,11 @@ describe('DayPlanSection', () => {
     });
 
     it('should drop the hours notice on the next Plan again', async () => {
-      setDayPlanSettings.mockRejectedValue(
-        new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 } as never, 503)
-      );
+      setDayPlanSettings.mockRejectedValue(unavailable());
       planMyDay
         .mockResolvedValueOnce(PLAN)
         .mockResolvedValueOnce(planned(PLAN.groups, { generatedAt: '2026-10-25T09:00:00Z' }));
-      mount();
-      await screen.findByRole('group', { name: QUESTION });
-      await userEvent.click(chips().getByRole('button', { name: '1 hour' }));
+      await answer('1 hour');
       await screen.findByText(/Couldn.t save your hours/);
 
       await userEvent.click(planAgain());
@@ -403,20 +419,10 @@ describe('DayPlanSection', () => {
 
     it('should ask again when both the save and the draw fail, and send the chosen answer again on retry (R110)', async () => {
       setDayPlanSettings
-        .mockRejectedValueOnce(
-          new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 } as never, 503)
-        )
+        .mockRejectedValueOnce(unavailable())
         .mockResolvedValueOnce({ asked: true, dailyMinutes: 60 });
-      planMyDay
-        .mockRejectedValueOnce(
-          new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 } as never, 503)
-        )
-        .mockResolvedValueOnce(
-          planned(PLAN.groups, { settings: { asked: true, dailyMinutes: 60 } })
-        );
-      mount();
-      await screen.findByRole('group', { name: QUESTION });
-      await userEvent.click(chips().getByRole('button', { name: '1 hour' }));
+      planMyDay.mockRejectedValueOnce(unavailable()).mockResolvedValueOnce(withMinutes(60));
+      await answer('1 hour');
       await screen.findByText(/Couldn.t plan your day/);
       expect(screen.getByRole('group', { name: QUESTION })).toBeTruthy();
 
@@ -435,12 +441,8 @@ describe('DayPlanSection', () => {
     });
 
     it('should render nothing when the save says the plan is not reachable (R70)', async () => {
-      setDayPlanSettings.mockRejectedValue(
-        new ApiError({ code: 'NOT_FOUND', status: 404 } as never, 404)
-      );
-      const { container } = mount();
-      await screen.findByRole('group', { name: QUESTION });
-      await userEvent.click(chips().getByRole('button', { name: '1 hour' }));
+      setDayPlanSettings.mockRejectedValue(notFound());
+      const { container } = await answer('1 hour');
 
       await waitFor(() => expect(container).toBeEmptyDOMElement());
       expect(planMyDay).not.toHaveBeenCalled();
@@ -448,14 +450,8 @@ describe('DayPlanSection', () => {
 
     it('should show the quiet retry and not ask again when the save works but the draw fails (R111)', async () => {
       setDayPlanSettings.mockResolvedValue({ asked: true, dailyMinutes: 60 });
-      planMyDay
-        .mockRejectedValueOnce(
-          new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 } as never, 503)
-        )
-        .mockResolvedValueOnce(PLAN);
-      mount();
-      await screen.findByRole('group', { name: QUESTION });
-      await userEvent.click(chips().getByRole('button', { name: '1 hour' }));
+      planMyDay.mockRejectedValueOnce(unavailable()).mockResolvedValueOnce(PLAN);
+      await answer('1 hour');
 
       expect(await screen.findByText(/Couldn.t plan your day/)).toBeTruthy();
       expect(screen.queryByText(QUESTION)).toBeNull();
@@ -471,34 +467,60 @@ describe('DayPlanSection', () => {
 
   describe('the tooltip and the cog, hours a day (R114–R118)', () => {
     const UNSET_LINE = 'Sized for a typical day. Set your hours with the cog.';
-    const tip = () => screen.getByRole('tooltip');
 
-    it('should name the hours in the tooltip when set', async () => {
-      getDayPlan.mockResolvedValue(
-        planned(PLAN.groups, { settings: { asked: true, dailyMinutes: 150 } })
+    const openSettings = async () => {
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Day plan settings' })
       );
-      mount();
-      await screen.findByText('Write the release notes');
-      expect(tip()).toHaveTextContent(
-        'Sized for 2½ hours a day. Change it with the cog.'
+    };
+    /** Mounts on PLAN sized to `dailyMinutes` (unset when omitted) and opens the cog. */
+    const openCogOn = async (dailyMinutes?: number) => {
+      getDayPlan.mockResolvedValue(withMinutes(dailyMinutes));
+      const view = mount();
+      await openSettings();
+      return view;
+    };
+    const more = () => screen.getByRole('button', { name: 'More time' });
+    const less = () => screen.getByRole('button', { name: 'Less time' });
+    const readout = () => screen.getByRole('status', { name: 'Hours a day' });
+
+    /** Every save lands at once, echoing what it was sent. */
+    const echo = () =>
+      setDayPlanSettings.mockImplementation(
+        async (_: string, dailyMinutes: number | null) =>
+          dailyMinutes === null ? { asked: true } : { asked: true, dailyMinutes }
       );
-    });
+    /** Saves held open until the test settles each one, in order. */
+    const heldSaves = () => {
+      const pending: { ok: () => void; fail: (err: unknown) => void }[] = [];
+      setDayPlanSettings.mockImplementation(
+        (_: string, dailyMinutes: number) =>
+          new Promise((resolve, reject) =>
+            pending.push({
+              ok: () => resolve({ asked: true, dailyMinutes }),
+              fail: reject,
+            })
+          )
+      );
+      return pending;
+    };
 
-    it('should say a typical day in the tooltip when unset', async () => {
-      mount();
-      await screen.findByText('Write the release notes');
-      expect(tip()).toHaveTextContent(UNSET_LINE);
+    it.each<[string, number | undefined, string]>([
+      ['name the hours when set', 150, 'Sized for 2½ hours a day. Change it with the cog.'],
+      ['say a typical day when unset', undefined, UNSET_LINE],
+    ])('should %s in the tooltip', async (_when, dailyMinutes, line) => {
+      getDayPlan.mockResolvedValue(withMinutes(dailyMinutes));
+      await renderSection();
+      expect(tip()).toHaveTextContent(line);
     });
-
-    const cog = () => screen.queryByRole('button', { name: 'Day plan settings' });
 
     it('should show the cog beside Hide only once the day plan has loaded, and swap the body for the settings view', async () => {
-      let read!: (v: unknown) => void;
-      getDayPlan.mockReturnValue(new Promise((r) => (read = r)));
+      const read = deferred<unknown>();
+      getDayPlan.mockReturnValue(read.promise);
       mount();
       expect(cog()).toBeNull();
 
-      await act(async () => read(PLAN));
+      await act(async () => read.resolve(PLAN));
       await screen.findByText('Write the release notes');
       // In the header's control cluster, next to Hide.
       expect(cog()!.parentElement).toBe(
@@ -519,53 +541,12 @@ describe('DayPlanSection', () => {
       expect(screen.queryByText('Hours a day')).toBeNull();
     });
 
-    it('should offer no cog while the section is hidden (R116)', async () => {
-      window.localStorage.setItem('showDailyInsights', 'false');
-      mount();
-      await screen.findByRole('button', { name: 'Show' });
-      await waitFor(() => expect(getDayPlan).toHaveBeenCalled());
-      expect(cog()).toBeNull();
-    });
-
-    it('should offer no cog until a failed read succeeds (R116)', async () => {
-      getDayPlan
-        .mockRejectedValueOnce(
-          new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 } as never, 503)
-        )
-        .mockResolvedValueOnce(PLAN);
-      mount();
-      await screen.findByText(/Couldn.t load the day plan/);
-      expect(cog()).toBeNull();
-      await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-      await screen.findByText('Write the release notes');
-      expect(cog()).toBeTruthy();
-    });
-
-    const openSettings = async () => {
-      await userEvent.click(
-        await screen.findByRole('button', { name: 'Day plan settings' })
-      );
-    };
-    const more = () => screen.getByRole('button', { name: 'More time' });
-    const less = () => screen.getByRole('button', { name: 'Less time' });
-    const readout = () => screen.getByRole('status', { name: 'Hours a day' });
-    const withMinutes = (dailyMinutes?: number) =>
-      planned(PLAN.groups, {
-        settings: dailyMinutes ? { asked: true, dailyMinutes } : { asked: true },
-      });
-    const echo = () =>
-      setDayPlanSettings.mockImplementation(
-        async (_: string, dailyMinutes: number | null) =>
-          dailyMinutes === null ? { asked: true } : { asked: true, dailyMinutes }
-      );
-
     it.each([
       ['+', more],
       ['−', less],
     ])('should set 2 hours on a first %s from unset, save 120, and update the tooltip without planning', async (_key, press) => {
       echo();
-      mount();
-      await openSettings();
+      await openCogOn();
       expect(readout()).toHaveTextContent('Typical day');
 
       await userEvent.click(press());
@@ -581,41 +562,31 @@ describe('DayPlanSection', () => {
       expect(planMyDay).not.toHaveBeenCalled();
     });
 
-    it('should step by 30 minutes and stop at 30 minutes and at 12 hours', async () => {
-      echo();
-      getDayPlan.mockResolvedValue(withMinutes(60));
-      mount();
-      await openSettings();
-      expect(readout()).toHaveTextContent('1 hour');
+    it.each([
+      { bound: '30 minutes', to: 30, from: 60, fromLabel: '1 hour', press: less, back: more },
+      { bound: '12 hours', to: 720, from: 690, fromLabel: '11½ hours', press: more, back: less },
+    ])(
+      'should step by 30 minutes and stop at $bound',
+      async ({ bound, to, from, fromLabel, press, back }) => {
+        echo();
+        await openCogOn(from);
+        expect(readout()).toHaveTextContent(fromLabel);
 
-      await userEvent.click(less());
-      expect(readout()).toHaveTextContent('30 minutes');
-      expect(setDayPlanSettings).toHaveBeenLastCalledWith('plan-1', 30);
-      expect(less()).toBeDisabled();
-      expect(more()).toBeEnabled();
+        await userEvent.click(press());
+        expect(readout()).toHaveTextContent(bound);
+        expect(setDayPlanSettings).toHaveBeenLastCalledWith('plan-1', to);
+        expect(press()).toBeDisabled();
+        expect(back()).toBeEnabled();
 
-      await userEvent.click(more());
-      expect(readout()).toHaveTextContent('1 hour');
-      expect(setDayPlanSettings).toHaveBeenLastCalledWith('plan-1', 60);
-    });
-
-    it('should stop + at 12 hours', async () => {
-      echo();
-      getDayPlan.mockResolvedValue(withMinutes(690));
-      mount();
-      await openSettings();
-      await userEvent.click(more());
-      expect(readout()).toHaveTextContent('12 hours');
-      expect(setDayPlanSettings).toHaveBeenLastCalledWith('plan-1', 720);
-      expect(more()).toBeDisabled();
-      expect(less()).toBeEnabled();
-    });
+        await userEvent.click(back());
+        expect(readout()).toHaveTextContent(fromLabel);
+        expect(setDayPlanSettings).toHaveBeenLastCalledWith('plan-1', from);
+      }
+    );
 
     it('should clear to the default with "Use the default", saving null', async () => {
       echo();
-      getDayPlan.mockResolvedValue(withMinutes(150));
-      mount();
-      await openSettings();
+      await openCogOn(150);
       expect(readout()).toHaveTextContent('2½ hours');
 
       await userEvent.click(screen.getByRole('button', { name: 'Use the default' }));
@@ -629,16 +600,8 @@ describe('DayPlanSection', () => {
     });
 
     it('should send fast presses one after another, the last value pressed winning', async () => {
-      getDayPlan.mockResolvedValue(withMinutes(120));
-      const pending: ((v: unknown) => void)[] = [];
-      setDayPlanSettings.mockImplementation(
-        (_: string, dailyMinutes: number) =>
-          new Promise((r) =>
-            pending.push(() => r({ asked: true, dailyMinutes }))
-          )
-      );
-      mount();
-      await openSettings();
+      const pending = heldSaves();
+      await openCogOn(120);
 
       await userEvent.click(more());
       await userEvent.click(more());
@@ -649,7 +612,7 @@ describe('DayPlanSection', () => {
 
       for (let i = 0; i < 3; i++) {
         await waitFor(() => expect(pending.length).toBe(i + 1));
-        await act(async () => pending[i](undefined));
+        await act(async () => pending[i].ok());
       }
 
       expect(setDayPlanSettings.mock.calls.map((c) => c[1])).toEqual([
@@ -660,19 +623,8 @@ describe('DayPlanSection', () => {
     });
 
     it('should revert to the last saved value and say so quietly when a save fails, by code', async () => {
-      getDayPlan.mockResolvedValue(withMinutes(120));
-      setDayPlanSettings.mockRejectedValue(
-        new ApiError(
-          {
-            code: 'SERVICE_UNAVAILABLE',
-            status: 503,
-            detail: 'not found, prose that may change',
-          } as never,
-          503
-        )
-      );
-      mount();
-      await openSettings();
+      setDayPlanSettings.mockRejectedValue(unavailable('not found, prose that may change'));
+      await openCogOn(120);
       await userEvent.click(more());
 
       expect(await screen.findByText("Couldn't save. Try again.")).toBeTruthy();
@@ -689,28 +641,9 @@ describe('DayPlanSection', () => {
       expect(readout()).toHaveTextContent('2½ hours');
     });
 
-    // Saves held open until the test settles each one, in order.
-    const heldSaves = () => {
-      const pending: { ok: () => void; fail: (err: unknown) => void }[] = [];
-      setDayPlanSettings.mockImplementation(
-        (_: string, dailyMinutes: number) =>
-          new Promise((resolve, reject) =>
-            pending.push({
-              ok: () => resolve({ asked: true, dailyMinutes }),
-              fail: reject,
-            })
-          )
-      );
-      return pending;
-    };
-    const unavailable = () =>
-      new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 } as never, 503);
-
     it('should settle on the last press when an earlier save in the queue fails', async () => {
-      getDayPlan.mockResolvedValue(withMinutes(120));
       const pending = heldSaves();
-      mount();
-      await openSettings();
+      await openCogOn(120);
       await userEvent.click(more());
       await userEvent.click(more());
 
@@ -729,10 +662,8 @@ describe('DayPlanSection', () => {
     });
 
     it('should revert to the last value saved in the queue when the last press fails', async () => {
-      getDayPlan.mockResolvedValue(withMinutes(120));
       const pending = heldSaves();
-      mount();
-      await openSettings();
+      await openCogOn(120);
       await userEvent.click(more());
       await userEvent.click(more());
 
@@ -746,32 +677,25 @@ describe('DayPlanSection', () => {
     });
 
     it('should render nothing and drop the presses still queued once a save says the plan is not reachable (R70)', async () => {
-      getDayPlan.mockResolvedValue(withMinutes(120));
       const pending = heldSaves();
-      const { container } = mount();
-      await openSettings();
+      const { container } = await openCogOn(120);
       await userEvent.click(more());
       await userEvent.click(more());
       await userEvent.click(more());
 
-      await act(async () =>
-        pending[0].fail(new ApiError({ code: 'NOT_FOUND', status: 404 } as never, 404))
-      );
+      await act(async () => pending[0].fail(notFound()));
       await waitFor(() => expect(container).toBeEmptyDOMElement());
       // Let anything still queued run, were it going to.
-      await act(async () => {
-        await new Promise((r) => setTimeout(r, 0));
-      });
+      await settle(0);
       expect(setDayPlanSettings).toHaveBeenCalledTimes(1);
     });
 
     it('should keep a cog save made while Plan again is drawing over the settings the draw brings back (R114)', async () => {
       echo();
       getDayPlan.mockResolvedValue(withMinutes(120));
-      let drawn!: (v: unknown) => void;
-      planMyDay.mockReturnValue(new Promise((r) => (drawn = r)));
-      mount();
-      await screen.findByText('Write the release notes');
+      const draw = deferred<unknown>();
+      planMyDay.mockReturnValue(draw.promise);
+      await renderSection();
 
       await userEvent.click(planAgain());
       await openSettings();
@@ -782,7 +706,7 @@ describe('DayPlanSection', () => {
 
       // The draw read the settings before the save landed.
       await act(async () =>
-        drawn(
+        draw.resolve(
           planned(PLAN.groups, {
             generatedAt: '2026-10-25T09:00:00Z',
             settings: { asked: true, dailyMinutes: 120 },
@@ -798,18 +722,14 @@ describe('DayPlanSection', () => {
       echo();
       getDayPlan.mockResolvedValue(notPlanned({ settings: { asked: false } }));
       mount();
-      await screen.findByRole('group', {
-        name: 'How much time do you have for this plan each day?',
-      });
+      await screen.findByRole('group', { name: QUESTION });
       await openSettings();
       await userEvent.click(more());
       await waitFor(() => expect(setDayPlanSettings).toHaveBeenCalledTimes(1));
       await userEvent.click(screen.getByRole('button', { name: 'Back to day plan' }));
 
       expect(await screen.findByRole('button', { name: 'Plan my day' })).toBeTruthy();
-      expect(
-        screen.queryByText('How much time do you have for this plan each day?')
-      ).toBeNull();
+      expect(screen.queryByText(QUESTION)).toBeNull();
       expect(planMyDay).not.toHaveBeenCalled();
     });
   });
@@ -829,6 +749,8 @@ describe('DayPlanSection', () => {
       expect(screen.getByText('~25 min')).toBeTruthy();
       expect(screen.getByText('Book a demo slot')).toBeTruthy();
       expect(screen.getByText('Nothing is scheduled yet')).toBeTruthy();
+      // An AI plan wears no basic label (R69).
+      expect(within(section()).queryByText('Basic plan')).toBeNull();
     });
 
     it('should show a done item as completed and keep its row', async () => {
@@ -854,8 +776,7 @@ describe('DayPlanSection', () => {
           { label: 'All stale', entries: [{ ...NEW, id: 'x', parentItemId: 'nope' }] },
         ])
       );
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
       for (const gone of ['Old idea', 'Deleted thing', 'Orphan step', 'Under a done parent']) {
         expect(screen.queryByText(gone)).toBeNull();
       }
@@ -863,17 +784,14 @@ describe('DayPlanSection', () => {
       expect(within(section()).getAllByRole('listitem')).toHaveLength(1);
     });
 
-    it('should say there is nothing to plan, and invite a first milestone when there is none', async () => {
+    it.each([
+      { when: 'and invite a first milestone when there is none', items: [], line: /Start a milestone in your plan/ },
+      { when: 'when milestones exist but the plan is empty', items: ITEMS, line: 'Nothing to plan for today.' },
+    ])('should say there is nothing to plan $when', async ({ items, line }) => {
       getDayPlan.mockResolvedValue(planned([]));
-      fetchChecklist.mockResolvedValue([]);
+      fetchChecklist.mockResolvedValue(items);
       mount();
-      expect(await screen.findByText(/Start a milestone in your plan/)).toBeTruthy();
-    });
-
-    it('should say there is nothing to plan when milestones exist but the plan is empty', async () => {
-      getDayPlan.mockResolvedValue(planned([]));
-      mount();
-      expect(await screen.findByText('Nothing to plan for today.')).toBeTruthy();
+      expect(await screen.findByText(line)).toBeTruthy();
     });
 
     it('should re-read the items on return so an item finished elsewhere renders done', async () => {
@@ -882,9 +800,7 @@ describe('DayPlanSection', () => {
       expect(text.className).not.toMatch(/line-through/);
 
       fetchChecklist.mockResolvedValue([ITEMS[0], { ...ITEMS[1], done: true }, ITEMS[2]]);
-      await act(async () => {
-        window.dispatchEvent(new Event('focus'));
-      });
+      await refocus();
       await waitFor(() =>
         expect(screen.getByText('Write the release notes').className).toMatch(/line-through/)
       );
@@ -892,17 +808,13 @@ describe('DayPlanSection', () => {
     });
 
     it('should read the new date after local midnight and show not planned (R64)', async () => {
-      vi.useFakeTimers({ toFake: ['Date'] });
-      vi.setSystemTime(new Date(2026, 9, 25, 23, 59));
-      mount();
-      await screen.findByText('Write the release notes');
+      freezeDate(new Date(2026, 9, 25, 23, 59));
+      await renderSection();
       expect(getDayPlan).toHaveBeenLastCalledWith('plan-1', '2026-10-25');
 
       getDayPlan.mockResolvedValue(notPlanned({ date: '2026-10-26' }));
       vi.setSystemTime(new Date(2026, 9, 26, 0, 1));
-      await act(async () => {
-        window.dispatchEvent(new Event('focus'));
-      });
+      await refocus();
       await waitFor(() =>
         expect(getDayPlan).toHaveBeenLastCalledWith('plan-1', '2026-10-26')
       );
@@ -914,8 +826,7 @@ describe('DayPlanSection', () => {
   describe('Plan again (R68)', () => {
     it('should show the count and say nothing has changed when the redraw is the plan on screen', async () => {
       planMyDay.mockResolvedValue(PLAN);
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
       expect(planAgain()).toHaveTextContent('3 left');
 
       await userEvent.click(planAgain());
@@ -927,8 +838,7 @@ describe('DayPlanSection', () => {
 
     it('should retire the action at zero without asking the server', async () => {
       getDayPlan.mockResolvedValue({ ...PLAN, refreshesRemaining: 0 });
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
       expect(planAgain()).toHaveTextContent('0 left');
       expect(planAgain()).toBeDisabled();
       await userEvent.click(planAgain());
@@ -938,8 +848,7 @@ describe('DayPlanSection', () => {
     it('should retire the action and keep the plan on a 429 by code', async () => {
       getDayPlan.mockResolvedValue({ ...PLAN, refreshesRemaining: 1 });
       planMyDay.mockRejectedValue(limitReached());
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       await userEvent.click(planAgain());
 
@@ -951,15 +860,9 @@ describe('DayPlanSection', () => {
 
     it('should keep the plan and offer a quiet retry for any other failure, whatever its detail says', async () => {
       planMyDay
-        .mockRejectedValueOnce(
-          new ApiError(
-            { code: 'SERVICE_UNAVAILABLE', status: 503, detail: 'refresh limit reached' } as never,
-            503
-          )
-        )
+        .mockRejectedValueOnce(unavailable('refresh limit reached'))
         .mockResolvedValueOnce(PLAN);
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       await userEvent.click(planAgain());
 
@@ -972,9 +875,7 @@ describe('DayPlanSection', () => {
     });
 
     it('should replace the plan after a counted redraw and forget what was done to the old entries', async () => {
-      createChecklistItem.mockResolvedValue(
-        item('S9', { parentId: 'M1', description: 'Book a demo slot' })
-      );
+      createsDemoSlot();
       planMyDay
         .mockResolvedValueOnce(
           planned(
@@ -1004,10 +905,8 @@ describe('DayPlanSection', () => {
     });
 
     it('should read the new day instead of redrawing yesterday after local midnight', async () => {
-      vi.useFakeTimers({ toFake: ['Date'] });
-      vi.setSystemTime(new Date(2026, 9, 25, 23, 59));
-      mount();
-      await screen.findByText('Write the release notes');
+      freezeDate(new Date(2026, 9, 25, 23, 59));
+      await renderSection();
 
       vi.setSystemTime(new Date(2026, 9, 26, 0, 1));
       await userEvent.click(planAgain());
@@ -1019,60 +918,54 @@ describe('DayPlanSection', () => {
     });
   });
 
-  describe('basic plan (R69)', () => {
-    it('should label a rules plan as basic, explain it, and still offer Plan my day', async () => {
-      getDayPlan.mockResolvedValue({ ...PLAN, source: 'rules' });
-      planMyDay.mockResolvedValue({ ...PLAN, generatedAt: '2026-10-25T09:00:00Z' });
-      mount();
-      await screen.findByText('Write the release notes');
+  it('should label a rules plan as basic, explain it, and still offer Plan my day (R69)', async () => {
+    getDayPlan.mockResolvedValue({ ...PLAN, source: 'rules' });
+    planMyDay.mockResolvedValue({ ...PLAN, generatedAt: '2026-10-25T09:00:00Z' });
+    await renderSection();
 
-      expect(within(section()).getByText('Basic plan')).toBeTruthy();
-      expect(within(section()).getByText(/AI wasn.t available/)).toBeTruthy();
-      const button = screen.getByRole('button', { name: /^Plan my day/ });
-      await userEvent.click(button);
-      expect(planMyDay).toHaveBeenCalledTimes(1);
-      await waitFor(() => expect(within(section()).queryByText('Basic plan')).toBeNull());
-    });
-
-    it('should not label an AI plan as basic', async () => {
-      mount();
-      await screen.findByText('Write the release notes');
-      expect(within(section()).queryByText('Basic plan')).toBeNull();
-    });
+    expect(within(section()).getByText('Basic plan')).toBeTruthy();
+    expect(within(section()).getByText(/AI wasn.t available/)).toBeTruthy();
+    const button = screen.getByRole('button', { name: /^Plan my day/ });
+    await userEvent.click(button);
+    expect(planMyDay).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(within(section()).queryByText('Basic plan')).toBeNull());
   });
 
   it('should render nothing when the plan is not reachable (R70)', async () => {
-    getDayPlan.mockRejectedValue(new ApiError({ code: 'NOT_FOUND', status: 404 } as never, 404));
+    getDayPlan.mockRejectedValue(notFound());
     const { container } = mount();
     await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 
-  it('should offer a quiet retry when the read fails, never an alert (R71)', async () => {
-    getDayPlan.mockRejectedValueOnce(
-      new ApiError({ code: 'BRIEF_DATE_OUT_OF_RANGE', status: 400 } as never, 400)
-    );
+  it('should offer a quiet retry when the read fails, never an alert, and no cog until it succeeds (R71, R116)', async () => {
+    getDayPlan.mockRejectedValueOnce(apiError('BRIEF_DATE_OUT_OF_RANGE', 400));
     mount();
     const retry = await screen.findByRole('button', { name: 'Try again' });
+    expect(screen.getByText(/Couldn.t load the day plan/)).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(cog()).toBeNull();
 
     await userEvent.click(retry);
     expect(await screen.findByText('Write the release notes')).toBeTruthy();
+    expect(cog()).toBeTruthy();
   });
 
   describe('show / hide (R72)', () => {
     it('should hide and remember the preference under the existing key', async () => {
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
       await userEvent.click(screen.getByRole('button', { name: 'Hide' }));
       expect(screen.queryByText('Write the release notes')).toBeNull();
       expect(window.localStorage.getItem('showDailyInsights')).toBe('false');
     });
 
-    it('should start hidden when the preference says so', async () => {
+    it('should start hidden when the preference says so, offering no cog (R116)', async () => {
       window.localStorage.setItem('showDailyInsights', 'false');
       mount();
       expect(await screen.findByRole('button', { name: 'Show' })).toBeTruthy();
       expect(screen.queryByText('Write the release notes')).toBeNull();
+      // Still no cog once the hidden section has read the day plan.
+      await waitFor(() => expect(getDayPlan).toHaveBeenCalled());
+      expect(cog()).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Show' }));
       expect(await screen.findByText('Write the release notes')).toBeTruthy();
     });
@@ -1080,9 +973,7 @@ describe('DayPlanSection', () => {
 
   describe('Add (R73, R84)', () => {
     it('should add a new step as a long-term child of its parent, never a daily item', async () => {
-      createChecklistItem.mockResolvedValue(
-        item('S9', { parentId: 'M1', description: 'Book a demo slot' })
-      );
+      createsDemoSlot();
       mount();
       await userEvent.click(await screen.findByRole('button', { name: 'Add Book a demo slot' }));
 
@@ -1132,30 +1023,23 @@ describe('DayPlanSection', () => {
     const dayTick = (text: string) =>
       screen.getByRole('checkbox', { name: `Done for today: ${text}` });
     const alsoAsk = () => screen.queryByText(/^Also mark '.*' done\?$/);
-
     const notTickable = () =>
-      new ApiError(
-        {
-          code: 'DAY_PLAN_ENTRY_NOT_TICKABLE',
-          status: 400,
-          detail: 'prose that may change',
-        } as never,
-        400
-      );
+      apiError('DAY_PLAN_ENTRY_NOT_TICKABLE', 400, 'prose that may change');
 
-    it('should tick at once, call the day tick and never touch the item', async () => {
-      let land!: (v: unknown) => void;
-      tickDayPlanEntry.mockImplementationOnce(
-        () => new Promise((r) => (land = r))
-      );
-      mount();
-      await screen.findByText('Write the release notes');
+    it.each([
+      { kind: 'an AI', source: 'ai' },
+      { kind: 'a basic', source: 'rules' },
+    ])('should tick $kind plan at once, call the day tick and never touch the item', async ({ source }) => {
+      const land = deferred<unknown>();
+      tickDayPlanEntry.mockImplementationOnce(() => land.promise);
+      getDayPlan.mockResolvedValue({ ...PLAN, source });
+      await renderSection();
 
       fireEvent.click(dayTick('Write the release notes'));
 
       expect(dayTick('Write the release notes')).toBeChecked();
       expect(tickDayPlanEntry).toHaveBeenCalledWith('e-step', undefined);
-      await act(async () => land({ ...STEP, ticked: true }));
+      await act(async () => land.resolve({ ...STEP, ticked: true }));
       expect(dayTick('Write the release notes')).toBeChecked();
       expect(updateChecklistItem).not.toHaveBeenCalled();
     });
@@ -1163,8 +1047,7 @@ describe('DayPlanSection', () => {
     it('should revert a tick that fails', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       tickDayPlanEntry.mockRejectedValueOnce(new Error('down'));
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       fireEvent.click(dayTick('Write the release notes'));
 
@@ -1184,8 +1067,7 @@ describe('DayPlanSection', () => {
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(new Error('down'));
       tickDayPlanEntry.mockResolvedValueOnce({ ...STEP, ticked: true });
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
       expect(dayTick('Write the release notes')).toBeChecked();
 
       fireEvent.click(dayTick('Write the release notes'));
@@ -1209,8 +1091,7 @@ describe('DayPlanSection', () => {
 
     it('should revert quietly and re-read the day plan when the entry is not tickable, by code', async () => {
       tickDayPlanEntry.mockRejectedValueOnce(notTickable());
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
       // The fresh read says the item is gone: the entry hides.
       getDayPlan.mockResolvedValue(PLAN);
       fetchChecklist.mockResolvedValue(ITEMS.filter((i) => i.id !== 'S1'));
@@ -1227,14 +1108,8 @@ describe('DayPlanSection', () => {
 
     it('should revert quietly and re-read when another tab replaced the draw (404 NOT_FOUND), by code', async () => {
       const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-      tickDayPlanEntry.mockRejectedValueOnce(
-        new ApiError(
-          { code: 'NOT_FOUND', status: 404, detail: 'prose that may change' } as never,
-          404
-        )
-      );
-      mount();
-      await screen.findByText('Write the release notes');
+      tickDayPlanEntry.mockRejectedValueOnce(notFound('prose that may change'));
+      await renderSection();
       // The fresh read is the draw the other tab made.
       getDayPlan.mockResolvedValue(
         planned([{ label: 'Elsewhere', entries: [DONE] }], {
@@ -1257,15 +1132,14 @@ describe('DayPlanSection', () => {
     });
 
     it('should not tick while Plan again is drawing, so a redraw cannot drop a tick', async () => {
-      let land!: (v: unknown) => void;
-      planMyDay.mockReturnValue(new Promise((r) => (land = r)));
+      const draw = deferred<unknown>();
+      planMyDay.mockReturnValue(draw.promise);
       getDayPlan.mockResolvedValue(
         planned([
           { label: 'Release', entries: [STEP, { ...DONE, ticked: true }] },
         ])
       );
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       await userEvent.click(planAgain());
 
@@ -1277,15 +1151,14 @@ describe('DayPlanSection', () => {
       expect(tickDayPlanEntry).not.toHaveBeenCalled();
       expect(untickDayPlanEntry).not.toHaveBeenCalled();
 
-      await act(async () => land(PLAN));
+      await act(async () => draw.resolve(PLAN));
       await waitFor(() =>
         expect(dayTick('Write the release notes')).not.toBeDisabled()
       );
     });
 
     it('should ask inline to mark the item done after a tick, and drop the ask after 8 seconds', async () => {
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
       vi.useFakeTimers();
 
       await act(async () => {
@@ -1307,8 +1180,7 @@ describe('DayPlanSection', () => {
       const heard = vi.fn();
       const off = onPlanItemsChanged('plan-1', heard);
       updateChecklistItem.mockResolvedValue({ ...ITEMS[1], done: true });
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       fireEvent.click(dayTick('Write the release notes'));
       await userEvent.click(await screen.findByRole('button', { name: 'Yes' }));
@@ -1331,8 +1203,7 @@ describe('DayPlanSection', () => {
     it('should revert Yes when the update fails', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       updateChecklistItem.mockRejectedValue(new Error('down'));
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       fireEvent.click(dayTick('Write the release notes'));
       await userEvent.click(await screen.findByRole('button', { name: 'Yes' }));
@@ -1346,8 +1217,7 @@ describe('DayPlanSection', () => {
     });
 
     it('should not ask when the item is already done, and the done item stays tickable', async () => {
-      mount();
-      await screen.findByText('Fix the login bug');
+      await renderSection('Fix the login bug');
 
       fireEvent.click(dayTick('Fix the login bug'));
 
@@ -1357,8 +1227,7 @@ describe('DayPlanSection', () => {
     });
 
     it('should drop the ask on untick and on any other action', async () => {
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       fireEvent.click(dayTick('Write the release notes'));
       expect(await screen.findByText(/^Also mark/)).toBeTruthy();
@@ -1375,11 +1244,8 @@ describe('DayPlanSection', () => {
     });
 
     it('should offer no day tick on a new step until it is added, then tick it with the created id', async () => {
-      createChecklistItem.mockResolvedValue(
-        item('S9', { parentId: 'M1', description: 'Book a demo slot' })
-      );
-      mount();
-      await screen.findByText('Book a demo slot');
+      createsDemoSlot();
+      await renderSection('Book a demo slot');
       expect(
         screen.queryByRole('checkbox', { name: 'Done for today: Book a demo slot' })
       ).toBeNull();
@@ -1397,8 +1263,7 @@ describe('DayPlanSection', () => {
         ...ITEMS,
         item('S7', { parentId: 'M1', description: '  book a DEMO   slot' }),
       ]);
-      mount();
-      await screen.findByText('Book a demo slot');
+      await renderSection('Book a demo slot');
 
       expect(screen.queryByRole('button', { name: 'Add Book a demo slot' })).toBeNull();
       fireEvent.click(dayTick('Book a demo slot'));
@@ -1413,8 +1278,7 @@ describe('DayPlanSection', () => {
           { generatedAt: '2026-10-25T09:00:00Z', refreshesRemaining: 2 }
         )
       );
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
       fireEvent.click(dayTick('Write the release notes'));
       await waitFor(() => expect(tickDayPlanEntry).toHaveBeenCalled());
 
@@ -1423,17 +1287,6 @@ describe('DayPlanSection', () => {
       await screen.findByText('Again');
       expect(dayTick('Write the release notes')).toBeChecked();
       expect(alsoAsk()).toBeNull();
-    });
-
-    it('should tick a basic plan exactly like an AI plan', async () => {
-      getDayPlan.mockResolvedValue({ ...PLAN, source: 'rules' });
-      mount();
-      await screen.findByText('Write the release notes');
-
-      fireEvent.click(dayTick('Write the release notes'));
-
-      expect(dayTick('Write the release notes')).toBeChecked();
-      expect(tickDayPlanEntry).toHaveBeenCalledWith('e-step', undefined);
     });
   });
 
@@ -1454,8 +1307,7 @@ describe('DayPlanSection', () => {
     });
 
     it('should label a stamped entry "Revision N" and no other', async () => {
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       const labels = revisionLabels();
       expect(labels.map((l) => l.textContent)).toEqual(['Revision 2']);
@@ -1465,8 +1317,7 @@ describe('DayPlanSection', () => {
     });
 
     it('should offer the switch only on learning entries for existing items', async () => {
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       // On (revising) by default reads as "Don't revise" off.
       expect(dontRevise('Write the release notes')).not.toBeChecked();
@@ -1478,8 +1329,7 @@ describe('DayPlanSection', () => {
 
     it('should offer no switch and no label on a project plan', async () => {
       getDayPlan.mockResolvedValue(PLAN);
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       expect(screen.queryAllByRole('switch')).toHaveLength(0);
       expect(revisionLabels()).toHaveLength(0);
@@ -1494,27 +1344,23 @@ describe('DayPlanSection', () => {
           },
         ])
       );
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       expect(dontRevise('Write the release notes')).toBeChecked();
       expect(revisionLabels()).toHaveLength(0);
     });
 
     it('should switch revisions off at once, then call the server', async () => {
-      let land!: () => void;
-      setItemRevisions.mockImplementationOnce(
-        () => new Promise<void>((r) => (land = r))
-      );
-      mount();
-      await screen.findByText('Write the release notes');
+      const land = deferred<void>();
+      setItemRevisions.mockImplementationOnce(() => land.promise);
+      await renderSection();
 
       fireEvent.click(dontRevise('Write the release notes'));
 
       expect(dontRevise('Write the release notes')).toBeChecked();
       expect(revisionLabels()).toHaveLength(0);
       expect(setItemRevisions).toHaveBeenCalledWith('S1', 'plan-1', false);
-      await act(async () => land());
+      await act(async () => land.resolve());
       expect(dontRevise('Write the release notes')).toBeChecked();
       // Nothing about the day tick or the item moves.
       expect(tickDayPlanEntry).not.toHaveBeenCalled();
@@ -1525,8 +1371,7 @@ describe('DayPlanSection', () => {
       getDayPlan.mockResolvedValue(
         planned([{ label: 'Review', entries: [{ ...FRESH, revisionsEnabled: false }] }])
       );
-      mount();
-      await screen.findByText('Fix the login bug');
+      await renderSection('Fix the login bug');
 
       fireEvent.click(dontRevise('Fix the login bug'));
 
@@ -1537,8 +1382,7 @@ describe('DayPlanSection', () => {
     it('should revert the switch, and bring the label back, when the call fails', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       setItemRevisions.mockRejectedValueOnce(new Error('down'));
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       fireEvent.click(dontRevise('Write the release notes'));
 
@@ -1550,8 +1394,7 @@ describe('DayPlanSection', () => {
 
     it('should send one switch request per entry at a time', async () => {
       setItemRevisions.mockImplementationOnce(() => new Promise<void>(() => {}));
-      mount();
-      await screen.findByText('Write the release notes');
+      await renderSection();
 
       fireEvent.click(dontRevise('Write the release notes'));
       fireEvent.click(dontRevise('Write the release notes'));
