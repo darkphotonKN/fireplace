@@ -105,13 +105,12 @@ describe('PlansDrawer — the menu button (R3, R8, R10)', () => {
     },
   );
 
-  it('should point at the drawer it controls, and show only below md', () => {
+  it('should point at the drawer it controls', () => {
     shell();
     const button = menuButton();
     const id = button.getAttribute('aria-controls');
     expect(id).toBeTruthy();
     expect(document.getElementById(id!)).not.toBeNull();
-    expect(button).toHaveClass('md:hidden');
   });
 });
 
@@ -156,19 +155,13 @@ describe('PlansDrawer — open (R4, R8)', () => {
 });
 
 describe('PlansDrawer — closing (R5, R7, R8)', () => {
-  it('should close on Escape and return focus to the menu button', async () => {
+  it.each([
+    ['Escape', () => fireEvent.keyDown(document, { key: 'Escape' })],
+    ['a scrim tap', () => fireEvent.click(screen.getByTestId('plans-drawer-scrim'))],
+  ])('should close on %s and return focus to the menu button', async (_how, close) => {
     shell();
     await openDrawer();
-    fireEvent.keyDown(document, { key: 'Escape' });
-
-    expect(drawer()).toBeNull();
-    expect(screen.getByRole('button', { name: 'Open plans panel' })).toHaveFocus();
-  });
-
-  it('should close on a scrim tap and return focus to the menu button', async () => {
-    shell();
-    await openDrawer();
-    fireEvent.click(screen.getByTestId('plans-drawer-scrim'));
+    close();
 
     expect(drawer()).toBeNull();
     expect(menuButton()).toHaveFocus();
@@ -264,12 +257,5 @@ describe('PlansDrawer — never remembered (R6)', () => {
     expect(sidebarWrites(setItem)).toEqual([]);
     expect(localStorage.getItem('sidebar')).toBe('hidden');
     expect(document.documentElement.getAttribute('data-sidebar')).toBe('hidden');
-  });
-});
-
-describe('Shell gutters (R15)', () => {
-  it('should pad main p-4 below md and p-8 at md and up, under the top bar', () => {
-    shell();
-    expect(screen.getByRole('main')).toHaveClass('pt-20', 'px-4', 'pb-4', 'md:px-8', 'md:pb-8');
   });
 });

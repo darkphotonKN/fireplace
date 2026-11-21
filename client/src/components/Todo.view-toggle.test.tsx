@@ -1,5 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { screen, fireEvent, within } from '@testing-library/react';
+import {
+  item,
+  renderTodo as renderHarness,
+  router,
+  viewButton as toggle,
+} from '@/test/todoHarness';
 
 /**
  * The header's list / blocks toggle. What it changes is the drawing and the
@@ -7,53 +13,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
  * filter or the remembered folds — those stay shared between the two views.
  */
 
-const fetchChecklist = vi.fn();
-
-const push = vi.fn();
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: vi.fn(),
-  updateChecklistItem: vi.fn(async () => ({})),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (
-  id: string,
-  extra: Partial<Record<string, unknown>> = {}
-) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type: 'task',
-  parentId: null,
-  planId: 'plan-1',
-  ...extra,
-});
+const { push } = router;
 
 // Fourteen top-level items: one page of rows (twenty), two pages of blocks
 // (twelve, then two).
@@ -64,27 +24,9 @@ const FOURTEEN = [
 ];
 
 const cards = () => document.querySelectorAll('[data-checklist-card]');
-// The toggle's "Checklist" shares its name with the type filter's tab; the
-// "View" group is what tells them apart (FS-FSFEC R3).
-const toggle = (name: 'Checklist' | 'Milestones') =>
-  within(screen.getByRole('group', { name: 'View' })).getByRole('button', {
-    name,
-  });
-
-async function renderTodo(items: unknown[] = FOURTEEN) {
-  fetchChecklist.mockImplementation(async () => items);
-  const Todo = (await import('./Todo')).default;
-  const view = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  await screen.findByText('item P0');
-  return view;
-}
+const renderTodo = (items: unknown[] = FOURTEEN) => renderHarness(items);
 
 describe('Todo list / blocks toggle', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-  });
-
   it('should open on the blocks, with the list one click away', async () => {
     await renderTodo();
     // Twelve blocks, not fourteen: a block is taller than a row, so a page

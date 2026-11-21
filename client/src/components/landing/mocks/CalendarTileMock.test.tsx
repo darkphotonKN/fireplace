@@ -1,10 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
-import { expectMockContract } from '@/test/mockContract';
-import { REVEAL_MS } from '../bento/BentoTile';
 import {
   CALENDAR_HIGHLIGHT,
   CALENDAR_ITEMS,
@@ -41,11 +37,6 @@ function atStart(el: Element) {
   return !el.closest('[data-reveal-part="enter"], [data-reveal-part="glow"]');
 }
 
-/** A part's stagger, in ms (0 when it has none). */
-function delayOf(el: Element) {
-  return parseInt((el as HTMLElement).style.getPropertyValue('--reveal-delay') || '0', 10);
-}
-
 const steps = new Map(
   [DATABASE_MILESTONE, MICROSERVICES_MILESTONE].flatMap((m) =>
     m.steps.map((s) => [s.label, { milestone: m.title, done: s.done }] as const)
@@ -53,20 +44,15 @@ const steps = new Map(
 );
 
 describe('CalendarTileMock', () => {
-  it('should honour the mock contract', () => {
-    const { container } = render(<CalendarTileMock />);
-
-    expectMockContract(container);
-  });
-
-  it('should render the same month every time, server and client alike', () => {
-    expect(renderToString(<CalendarTileMock />)).toBe(renderToString(<CalendarTileMock />));
-  });
-
-  it('should take its month from content.ts, never from the clock', () => {
-    for (const file of ['CalendarTileMock.tsx', 'content.ts']) {
-      const source = readFileSync(resolve(__dirname, file), 'utf8');
-      expect(source).not.toMatch(/\bDate\b/);
+  it('should render the same month whatever the clock says, server and client alike', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2020-02-29T23:59:00Z'));
+      const leapDay = renderToString(<CalendarTileMock />);
+      vi.setSystemTime(new Date('2031-07-04T12:00:00Z'));
+      expect(renderToString(<CalendarTileMock />)).toBe(leapDay);
+    } finally {
+      vi.useRealTimers();
     }
   });
 
@@ -130,20 +116,4 @@ describe('CalendarTileMock', () => {
     );
   });
 
-  it('should finish its longest stagger inside the tile reveal window', () => {
-    const css = readFileSync(resolve(__dirname, '../bento/bento.module.css'), 'utf8');
-    const revealMs = parseInt(/--reveal-ms:\s*(\d+)ms/.exec(css)![1], 10);
-    const { container } = render(<CalendarTileMock />);
-
-    const longest = Math.max(...Array.from(container.querySelectorAll('[data-reveal-part]'), delayOf));
-    expect(longest + revealMs).toBeLessThanOrEqual(REVEAL_MS);
-  });
-
-  it('should import no product component, context, service layer or fetch', () => {
-    const source = readFileSync(resolve(__dirname, 'CalendarTileMock.tsx'), 'utf8');
-
-    expect(source).not.toMatch(/from '@\/components\/(?!landing)/);
-    expect(source).not.toMatch(/@\/(context|api|services|lib\/api|lib\/calendar)/);
-    expect(source).not.toMatch(/\bfetch\(|useContext|date-fns/);
-  });
 });

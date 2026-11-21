@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { screen, fireEvent } from '@testing-library/react';
+import { addInput, item as baseItem, renderTodo, typeFilter as filter } from '@/test/todoHarness';
 
 /**
  * FS-0008 R19–R22: choosing the Notes or Checklist filter also sets what the
@@ -7,83 +8,23 @@ import { render, screen, fireEvent } from '@testing-library/react';
  * filter set it still wins.
  */
 
-const fetchChecklist = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: vi.fn(),
-  updateChecklistItem: vi.fn(async () => ({})),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (id: string, type: 'task' | 'note') => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type,
-  parentId: null,
-  planId: 'plan-1',
-});
+const item = (id: string, type: 'task' | 'note') => baseItem(id, { type });
 
 const ITEMS = [item('T', 'task'), item('N', 'note')];
 
-const addInput = () =>
-  screen.getByRole('textbox', { name: /^New (task|note)/ }) as HTMLInputElement;
 // The add bar's type, read the way a user reads it: off the input's name.
 const addType = () =>
   addInput().getAttribute('aria-label')?.startsWith('New note') ? 'note' : 'task';
-// The type filter's tab, not the view toggle's "Checklist", which sits in the
-// toggle's "View" group (FS-FSFEC R3).
-const filter = (label: string) =>
-  screen
-    .getAllByRole('button', { name: label })
-    .find((b) => !b.closest('[role="group"][aria-label="View"]'))!;
 const flipType = () =>
   fireEvent.click(
     screen.getByRole('button', { name: /^Switch to adding a/ })
   );
 
-async function renderList(items: unknown[] = ITEMS) {
-  fetchChecklist.mockImplementation(async () => items);
-  const Todo = (await import('./Todo')).default;
-  render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  await screen.findByText('item T');
-}
+// This is the list's add bar; in the grid the bar is the new-milestone
+// composer (FS-FSFEC R29), whose notes (R39) are covered with its edges.
+const renderList = (items: unknown[] = ITEMS) => renderTodo(items, { view: 'list' });
 
 describe('Todo filter sets the add bar type', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    // This is the list's add bar; in the grid the bar is the new-milestone
-    // composer (FS-FSFEC R29), whose notes (R39) are covered with its edges.
-    window.localStorage.setItem('checklistView', 'list');
-  });
-
   it('should set the add bar to note on Notes and back to task on Checklist, placeholder following', async () => {
     await renderList();
     expect(addType()).toBe('task');

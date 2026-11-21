@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { api, item } from '@/test/todoHarness';
+import Todo from './Todo';
 
 /**
  * FS-02JBZ R91: the daily scope is retired. The legacy /plans/[planId] route
@@ -7,57 +9,14 @@ import { render, screen } from '@testing-library/react';
  * and shows the long-term list.
  */
 
-const fetchChecklist = vi.fn();
+const { fetchChecklist } = api;
 
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: vi.fn(),
-  updateChecklistItem: vi.fn(async () => ({})),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/client', () => ({
-  api: { GET: vi.fn(async () => ({ data: '', response: { status: 200 } })) },
-  apiErrorFrom: (e: unknown) => e,
-  ApiError: class extends Error {},
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-import Todo from './Todo';
-
-const item = (id: string, scope: string, description: string) => ({
-  id,
-  description,
-  done: false,
-  scope,
-  type: 'task',
-  planId: 'plan-1',
-});
-
+// Served by scope, so a daily fetch would surface "Inbox zero".
 beforeEach(() => {
-  fetchChecklist.mockReset().mockImplementation(async (_p: string, scope: string) =>
+  fetchChecklist.mockImplementation(async (_p, scope) =>
     scope === 'longterm'
-      ? [item('L1', 'longterm', 'Ship the beta')]
-      : [item('D1', 'daily', 'Inbox zero')]
+      ? [item('L1', { description: 'Ship the beta' })]
+      : [item('D1', { scope: 'daily', description: 'Inbox zero' })]
   );
 });
 

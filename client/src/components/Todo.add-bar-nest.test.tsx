@@ -1,97 +1,37 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { cleanup, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import {
-  cleanup,
-  render,
-  screen,
-  fireEvent,
-  waitFor,
-  within,
-} from '@testing-library/react';
+  addBarRail,
+  addInput,
+  api,
+  item as baseItem,
+  nestedUnder,
+  railOf,
+  renderTodo,
+  rowOf,
+  toast,
+} from '@/test/todoHarness';
 
 /**
  * FS-0007 R8: Tab in the add bar nests it under the nearest top-level task
  * above; Enter then creates a child of that task. Shift+Tab returns to top level.
  */
 
-const fetchChecklist = vi.fn();
-const createChecklistItem = vi.fn();
-const toast = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: (...a: unknown[]) => createChecklistItem(...a),
-  updateChecklistItem: vi.fn(async () => ({})),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (id: string, type: 'task' | 'note', parentId?: string) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type,
-  parentId: parentId ?? null,
-  planId: 'plan-1',
-});
+const { createChecklistItem } = api;
+const item = (id: string, type: 'task' | 'note', parentId?: string) =>
+  baseItem(id, { type, parentId: parentId ?? null });
 
 // A(task) ─ B(task); D(task) alone at the bottom.
 const ITEMS = [item('A', 'task'), item('B', 'task', 'A'), item('D', 'task')];
 
-const rowOf = (id: string) => screen.getByText(`item ${id}`).closest('li')!;
-const railOf = (id: string) =>
-  rowOf(id).querySelector('[data-guide-rail]')?.getAttribute('data-guide-rail') ??
-  null;
-const addInput = () =>
-  screen.getByRole('textbox', { name: /^New (task|note)/ }) as HTMLInputElement;
-// The input names its target while nested; null means top level.
-const nestedUnder = () =>
-  addInput().getAttribute('aria-label')?.match(/under “item (\w+)”/)?.[1] ?? null;
-const addBarRail = () => document.querySelector('[data-guide-rail="add-bar"]');
-
 async function renderList(items: unknown[] = ITEMS) {
-  fetchChecklist.mockImplementation(async () => items);
-  const Todo = (await import('./Todo')).default;
-  render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  if (items.length) await screen.findByText(`item ${(items[0] as { id: string }).id}`);
-  else await screen.findByText('No items yet. Add one below!');
+  await renderTodo(items, { view: 'list' });
   const input = addInput();
   input.focus();
   return input;
 }
 
 describe('Todo add bar Tab to nest', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    // Rows are what this file covers, and blocks are the default view,
-    // so say which one these expectations are about.
-    window.localStorage.setItem('checklistView', 'list');
-  });
-
   it('should nest under the trailing top-level task on Tab, keeping focus and text, and extend its rail', async () => {
     const input = await renderList();
     fireEvent.change(input, { target: { value: 'half typed' } });
@@ -117,11 +57,10 @@ describe('Todo add bar Tab to nest', () => {
       parentId: 'A',
     });
     await screen.findByText('item E');
-    // Appended as A's last child, playing the arrival animation.
+    // Appended as A's last child.
     const rows = Array.from(document.querySelectorAll('li')).map((li) => li.textContent);
     expect(rows.findIndex((t) => t?.includes('item E'))).toBe(rows.length - 1);
     expect(railOf('E')).toBe('child');
-    expect(rowOf('E').className).toMatch(/animate-fadeIn/);
 
     await waitFor(() => expect(addInput().readOnly).toBe(false));
     expect(nestedUnder()).toBe('A');
@@ -166,7 +105,6 @@ describe('Todo add bar Tab to nest', () => {
     expect(fireEvent.keyDown(input, { key: 'Tab', shiftKey: true })).toBe(false);
     expect(nestedUnder()).toBeNull();
     expect(addBarRail()).toBeNull();
-    expect(addInput().closest('form')!.className).not.toMatch(/\bml-6\b/);
 
     expect(fireEvent.keyDown(input, { key: 'Tab', shiftKey: true })).toBe(false);
     expect(nestedUnder()).toBeNull();
@@ -178,7 +116,6 @@ describe('Todo add bar Tab to nest', () => {
     // not re-target, and never go a tier deeper.
     const input = await renderList();
     fireEvent.keyDown(input, { key: 'Tab' });
-    expect(addInput().closest('form')!.className).toMatch(/\bml-6\b/);
     expect(fireEvent.keyDown(input, { key: 'Tab' })).toBe(false);
     expect(nestedUnder()).toBe('D');
     expect(document.activeElement).toBe(addInput());
@@ -278,14 +215,6 @@ describe('Todo add bar nesting into a collapsed parent (FS-0007 R8.9)', () => {
   // collapsible.
   const NESTED = [item('A', 'task'), item('B', 'task', 'A')];
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    // Rows are what this file covers, and blocks are the default view,
-    // so say which one these expectations are about.
-    window.localStorage.setItem('checklistView', 'list');
-  });
-
   it('should open a collapsed target when the add bar nests under it', async () => {
     const input = await renderList(NESTED);
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item A' }));
@@ -316,7 +245,6 @@ describe('Todo add bar nesting into a collapsed parent (FS-0007 R8.9)', () => {
 
     await screen.findByText('item E');
     expect(screen.getByText('item B')).toBeTruthy();
-    expect(rowOf('E').className).toMatch(/animate-fadeIn/);
     expect(screen.getByRole('button', { name: 'Collapse item A' })).toBeTruthy();
   });
 

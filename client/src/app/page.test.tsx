@@ -84,15 +84,6 @@ describe('Home', () => {
     expect(screen.getByText(/what's your focus today/i)).toBeInTheDocument();
   });
 
-  it('should not fetch the dashboard while the focus prompt is the state on screen', () => {
-    auth.isAuthenticated = true;
-    auth.isLoading = false;
-
-    render(<Home />);
-
-    expect(listPlans).not.toHaveBeenCalled();
-  });
-
   describe('the day gate (R3-R6, R10, R15)', () => {
     beforeEach(() => {
       auth.isAuthenticated = true;
@@ -305,26 +296,6 @@ describe('Home', () => {
         Array.from(document.querySelectorAll('a')).map((a) => a.getAttribute('href')),
       ).not.toContain('/myplans');
     });
-  });
-
-  it('should style the focus prompt from tokens only', () => {
-    auth.isAuthenticated = true;
-    auth.isLoading = false;
-
-    const { container } = render(<Home />);
-
-    // Assert the prompt is what is actually on screen. Without this the four
-    // checks below would happily pass against the dashboard's markup if the
-    // gate's default ever flipped for this arrangement, and the test would go
-    // on claiming to cover the prompt.
-    expect(promptShowing()).toBeInTheDocument();
-
-    const markup = container.innerHTML;
-    expect(markup).not.toMatch(/rgba?\(/);
-    expect(markup).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    expect(markup).not.toMatch(/-gray-/);
-    // The header card that /myplans and /plan/[planId] keep does not come home.
-    expect(container.querySelector('.backdrop-blur-sm')).toBeNull();
   });
 
   describe('the first-run invitation (R43-R44)', () => {

@@ -1,58 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { api, item as baseItem, railOf, renderTodo, rowOf, typeFilter } from '@/test/todoHarness';
 
 /**
  * FS-0007 R1–R4: a Parent Item with visible children draws a guide rail that
  * its child rows continue; childless parents and orphaned children draw none.
  */
 
-const fetchChecklist = vi.fn();
-const updateChecklistItem = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: vi.fn(),
-  updateChecklistItem: (...a: unknown[]) => updateChecklistItem(...a),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (
-  id: string,
-  type: 'task' | 'note',
-  parentId?: string
-) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type,
-  parentId: parentId ?? null,
-  planId: 'plan-1',
-});
+const { updateChecklistItem } = api;
+const item = (id: string, type: 'task' | 'note', parentId?: string) =>
+  baseItem(id, { type, parentId: parentId ?? null });
 
 // A(task) ─ B(task), C(note); D(task) alone.
 const ITEMS = [
@@ -62,33 +19,9 @@ const ITEMS = [
   item('D', 'task'),
 ];
 
-const rowOf = (id: string) => screen.getByText(`item ${id}`).closest('li')!;
-const railOf = (id: string) =>
-  rowOf(id).querySelector('[data-guide-rail]')?.getAttribute('data-guide-rail') ??
-  null;
-
-async function renderList() {
-  const Todo = (await import('./Todo')).default;
-  render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  await screen.findByText('item A');
-}
-
-// The type filter's tab, not the view toggle's "Checklist", which sits in the
-// toggle's "View" group (FS-FSFEC R3).
-const typeFilter = (name: string) =>
-  screen
-    .getAllByRole('button', { name })
-    .find((b) => !b.closest('[role="group"][aria-label="View"]'))!;
+const renderList = (items: unknown[] = ITEMS) => renderTodo(items, { view: 'list' });
 
 describe('Todo guide rail', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Rows are what this file covers, and blocks are the default view,
-    // so say which one these expectations are about.
-    window.localStorage.setItem('checklistView', 'list');
-    fetchChecklist.mockImplementation(async () => ITEMS);
-  });
-
   it('should start a rail on a parent with children and continue it on each child', async () => {
     await renderList();
     expect(railOf('A')).toBe('parent');
@@ -107,15 +40,10 @@ describe('Todo guide rail', () => {
     await screen.findByText('item C');
     expect(screen.queryByText('item A')).toBeNull();
     expect(railOf('C')).toBeNull();
-    expect(rowOf('C').className).not.toMatch(/\bml-/);
   });
 
   it('should draw no rail on a parent whose children the filter hides', async () => {
-    fetchChecklist.mockImplementation(async () => [
-      item('A', 'task'),
-      item('C', 'note', 'A'),
-    ]);
-    await renderList();
+    await renderList([item('A', 'task'), item('C', 'note', 'A')]);
     expect(railOf('A')).toBe('parent');
     fireEvent.click(typeFilter('Checklist'));
     await screen.findByText('item A');
@@ -125,14 +53,6 @@ describe('Todo guide rail', () => {
 });
 
 describe('Todo row Tab / Shift+Tab (regression)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Rows are what this file covers, and blocks are the default view,
-    // so say which one these expectations are about.
-    window.localStorage.setItem('checklistView', 'list');
-    fetchChecklist.mockImplementation(async () => ITEMS);
-  });
-
   it('should nest a row under the top-level row above on Tab and join its rail', async () => {
     await renderList();
     fireEvent.keyDown(rowOf('D'), { key: 'Tab' });

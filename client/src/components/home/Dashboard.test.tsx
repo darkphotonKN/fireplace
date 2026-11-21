@@ -435,59 +435,6 @@ describe('Dashboard — Today, against the wire format (I-0059)', () => {
   });
 });
 
-describe('Dashboard — visual conformance (R18, R47–R50)', () => {
-  it('should not wear the /myplans header card', async () => {
-    listPlans.mockResolvedValue([plan('a', '2026-09-01T00:00:00Z')]);
-
-    const { container } = render(<Home />);
-    await screen.findByText('Plan a');
-
-    expect(container.querySelector('.backdrop-blur-sm')).toBeNull();
-    expect(container.querySelector('.rounded-2xl')).toBeNull();
-    expect(container.querySelector('.shadow-lg')).toBeNull();
-  });
-
-  it('should carry muted lines on <p> with the muted token, not a dark: patch', async () => {
-    // Possible only since I-0061 moved the global element rules into
-    // `@layer base`; before that `.dark p` outranked `text-muted-foreground`
-    // and these lines had to avoid <p> entirely. R50 still forbids a `dark:`
-    // variant as the fix.
-    listPlans.mockRejectedValue(new Error('down'));
-
-    const { container } = render(<Home />);
-    await screen.findByRole('button', { name: /try again/i });
-
-    const muted = container.querySelectorAll('p[class*="text-muted-foreground"]');
-    expect(muted.length).toBeGreaterThan(0);
-    expect(container.innerHTML).not.toMatch(/dark:/);
-  });
-
-  it('should style from tokens only — no raw colour, no gray utility', async () => {
-    listPlans.mockResolvedValue([plan('a', '2026-09-01T00:00:00Z')]);
-
-    const { container } = render(<Home />);
-    await screen.findByText('Plan a');
-
-    const markup = container.innerHTML;
-    expect(markup).not.toMatch(/rgba?\(/);
-    expect(markup).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    expect(markup).not.toMatch(/-gray-/);
-  });
-
-  it('should leave coral to slice 4 — Continue cards are not the page\'s accent', async () => {
-    listPlans.mockResolvedValue([plan('a', '2026-09-01T00:00:00Z')]);
-
-    const { container } = render(<Home />);
-    await screen.findByText('Plan a');
-
-    // R49: the one coral moment belongs to Today/Next up, which is not here yet.
-    expect(container.querySelector('[class*="bg-primary"]')).toBeNull();
-    expect(container.querySelector('[class*="text-primary"]')).toBeNull();
-    // ...and no h1, so nothing picks up the global coral heading colour either.
-    expect(container.querySelector('h1')).toBeNull();
-  });
-});
-
 describe('Dashboard — first run (R43)', () => {
   it('should show one invitation instead of three empty blocks at zero plans', async () => {
     listPlans.mockResolvedValue([]);

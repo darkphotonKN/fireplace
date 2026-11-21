@@ -1,5 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  api,
+  item as baseItem,
+  chooseAction as move,
+  order,
+  renderTodo,
+  toast,
+  viewButton,
+} from '@/test/todoHarness';
 
 /**
  * FS-0009 R1, R6, R7.2, R9 — moving an item one place from the actions panel.
@@ -9,88 +18,15 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
  * the request answers, and what is left behind when it fails.
  */
 
-const fetchChecklist = vi.fn();
-const reorderChecklistItems = vi.fn();
-const toast = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: (...a: unknown[]) => toast(...a) }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: vi.fn(),
-  updateChecklistItem: vi.fn(async () => ({})),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: (...a: unknown[]) => reorderChecklistItems(...a),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (
-  id: string,
-  type: 'task' | 'note' = 'task',
-  parentId: string | null = null
-) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type,
-  parentId,
-  planId: 'plan-1',
-});
+const { reorderChecklistItems } = api;
+const item = (id: string, type: 'task' | 'note' = 'task', parentId: string | null = null) =>
+  baseItem(id, { type, parentId });
 
 const THREE = [item('A'), item('B'), item('C')];
 
-/**
- * Rendered order, read off the one control every item carries in both views.
- * Not the raw text: a card's title and its steps are drawn differently, and
- * this is the order a user would tab through.
- */
-const order = () =>
-  screen
-    .getAllByRole('button', { name: /^Actions for / })
-    .map((b) => b.getAttribute('aria-label')!.replace('Actions for ', ''));
-
-const move = (description: string, direction: 'Move up' | 'Move down') => {
-  fireEvent.click(screen.getByRole('button', { name: `Actions for ${description}` }));
-  fireEvent.click(screen.getByRole('menuitem', { name: direction }));
-};
-
-async function renderList(items: { description: string }[] = THREE) {
-  window.localStorage.setItem('checklistView', 'list');
-  fetchChecklist.mockImplementation(async () => items);
-  const Todo = (await import('./Todo')).default;
-  const view = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  await screen.findByText(items[0].description);
-  return view;
-}
+const renderList = (items: unknown[] = THREE) => renderTodo(items, { view: 'list' });
 
 describe('Todo reorder from the actions panel', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    reorderChecklistItems.mockResolvedValue([]);
-  });
-
   it('should move an item down and send the whole set in its new order', async () => {
     await renderList();
     expect(order()).toEqual(['item A', 'item B', 'item C']);
@@ -185,10 +121,7 @@ describe('Todo reorder from the actions panel', () => {
 
   it('should move in the blocks view too, and show it back in the list (R1.2)', async () => {
     window.localStorage.setItem('checklistView', 'card');
-    fetchChecklist.mockImplementation(async () => THREE);
-    const Todo = (await import('./Todo')).default;
-    render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-    await screen.findByText('item A');
+    await renderTodo(THREE);
     expect(document.querySelectorAll('[data-checklist-card]').length).toBe(3);
 
     move('item A', 'Move down');
@@ -201,9 +134,7 @@ describe('Todo reorder from the actions panel', () => {
     });
 
     // The same order, drawn the other way — no per-view ordering state (R1.1).
-    fireEvent.click(within(screen.getByRole('group', { name: 'View' })).getByRole('button', {
-        name: 'Checklist',
-      }));
+    fireEvent.click(viewButton('Checklist'));
     expect(order()).toEqual(['item B', 'item A', 'item C']);
   });
 

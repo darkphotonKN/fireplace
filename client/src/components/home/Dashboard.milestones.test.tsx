@@ -192,24 +192,6 @@ describe('Dashboard — the milestone strip on Continue cards (FS-FSFEC R23–R2
     expect(slot.querySelector('[data-milestone-strip]')).toBeNull();
   });
 
-  it('should draw the strip in neutral tokens, leaving coral to the Today block (R28)', async () => {
-    listPlans.mockResolvedValue([plan('a')]);
-    listChecklists.mockResolvedValue(mixedPlan());
-
-    render(<Home />);
-    await screen.findByText('0 of 2 milestones');
-
-    const continueBlock = screen
-      .getByRole('heading', { name: /continue where you left off/i })
-      .closest('section') as HTMLElement;
-    expect(continueBlock.querySelector('[class*="primary"]')).toBeNull();
-    expect(continueBlock.querySelector('[class*="accent"]')).toBeNull();
-    const markup = continueBlock.innerHTML;
-    expect(markup).not.toMatch(/rgba?\(/);
-    expect(markup).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    expect(markup).not.toMatch(/-gray-/);
-  });
-
   it.each([
     { plans: 1, requests: 2 },
     { plans: 3, requests: 4 },

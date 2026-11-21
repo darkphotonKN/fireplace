@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { api } from '@/test/todoHarness';
 
 /**
  * Repro for: an item created on the LONG-TERM panel disappears after a reload.
@@ -14,42 +15,12 @@ import { render, screen, waitFor } from '@testing-library/react';
  * list with the DAILY list. B resolves later than A in practice because it
  * awaits Promise.all([fetchChecklist, getPlan]) -- two round trips, not one.
  *
- * The test forces that ordering deterministically rather than racing.
+ * The test forces that ordering deterministically rather than racing. It renders
+ * directly rather than through renderTodo, which would serve one list for both
+ * scopes.
  */
 
-const fetchChecklist = vi.fn();
-const getPlan = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: vi.fn(),
-  updateChecklistItem: vi.fn(),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: (...a: unknown[]) => getPlan(...a),
-}));
+const { fetchChecklist, getPlan } = api;
 
 const DAILY_ITEM = {
   id: 'd1',
@@ -73,11 +44,9 @@ const LONGTERM_ITEM = {
 
 describe('Todo — longterm list is not clobbered by the daily fetch', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-
     // Scope-correct backend: each call returns exactly what was asked for.
     // (Verified against the live gateway: both scopes persist and filter.)
-    fetchChecklist.mockImplementation(async (_planId: string, s: string) =>
+    fetchChecklist.mockImplementation(async (_planId, s) =>
       s === 'daily' ? [DAILY_ITEM] : [LONGTERM_ITEM]
     );
 

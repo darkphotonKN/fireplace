@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within, act, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { api, item, renderTodo as renderHarness, viewButton } from '@/test/todoHarness';
 
 /**
  * The plan header's progress strip (FS-FSFEC R15–R22). It reads the whole
@@ -7,53 +8,7 @@ import { render, screen, fireEvent, within, act, waitFor } from '@testing-librar
  * what it counts, and it shows in both readings of the plan.
  */
 
-const fetchChecklist = vi.fn();
-const updateChecklistItem = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: vi.fn(),
-  updateChecklistItem: (...a: unknown[]) => updateChecklistItem(...a),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (
-  id: string,
-  extra: Partial<Record<string, unknown>> = {}
-) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type: 'task',
-  parentId: null,
-  planId: 'plan-1',
-  ...extra,
-});
+const { fetchChecklist, updateChecklistItem } = api;
 
 // Fourteen milestones and a note: two pages of cards. P0 is half done, P1 closed.
 const PLAN = [
@@ -71,20 +26,8 @@ const fillOf = (title: string) =>
   Array.from(segments())
     .find((s) => s.title.startsWith(`${title}:`))!
     .querySelector<HTMLElement>('[data-milestone-fill]')!.style.width;
-const viewButton = (name: 'Milestones' | 'Checklist') =>
-  within(screen.getByRole('group', { name: 'View' })).getByRole('button', {
-    name,
-  });
-
-async function renderTodo(items: unknown[] = PLAN, taskType = 'longterm') {
-  fetchChecklist.mockImplementation(async () => items);
-  const Todo = (await import('./Todo')).default;
-  const view = render(
-    <Todo fixedTaskType={taskType as 'longterm'} enableTypeFilter />
-  );
-  await screen.findByText('item P0');
-  return view;
-}
+const renderTodo = (items: unknown[] = PLAN, taskType = 'longterm') =>
+  renderHarness(items, { props: { fixedTaskType: taskType as 'longterm' } });
 
 describe('Todo milestone strip', () => {
   // The Day plan section writes items behind this card's back (FS-02JBZ
@@ -105,12 +48,6 @@ describe('Todo milestone strip', () => {
 
     expect(fetchChecklist).toHaveBeenCalledWith('plan-1', 'longterm');
     await waitFor(() => expect(fillOf('item P0')).toBe('100%'));
-  });
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    updateChecklistItem.mockResolvedValue({});
   });
 
   it('should count the whole plan in the milestone reading, whatever the page or filter', async () => {

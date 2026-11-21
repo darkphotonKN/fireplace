@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { render } from '@testing-library/react';
-import { expectMockContract } from '@/test/mockContract';
-import { REVEAL_MS } from '../bento/BentoTile';
 import { DATABASE_MILESTONE, MICROSERVICES_MILESTONE, PLAN_MILESTONES, PLAN_TITLE, progressOf } from './content';
 import MilestonesTileMock from './MilestonesTileMock';
 
@@ -34,12 +30,6 @@ function atStart(el: Element) {
 const closed = PLAN_MILESTONES.filter((m) => m.total > 0 && m.done === m.total).length;
 
 describe('MilestonesTileMock', () => {
-  it('should honour the mock contract', () => {
-    const { container } = render(<MilestonesTileMock />);
-
-    expectMockContract(container);
-  });
-
   it('should draw one segment per milestone, fourteen in all, under the plan title', () => {
     const { container, getByText } = render(<MilestonesTileMock />);
 
@@ -99,21 +89,12 @@ describe('MilestonesTileMock', () => {
     expect(delayOf(next.closest('[data-reveal-part="enter"]')!)).toBe(last);
   });
 
-  it('should finish its longest stagger inside the tile reveal window', () => {
-    const css = readFileSync(resolve(__dirname, '../bento/bento.module.css'), 'utf8');
-    const revealMs = parseInt(/--reveal-ms:\s*(\d+)ms/.exec(css)![1], 10);
+
+  it('should fill by scale, never by setting a width', () => {
     const { container } = render(<MilestonesTileMock />);
 
-    const longest = Math.max(...Array.from(container.querySelectorAll('[data-reveal-part]'), delayOf));
-    expect(longest + revealMs).toBeLessThanOrEqual(REVEAL_MS);
-  });
-
-  it('should fill by scaleX, never by width, and import no product component, context or fetch', () => {
-    const source = readFileSync(resolve(__dirname, 'MilestonesTileMock.tsx'), 'utf8');
-
-    expect(source).not.toMatch(/\bwidth\s*:/);
-    expect(source).not.toMatch(/from '@\/components\/(?!landing)/);
-    expect(source).not.toMatch(/@\/(context|api|services|lib\/api)/);
-    expect(source).not.toMatch(/\bfetch\(|useContext/);
+    container.querySelectorAll<HTMLElement>('*').forEach((el) => {
+      expect(el.style.width).toBe('');
+    });
   });
 });

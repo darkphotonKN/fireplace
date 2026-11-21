@@ -51,34 +51,17 @@ beforeEach(() => {
 });
 
 describe('LayoutWrapper: loading the remembered choice', () => {
-  it('should be open with nothing stored (R1)', () => {
-    load();
-
-    expect(shown()).toBe('open');
-  });
-
-  it('should be hidden when hidden was stored', () => {
-    localStorage.setItem('sidebar', 'hidden');
-
-    load();
-
-    expect(shown()).toBe('hidden');
-  });
-
-  it('should ignore a legacy sidebarCollapsed=true and load open (R4)', () => {
-    localStorage.setItem('sidebarCollapsed', 'true');
+  it.each([
+    ['open with nothing stored (R1)', null, null, 'open'],
+    ['hidden when hidden was stored', 'sidebar', 'hidden', 'hidden'],
+    ['open, ignoring a legacy sidebarCollapsed=true (R4)', 'sidebarCollapsed', 'true', 'open'],
+    ['open on an unknown stored value', 'sidebar', 'sideways', 'open'],
+  ])('should load %s', (_why, key, value, expected) => {
+    if (key) localStorage.setItem(key, value!);
 
     load();
 
-    expect(shown()).toBe('open');
-  });
-
-  it('should load open on an unknown stored value', () => {
-    localStorage.setItem('sidebar', 'sideways');
-
-    load();
-
-    expect(shown()).toBe('open');
+    expect(shown()).toBe(expected);
   });
 
   it('should not write anything just by loading', () => {

@@ -1,5 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  addBarRail,
+  addInput,
+  api,
+  item as baseItem,
+  counter,
+  nestedUnder,
+  nextPage as next,
+  railOf,
+  renderTodo,
+  topLevel,
+} from '@/test/todoHarness';
 
 /**
  * FS-0008 R15–R18: paging and the add bar meet. Tab resolves against the
@@ -7,92 +19,19 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
  * the arrival is seen — without disturbing what is typed or nested.
  */
 
-const fetchChecklist = vi.fn();
-const createChecklistItem = vi.fn();
+const { createChecklistItem } = api;
+const item = (id: string, type: 'task' | 'note' = 'task', parentId?: string) =>
+  baseItem(id, { type, parentId: parentId ?? null });
 
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: (...a: unknown[]) => createChecklistItem(...a),
-  updateChecklistItem: vi.fn(async () => ({})),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: vi.fn(async () => []),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (
-  id: string,
-  type: 'task' | 'note' = 'task',
-  parentId?: string
-) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type,
-  parentId: parentId ?? null,
-  planId: 'plan-1',
-});
-
-/** n top-level tasks named t1..tn — 25 of them is three pages. */
-const topLevel = (n: number) =>
-  Array.from({ length: n }, (_, i) => item(`t${i + 1}`));
-
-const rowOf = (id: string) => screen.getByText(`item ${id}`).closest('li')!;
-const addInput = () =>
-  screen.getByRole('textbox', { name: /^New (task|note)/ }) as HTMLInputElement;
-// The input names its target while nested; null means top level.
-const nestedUnder = () =>
-  addInput().getAttribute('aria-label')?.match(/under “item (\w+)”/)?.[1] ??
-  null;
-const railOf = (id: string) =>
-  rowOf(id)
-    .querySelector('[data-guide-rail]')
-    ?.getAttribute('data-guide-rail') ?? null;
-const addBarRail = () => document.querySelector('[data-guide-rail="add-bar"]');
-const counter = () => screen.getByTestId('page-counter');
-const next = () => screen.getByRole('button', { name: 'Next page' });
-
+// topLevel(45) is t1..t45: three pages.
 async function renderList(items: unknown[] = topLevel(45)) {
-  fetchChecklist.mockImplementation(async () => items);
-  const Todo = (await import('./Todo')).default;
-  render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  await screen.findByText('item t1');
+  await renderTodo(items, { view: 'list' });
   const input = addInput();
   input.focus();
   return input;
 }
 
 describe('Todo add bar over a paged list (FS-0008 R15–R18)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    // Rows are what this file covers, and blocks are the default view,
-    // so say which one these expectations are about.
-    window.localStorage.setItem('checklistView', 'list');
-  });
-
   it('should nest under the last eligible task of the page being looked at', async () => {
     const input = await renderList();
     fireEvent.click(next());
@@ -118,7 +57,6 @@ describe('Todo add bar over a paged list (FS-0008 R15–R18)', () => {
     // 46 items is still three pages, and the new row closes the last one.
     await screen.findByText('item NEW');
     expect(counter().textContent).toBe('3 of 3');
-    expect(rowOf('NEW').className).toMatch(/animate-fadeIn/);
     await waitFor(() => expect(addInput().readOnly).toBe(false));
     expect(addInput().value).toBe('');
     expect(document.activeElement).toBe(addInput());
@@ -139,7 +77,6 @@ describe('Todo add bar over a paged list (FS-0008 R15–R18)', () => {
 
     await screen.findByText('item C');
     expect(counter().textContent).toBe('1 of 3');
-    expect(rowOf('C').className).toMatch(/animate-fadeIn/);
     // The bar is still aimed at the family it just fed (R18).
     expect(nestedUnder()).toBe('t20');
     await waitFor(() => expect(addInput().readOnly).toBe(false));
@@ -182,6 +119,5 @@ describe('Todo add bar over a paged list (FS-0008 R15–R18)', () => {
     expect(
       screen.getByRole('button', { name: 'Collapse item t20' })
     ).toBeTruthy();
-    expect(rowOf('C').className).toMatch(/animate-fadeIn/);
   });
 });

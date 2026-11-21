@@ -401,22 +401,7 @@ describe('DayPlanSection', () => {
       );
     });
 
-    it('should ask again when both the save and the draw fail', async () => {
-      setDayPlanSettings.mockRejectedValue(
-        new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 } as never, 503)
-      );
-      planMyDay.mockRejectedValue(
-        new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 } as never, 503)
-      );
-      mount();
-      await screen.findByRole('group', { name: QUESTION });
-      await userEvent.click(chips().getByRole('button', { name: '1 hour' }));
-
-      expect(await screen.findByText(/Couldn.t plan your day/)).toBeTruthy();
-      expect(screen.getByRole('group', { name: QUESTION })).toBeTruthy();
-    });
-
-    it('should send the chosen answer again on the ask\'s retry, then plan (R110)', async () => {
+    it('should ask again when both the save and the draw fail, and send the chosen answer again on retry (R110)', async () => {
       setDayPlanSettings
         .mockRejectedValueOnce(
           new ApiError({ code: 'SERVICE_UNAVAILABLE', status: 503 } as never, 503)
@@ -433,6 +418,7 @@ describe('DayPlanSection', () => {
       await screen.findByRole('group', { name: QUESTION });
       await userEvent.click(chips().getByRole('button', { name: '1 hour' }));
       await screen.findByText(/Couldn.t plan your day/);
+      expect(screen.getByRole('group', { name: QUESTION })).toBeTruthy();
 
       await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
@@ -573,13 +559,16 @@ describe('DayPlanSection', () => {
           dailyMinutes === null ? { asked: true } : { asked: true, dailyMinutes }
       );
 
-    it('should set 2 hours on the first press from unset, save 120, and update the tooltip without planning', async () => {
+    it.each([
+      ['+', more],
+      ['−', less],
+    ])('should set 2 hours on a first %s from unset, save 120, and update the tooltip without planning', async (_key, press) => {
       echo();
       mount();
       await openSettings();
       expect(readout()).toHaveTextContent('Typical day');
 
-      await userEvent.click(more());
+      await userEvent.click(press());
 
       expect(readout()).toHaveTextContent('2 hours');
       expect(setDayPlanSettings).toHaveBeenCalledTimes(1);
@@ -590,15 +579,6 @@ describe('DayPlanSection', () => {
         )
       );
       expect(planMyDay).not.toHaveBeenCalled();
-    });
-
-    it('should set 2 hours on a first − too', async () => {
-      echo();
-      mount();
-      await openSettings();
-      await userEvent.click(less());
-      expect(readout()).toHaveTextContent('2 hours');
-      expect(setDayPlanSettings).toHaveBeenCalledWith('plan-1', 120);
     });
 
     it('should step by 30 minutes and stop at 30 minutes and at 12 hours', async () => {
@@ -765,17 +745,7 @@ describe('DayPlanSection', () => {
       expect(tip()).toHaveTextContent('Sized for 2½ hours a day.');
     });
 
-    it('should render nothing when the save says the plan is not reachable (R70)', async () => {
-      setDayPlanSettings.mockRejectedValue(
-        new ApiError({ code: 'NOT_FOUND', status: 404 } as never, 404)
-      );
-      const { container } = mount();
-      await openSettings();
-      await userEvent.click(more());
-      await waitFor(() => expect(container).toBeEmptyDOMElement());
-    });
-
-    it('should drop the presses still queued once a save says the plan is not reachable', async () => {
+    it('should render nothing and drop the presses still queued once a save says the plan is not reachable (R70)', async () => {
       getDayPlan.mockResolvedValue(withMinutes(120));
       const pending = heldSaves();
       const { container } = mount();

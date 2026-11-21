@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { act, fireEvent, screen, within } from '@testing-library/react';
+import { api, item as baseItem, order, renderTodo } from '@/test/todoHarness';
 
 /**
  * FS-0009 R3, R4, R5, R7, R8 — picking an item up and dropping it somewhere
@@ -16,62 +17,11 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
  * and is checked by hand.
  */
 
-const fetchChecklist = vi.fn();
-const reorderChecklistItems = vi.fn();
-const toast = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ planId: 'plan-1' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-}));
-
-vi.mock('@/components/ui/use-toast', () => ({
-  useToast: () => ({ toast: (...a: unknown[]) => toast(...a) }),
-}));
-
-vi.mock('@/services/api', () => ({
-  fetchChecklist: (...a: unknown[]) => fetchChecklist(...a),
-  fetchArchivedChecklist: vi.fn(async () => []),
-  createChecklistItem: vi.fn(),
-  updateChecklistItem: vi.fn(async () => ({})),
-  deleteChecklistItem: vi.fn(),
-  updateChecklistDates: vi.fn(async () => ({})),
-  archiveChecklistItem: vi.fn(async () => ({})),
-  reorderChecklistItems: (...a: unknown[]) => reorderChecklistItems(...a),
-  scheduleChecklistItem: vi.fn(),
-  scope: { DAILY: 'daily', LONGTERM: 'longterm' },
-  ScopeEnum: { DAILY: 'daily', LONGTERM: 'longterm' },
-}));
-
-vi.mock('@/api/insights', () => ({
-  getChecklistSuggestion: vi.fn(async () => ''),
-}));
-
-vi.mock('@/api/plans', () => ({
-  getPlan: vi.fn(async () => ({ id: 'plan-1', dailyReset: false })),
-}));
-
-const item = (
-  id: string,
-  type: 'task' | 'note' = 'task',
-  parentId: string | null = null
-) => ({
-  id,
-  description: `item ${id}`,
-  done: false,
-  scope: 'longterm',
-  type,
-  parentId,
-  planId: 'plan-1',
-});
+const { reorderChecklistItems } = api;
+const item = (id: string, type: 'task' | 'note' = 'task', parentId: string | null = null) =>
+  baseItem(id, { type, parentId });
 
 const THREE = [item('A'), item('B'), item('C')];
-
-/** Rendered order, read off the one control every item carries in both views. */
-const order = () =>
-  screen
-    .getAllByRole('button', { name: /^Actions for / })
-    .map((b) => b.getAttribute('aria-label')!.replace('Actions for ', ''));
 
 // ---------------------------------------------------------------------------
 // A geometry to drag in.
@@ -141,11 +91,7 @@ async function renderView(
   which: 'list' | 'grid',
   items: { description: string }[]
 ) {
-  window.localStorage.setItem('checklistView', which);
-  fetchChecklist.mockImplementation(async () => items);
-  const Todo = (await import('./Todo')).default;
-  const view = render(<Todo fixedTaskType="longterm" enableTypeFilter />);
-  await screen.findByText(items[0].description);
+  const view = await renderTodo(items, { view: which });
   layout();
   return view;
 }
@@ -157,12 +103,6 @@ const renderGrid = (items: { description: string }[] = THREE) =>
   renderView('grid', items);
 
 describe('Todo drag to reorder', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    reorderChecklistItems.mockResolvedValue([]);
-  });
-
   it('should drop a row into another row\'s place and send the whole set in that order', async () => {
     await renderList();
     expect(order()).toEqual(['item A', 'item B', 'item C']);
