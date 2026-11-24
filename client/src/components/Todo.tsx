@@ -29,7 +29,6 @@ import {
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
-  closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -40,6 +39,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import SortableItem from '@/components/SortableItem';
+import { closestInSameSet } from '@/lib/sortableCollision';
 import { getChecklistSuggestion } from '@/api/insights';
 import { getPlan, type PlanMember } from '@/api/plans';
 import { duplicateChecklistItem } from '@/api/checklists';
@@ -1729,7 +1729,7 @@ export default function Todo({
           // happens on (R8.1) while the order sent is still the whole set.
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={closestInSameSet}
             onDragEnd={dropItem}
           >
           {isGrid ? (
