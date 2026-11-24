@@ -67,7 +67,12 @@ export default function SortableItem({
     transform: transform
       ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
       : undefined,
-    transition,
+    // The item under the pointer follows it exactly. dnd-kit leaves that
+    // item's transition unset, which would hand it to whatever transition its
+    // element's classes declare: a list row's `transition-all duration-200`
+    // restarted a 200ms ease on every mouse move, so the row trailed far
+    // behind the pointer instead of riding under it.
+    transition: isDragging ? 'none' : transition,
     // The item being dragged is lifted out of the flow (R3.3): it rides over
     // its neighbours, and the faded original marks the gap it would drop into
     // as the others slide clear of it (R4.3).

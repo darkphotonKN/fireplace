@@ -156,6 +156,68 @@ describe('Todo drag to reorder', () => {
     });
   });
 
+  // Every set on the page shares one drag context, and a card sits among its
+  // own steps: in this geometry card P's slot is just above P1's. Weighed
+  // against every target, a step dragged up past P1 is "over" its own card;
+  // dnd-kit then stops moving the step, which drops back to where it began
+  // while the pointer carries on, and the drop is refused.
+  it('should keep a step under the pointer as it passes its own card (R4.2)', async () => {
+    await renderGrid([
+      item('P'),
+      item('P1', 'task', 'P'),
+      item('P2', 'task', 'P'),
+      item('P3', 'task', 'P'),
+      // A second card, or P would be alone in its set and have no grip.
+      item('Q'),
+    ]);
+    const step = nodeOf('item P3');
+
+    await drag('item P3', 'item P', { drop: false });
+
+    expect(step.style.transform).not.toBe('');
+    fireEvent.mouseUp(document);
+    await settle(CLICK_GUARD);
+    expect(order()).toEqual(['item P', 'item P3', 'item P1', 'item P2', 'item Q']);
+  });
+
+  // The same thing from the other side: a card dragged onto a neighbour's
+  // steps is over that neighbour, not over a step that is not its to trade.
+  it('should drop a card that is let go over another card\'s steps (R4.1)', async () => {
+    await renderGrid([
+      item('P'),
+      item('P1', 'task', 'P'),
+      item('P2', 'task', 'P'),
+      item('Q'),
+    ]);
+
+    await drag('item Q', 'item P1');
+
+    expect(order()).toEqual(['item Q', 'item P', 'item P1', 'item P2']);
+    expect(reorderChecklistItems).toHaveBeenCalledWith('plan-1', {
+      scope: 'longterm',
+      parentId: null,
+      ids: ['Q', 'P'],
+    });
+  });
+
+  // The lifted item rides the pointer 1:1. Left to its classes, a row eases
+  // every move over 200ms (`transition-all`) and trails far behind it.
+  it.each(['list', 'grid'] as const)(
+    'should not ease the lifted item after the pointer in the %s',
+    async (which) => {
+      await renderView(which, THREE);
+      const lifted = nodeOf('item C');
+
+      await drag('item C', 'item A', { drop: false });
+
+      expect(lifted.style.transform).not.toBe('');
+      expect(lifted.style.transition).toBe('none');
+      fireEvent.keyDown(document, { key: 'Escape', code: 'Escape' });
+      fireEvent.mouseUp(document);
+      await settle(CLICK_GUARD);
+    }
+  );
+
   it('should take a top-level row\'s children with it (R3.2)', async () => {
     await renderList([
       item('A'),
